@@ -116,7 +116,6 @@ namespace L1FlyMapViewer
                 {
                     this.toolStripStatusLabel3.Text = savedPath;
                     Share.LineagePath = savedPath;
-                    this.openToolStripMenuItem.Enabled = false;
                     try
                     {
                         this.LoadMap(savedPath);
@@ -148,9 +147,6 @@ namespace L1FlyMapViewer
 
         private void openToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            if (!string.IsNullOrEmpty(this.toolStripStatusLabel3.Text))
-                return;
-
             using (FolderBrowserDialog folderDialog = new FolderBrowserDialog())
             {
                 folderDialog.Description = "請選擇天堂資料夾";
@@ -167,11 +163,10 @@ namespace L1FlyMapViewer
                 {
                     folderDialog.SelectedPath = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
                 }
-{}
-                if (folderDialog.ShowDialog() != DialogResult.OK || string.IsNullOrEmpty(folderDialog.SelectedPath))
+
+                if (folderDialog.ShowDialog(this) != DialogResult.OK || string.IsNullOrEmpty(folderDialog.SelectedPath))
                     return;
 
-                this.openToolStripMenuItem.Enabled = false;
                 this.toolStripStatusLabel3.Text = folderDialog.SelectedPath;
                 Share.LineagePath = folderDialog.SelectedPath;
                 // 保存选择的路径（保存完整路径，而不是父目录）
