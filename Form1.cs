@@ -840,14 +840,6 @@ namespace L1FlyMapViewer
             }
         }
 
-        // 变更资料夹
-        private void changeFolder_Click(object sender, EventArgs e)
-        {
-            this.openToolStripMenuItem.Enabled = true;
-            this.toolStripStatusLabel3.Text = "";
-            this.openToolStripMenuItem_Click(sender, e);
-        }
-
         // 資料庫設定
         private void databaseToolStripMenuItem_Click(object sender, EventArgs e)
         {
