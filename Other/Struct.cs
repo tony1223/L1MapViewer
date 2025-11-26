@@ -83,24 +83,28 @@ namespace L1MapViewer.Other {
                     blockWidth = L1MapHelper.BMP_R_W;
                     blockHeight = L1MapHelper.BMP_R_H;
                 }
+
+                // 使用 decimal 並 round 到小數點後6位，避免浮點數精度問題 (0.999999 -> 1.0)
+                decimal r = Math.Round((decimal)rate, 6);
+
                 int baseX = 0;
-                int baseY = (int)((nMapBlockCountX - 1) * blockHeight / 2 * rate);
+                int baseY = (int)Math.Round((nMapBlockCountX - 1) * blockHeight / 2 * r, 0);
 
                 //區塊的x,y座標
                 int blockX = nBlockX - nMapMinBlockX;
                 int blockY = nBlockY - nMapMinBlockY;
 
-                int mx = (int)(blockX * blockWidth * rate);
-                int my = (int)(blockY * blockHeight * rate);
+                int mx = (int)Math.Round(blockX * blockWidth * r, 0);
+                int my = (int)Math.Round(blockY * blockHeight * r, 0);
 
                 mx += baseX + my * 2;
                 my += baseY;
 
-                mx -= (int)(blockX * blockWidth / 2 * rate);
-                my -= (int)(blockX * blockHeight / 2 * rate);
+                mx -= (int)Math.Round(blockX * blockWidth / 2 * r, 0);
+                my -= (int)Math.Round(blockX * blockHeight / 2 * r, 0);
 
-                mx -= (int)(blockY * blockWidth / 2 * rate);
-                my -= (int)(blockY * blockHeight / 2 * rate);
+                mx -= (int)Math.Round(blockY * blockWidth / 2 * r, 0);
+                my -= (int)Math.Round(blockY * blockHeight / 2 * r, 0);
                 return new int[] { mx, my };
             }
         }
