@@ -1,0 +1,66 @@
+# Visual Studio 建置結果
+[Dd]ebug/
+[Dd]ebugPublic/
+[Rr]elease/
+[Rr]eleases/
+x64/
+x86/
+[Ww][Ii][Nn]32/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+bld/
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
+
+# Visual Studio 快取/選項目錄
+.vs/
+
+# MSTest 測試結果
+[Tt]est[Rr]esult*/
+[Bb]uild[Ll]og.*
+
+# NUnit
+*.VisualState.xml
+TestResult.xml
+nunit-*.xml
+
+# 使用者特定檔案
+*.rsuser
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# ReSharper
+_ReSharper*/
+*.[Rr]e[Ss]harper
+*.DotSettings.user
+
+# NuGet Packages
+*.nupkg
+*.snupkg
+**/[Pp]ackages/*
+!**/[Pp]ackages/build/
+*.nuget.props
+*.nuget.targets
+
+# Visual Studio 程式碼快取
+.vscode/
+
+# JetBrains Rider
+.idea/
+*.sln.iml
+
+# Windows 縮圖快取
+Thumbs.db
+ehthumbs.db
+
+# 資料夾設定檔
+Desktop.ini
+
+# 暫存檔
+*.tmp
+*.temp
+~$*
