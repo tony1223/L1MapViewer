@@ -29,8 +29,5 @@ using System.Runtime.InteropServices;
 //      組建編號
 //      修訂
 //
-// 您可以指定所有的值,也可以使用 '*' 將組建和修訂編號
-// 設為預設,如下所示:
-// [assembly: AssemblyVersion("1.0.*")]
-[assembly: AssemblyVersion("1.0.0.0")]
-[assembly: AssemblyFileVersion("1.0.0.0")]
+// 版本號由 build script 自動產生 (格式: 1.0.yyyyMMddHHmm)
+// 使用 build.bat 來建置並設定版本號
