@@ -240,16 +240,31 @@ namespace L1FlyMapViewer
                 return;
             }
 
-            // 先收集所有物件及其遊戲座標
-            var objectsWithCoords = new List<(ObjectTile obj, int gameX, int gameY, S32Data s32)>();
+            // 先收集所有物件及其全域 Layer1 座標和原始索引
+            var objectsWithCoords = new List<(ObjectTile obj, int globalX, int globalY, S32Data s32, int originalIndex)>();
             foreach (var cell in selectedCells)
             {
-                var objectsAtCell = cell.S32Data.Layer4.Where(o => o.X == cell.LocalX && o.Y == cell.LocalY).ToList();
-                foreach (var obj in objectsAtCell)
+                // 找出符合條件的物件及其在 Layer4 列表中的原始索引
+                // cell.LocalX 是偶數（x3 * 2），一個 Layer3 格子包含 obj.X 為 LocalX 和 LocalX+1 的物件
+                for (int i = 0; i < cell.S32Data.Layer4.Count; i++)
                 {
-                    int gameX = cell.S32Data.SegInfo.nLinBeginX + obj.X;
-                    int gameY = cell.S32Data.SegInfo.nLinBeginY + obj.Y;
-                    objectsWithCoords.Add((obj, gameX, gameY, cell.S32Data));
+                    var obj = cell.S32Data.Layer4[i];
+                    // 檢查物件是否在這個 Layer3 格子內（obj.X/2 == cell.LocalX/2 且 obj.Y == cell.LocalY）
+                    if ((obj.X / 2) != (cell.LocalX / 2) || obj.Y != cell.LocalY)
+                        continue;
+
+                    // 如果有選擇群組，只複製選中群組的物件
+                    if (isFilteringLayer4Groups && selectedLayer4Groups.Count > 0)
+                    {
+                        if (!selectedLayer4Groups.Contains(obj.GroupId))
+                            continue;
+                    }
+
+                    // 計算全域 Layer1 座標
+                    // nLinBeginX 是 Layer3 起始座標，乘以 2 轉成 Layer1，再加上 obj.X
+                    int globalX = cell.S32Data.SegInfo.nLinBeginX * 2 + obj.X;
+                    int globalY = cell.S32Data.SegInfo.nLinBeginY + obj.Y;
+                    objectsWithCoords.Add((obj, globalX, globalY, cell.S32Data, i));
                 }
             }
 
@@ -263,21 +278,26 @@ namespace L1FlyMapViewer
                 return;
             }
 
-            // 找出所有物件中最小的 X 和 Y 作為基準點（左上角物件）
-            int minGameX = objectsWithCoords.Min(o => o.gameX);
-            int minGameY = objectsWithCoords.Min(o => o.gameY);
+            // 找出所有物件中最小的全域 Layer1 X 和 Y 作為基準點
+            int minGlobalX = objectsWithCoords.Min(o => o.globalX);
+            int minGlobalY = objectsWithCoords.Min(o => o.globalY);
 
-            // 計算相對於基準點的偏移
-            foreach (var (obj, gameX, gameY, s32) in objectsWithCoords)
+            // 按 Layer 屬性排序，保持渲染順序（與 RenderS32Block 一致）
+            var sortedObjects = objectsWithCoords.OrderBy(o => o.obj.Layer).ToList();
+
+            // 計算相對於基準點的偏移（使用 Layer1 座標）
+            int orderIndex = 0;
+            foreach (var (obj, globalX, globalY, s32, originalIndex) in sortedObjects)
             {
                 layer4Clipboard.Add(new CopiedObjectTile
                 {
-                    RelativeX = gameX - minGameX,
-                    RelativeY = gameY - minGameY,
+                    RelativeX = globalX - minGlobalX,
+                    RelativeY = globalY - minGlobalY,
                     GroupId = obj.GroupId,
                     Layer = obj.Layer,
                     IndexId = obj.IndexId,
-                    TileId = obj.TileId
+                    TileId = obj.TileId,
+                    OriginalIndex = orderIndex++  // 保存順序索引（按 Layer 排序後的順序）
                 });
             }
 
@@ -308,7 +328,7 @@ namespace L1FlyMapViewer
                 return;
             }
 
-            // 取得貼上位置的遊戲座標
+            // 取得貼上位置的全域 Layer1 座標
             int pasteOriginX = copyRegionOrigin.X;
             int pasteOriginY = copyRegionOrigin.Y;
 
@@ -321,11 +341,16 @@ namespace L1FlyMapViewer
                 Description = $"貼上 Layer4 物件到 ({pasteOriginX}, {pasteOriginY})"
             };
 
-            foreach (var copiedObj in layer4Clipboard)
+            // 按 OriginalIndex 排序確保貼上順序正確
+            foreach (var copiedObj in layer4Clipboard.OrderBy(o => o.OriginalIndex))
             {
-                // 計算目標遊戲座標
-                int targetGameX = pasteOriginX + copiedObj.RelativeX;
-                int targetGameY = pasteOriginY + copiedObj.RelativeY;
+                // 計算目標全域 Layer1 座標
+                int targetGlobalX = pasteOriginX + copiedObj.RelativeX;
+                int targetGlobalY = pasteOriginY + copiedObj.RelativeY;
+
+                // 轉換為遊戲座標（Layer3）來找 S32
+                int targetGameX = targetGlobalX / 2;
+                int targetGameY = targetGlobalY;
 
                 // 找到目標格子所屬的 S32
                 S32Data targetS32 = GetS32DataByGameCoords(targetGameX, targetGameY);
@@ -335,11 +360,12 @@ namespace L1FlyMapViewer
                     continue;
                 }
 
-                // 計算目標 S32 內的局部座標
-                int localX = targetGameX - targetS32.SegInfo.nLinBeginX;
-                int localY = targetGameY - targetS32.SegInfo.nLinBeginY;
+                // 計算目標 S32 內的局部 Layer1 座標
+                // targetGlobalX = nLinBeginX * 2 + localX，所以 localX = targetGlobalX - nLinBeginX * 2
+                int localX = targetGlobalX - targetS32.SegInfo.nLinBeginX * 2;
+                int localY = targetGlobalY - targetS32.SegInfo.nLinBeginY;
 
-                // 檢查座標是否有效
+                // 檢查座標是否有效（Layer1 範圍 0-127，Y 範圍 0-63）
                 if (localX < 0 || localX >= 128 || localY < 0 || localY >= 64)
                 {
                     skippedCount++;
@@ -734,8 +760,16 @@ namespace L1FlyMapViewer
             var (startGameX, startGameY, _, _, _) = ScreenToGameCoords(startPoint.X, startPoint.Y);
             var (endGameX, endGameY, _, _, _) = ScreenToGameCoords(endPoint.X, endPoint.Y);
 
-            if (startGameX < 0 || endGameX < 0)
+            // 如果起點找不到，返回空
+            if (startGameX < 0)
                 return result;
+
+            // 如果終點找不到，使用起點
+            if (endGameX < 0)
+            {
+                endGameX = startGameX;
+                endGameY = startGameY;
+            }
 
             // 計算遊戲座標範圍
             int minGameX = Math.Min(startGameX, endGameX);
@@ -743,54 +777,24 @@ namespace L1FlyMapViewer
             int minGameY = Math.Min(startGameY, endGameY);
             int maxGameY = Math.Max(startGameY, endGameY);
 
-            // 遍歷範圍內的每個遊戲座標，找到正確負責該座標的 S32 檔案
-            for (int gameY = minGameY; gameY <= maxGameY; gameY++)
+            // 收集範圍內所有格子（使用 Layer3 座標）
+            foreach (var s32Data in allS32DataDict.Values)
             {
-                for (int gameX = minGameX; gameX <= maxGameX; gameX++)
+                for (int y = 0; y < 64; y++)
                 {
-                    // 根據公式反推正確的 S32 檔案
-                    // nLinEndX = (nBlockX - 0x7fff) * 64 + 0x7fff
-                    // nLinBeginX = nLinEndX - 63
-                    // 所以 nLinBeginX = (nBlockX - 0x7fff) * 64 + 0x7fff - 63
-                    //                = (nBlockX - 0x7fff) * 64 + 32704
-                    // 反推: nBlockX = floor((gameX - 32704) / 64) + 0x7fff
-                    //              = floor((gameX - 32704) / 64) + 32767
-                    // 但更簡單的方式: nBlockX 使得 nLinBeginX <= gameX <= nLinEndX
-                    // nLinBeginX = (nBlockX - 32767) * 64 + 32704
-                    // gameX >= nLinBeginX => gameX >= (nBlockX - 32767) * 64 + 32704
-                    // gameX - 32704 >= (nBlockX - 32767) * 64
-                    // (gameX - 32704) / 64 >= nBlockX - 32767
-                    // nBlockX <= (gameX - 32704) / 64 + 32767
-                    // 取 floor 得到正確的 nBlockX
-
-                    int targetBlockX = (int)Math.Floor((gameX - 32704.0) / 64.0) + 32767;
-                    int targetBlockY = (int)Math.Floor((gameY - 32704.0) / 64.0) + 32767;
-                    string targetFileName = $"{targetBlockX:X4}{targetBlockY:X4}.s32";
-
-                    // 找到對應的 S32 檔案
-                    S32Data targetS32 = null;
-                    foreach (var s32Data in allS32DataDict.Values)
+                    for (int x3 = 0; x3 < 64; x3++)
                     {
-                        if (Path.GetFileName(s32Data.FilePath).Equals(targetFileName, StringComparison.OrdinalIgnoreCase))
-                        {
-                            targetS32 = s32Data;
-                            break;
-                        }
-                    }
+                        int gameX = s32Data.SegInfo.nLinBeginX + x3;
+                        int gameY = s32Data.SegInfo.nLinBeginY + y;
 
-                    if (targetS32 != null)
-                    {
-                        int localX = gameX - targetS32.SegInfo.nLinBeginX;
-                        int localY = gameY - targetS32.SegInfo.nLinBeginY;
-
-                        // 確保在有效範圍內 (Layer1 是 128x64)
-                        if (localX >= 0 && localX < 128 && localY >= 0 && localY < 64)
+                        if (gameX >= minGameX && gameX <= maxGameX &&
+                            gameY >= minGameY && gameY <= maxGameY)
                         {
                             result.Add(new SelectedCell
                             {
-                                S32Data = targetS32,
-                                LocalX = localX,
-                                LocalY = localY
+                                S32Data = s32Data,
+                                LocalX = x3 * 2,  // 轉換為 Layer1 座標
+                                LocalY = y
                             });
                         }
                     }
@@ -1947,12 +1951,13 @@ namespace L1FlyMapViewer
         // 複製的物件資料（含相對位置）
         private class CopiedObjectTile
         {
-            public int RelativeX { get; set; }    // 相對於原點的 X 偏移
+            public int RelativeX { get; set; }    // 相對於原點的 X 偏移（Layer1 座標）
             public int RelativeY { get; set; }    // 相對於原點的 Y 偏移
             public int GroupId { get; set; }
             public int Layer { get; set; }
             public int IndexId { get; set; }
             public int TileId { get; set; }
+            public int OriginalIndex { get; set; } // 原始 Layer4 列表中的索引（用於保持順序）
         }
 
         // Undo 相關變數
@@ -1996,7 +2001,7 @@ namespace L1FlyMapViewer
             return null;
         }
 
-        // 螢幕座標轉換為遊戲座標
+        // 螢幕座標轉換為遊戲座標（使用 Layer3 格子，與格線一致）
         private (int gameX, int gameY, S32Data s32Data, int localX, int localY) ScreenToGameCoords(int screenX, int screenY)
         {
             if (string.IsNullOrEmpty(currentMapId) || !Share.MapDataList.ContainsKey(currentMapId))
@@ -2006,17 +2011,17 @@ namespace L1FlyMapViewer
 
             foreach (var s32Data in allS32DataDict.Values)
             {
-                // 使用與 RenderS32Map 相同的座標計算方式（GetLoc + drawTilBlock 公式）
                 int[] loc = s32Data.SegInfo.GetLoc(1.0);
                 int mx = loc[0];
                 int my = loc[1];
 
+                // 使用 Layer3 格子（與 DrawS32Grid 一致）
                 for (int y = 0; y < 64; y++)
                 {
-                    // 搜尋完整的 Layer1 範圍 (128 格)
-                    for (int x = 0; x < 128; x++)
+                    for (int x3 = 0; x3 < 64; x3++)
                     {
-                        // 與 drawTilBlock 相同的像素計算
+                        int x = x3 * 2;  // Layer1 座標
+
                         int localBaseX = 0;
                         int localBaseY = 63 * 12;
                         localBaseX -= 24 * (x / 2);
@@ -2025,14 +2030,16 @@ namespace L1FlyMapViewer
                         int X = mx + localBaseX + x * 24 + y * 24;
                         int Y = my + localBaseY + y * 12;
 
-                        Point p1 = new Point(X + 0, Y + 12);
-                        Point p2 = new Point(X + 12, Y + 0);
-                        Point p3 = new Point(X + 24, Y + 12);
-                        Point p4 = new Point(X + 12, Y + 24);
+                        // Layer3 菱形的四個頂點（48x24，與格線一致）
+                        Point p1 = new Point(X, Y + 12);       // 左
+                        Point p2 = new Point(X + 24, Y);       // 上
+                        Point p3 = new Point(X + 48, Y + 12);  // 右
+                        Point p4 = new Point(X + 24, Y + 24);  // 下
 
                         if (IsPointInDiamond(new Point(screenX, screenY), p1, p2, p3, p4))
                         {
-                            int gameX = s32Data.SegInfo.nLinBeginX + x;
+                            // 返回 Layer3 座標作為遊戲座標
+                            int gameX = s32Data.SegInfo.nLinBeginX + x3;
                             int gameY = s32Data.SegInfo.nLinBeginY + y;
                             return (gameX, gameY, s32Data, x, y);
                         }
@@ -3979,24 +3986,11 @@ namespace L1FlyMapViewer
             {
                 regionEndPoint = e.Location;
 
-                // Layer4 複製模式：計算起點到終點之間的格子範圍
-                if (isLayer4CopyMode)
+                // 計算起點到終點之間的格子範圍（所有模式都對齊格線）
+                currentSelectedCells = GetCellsInIsometricRange(regionStartPoint, regionEndPoint);
+                if (currentSelectedCells.Count > 0)
                 {
-                    currentSelectedCells = GetCellsInIsometricRange(regionStartPoint, regionEndPoint);
-                    if (currentSelectedCells.Count > 0)
-                    {
-                        selectedRegion = GetAlignedBoundsFromCells(currentSelectedCells);
-                    }
-                }
-                else
-                {
-                    // 非 Layer4 模式：使用矩形
-                    currentSelectedCells.Clear();
-                    int x = Math.Min(regionStartPoint.X, regionEndPoint.X);
-                    int y = Math.Min(regionStartPoint.Y, regionEndPoint.Y);
-                    int width = Math.Abs(regionEndPoint.X - regionStartPoint.X);
-                    int height = Math.Abs(regionEndPoint.Y - regionStartPoint.Y);
-                    selectedRegion = new Rectangle(x, y, width, height);
+                    selectedRegion = GetAlignedBoundsFromCells(currentSelectedCells);
                 }
 
                 // 重繪以顯示選擇框
@@ -4035,32 +4029,33 @@ namespace L1FlyMapViewer
                         copyRegionBounds = selectedRegion;
                     }
 
-                    // 計算選取區域的遊戲座標原點（使用選中格子中最小的 X, Y 作為原點）
-                    int gameX = -1, gameY = -1;
+                    // 計算選取區域的全域 Layer1 座標原點（使用選中格子中最小的 X, Y 作為原點）
+                    int globalX = -1, globalY = -1;
                     if (currentSelectedCells.Count > 0)
                     {
-                        // 找出所有選中格子的最小遊戲座標
-                        int minGameX = int.MaxValue, minGameY = int.MaxValue;
+                        // 找出所有選中格子的最小全域 Layer1 座標
+                        int minGlobalX = int.MaxValue, minGlobalY = int.MaxValue;
                         foreach (var cell in currentSelectedCells)
                         {
-                            int cellGameX = cell.S32Data.SegInfo.nLinBeginX + cell.LocalX;
-                            int cellGameY = cell.S32Data.SegInfo.nLinBeginY + cell.LocalY;
-                            if (cellGameX < minGameX) minGameX = cellGameX;
-                            if (cellGameY < minGameY) minGameY = cellGameY;
+                            // nLinBeginX 是 Layer3 座標，乘以 2 轉成 Layer1，再加上 cell.LocalX
+                            int cellGlobalX = cell.S32Data.SegInfo.nLinBeginX * 2 + cell.LocalX;
+                            int cellGlobalY = cell.S32Data.SegInfo.nLinBeginY + cell.LocalY;
+                            if (cellGlobalX < minGlobalX) minGlobalX = cellGlobalX;
+                            if (cellGlobalY < minGlobalY) minGlobalY = cellGlobalY;
                         }
-                        gameX = minGameX;
-                        gameY = minGameY;
+                        globalX = minGlobalX;
+                        globalY = minGlobalY;
                     }
-                    copyRegionOrigin = new Point(gameX, gameY);
+                    copyRegionOrigin = new Point(globalX, globalY);
 
                     // 根據是否有剪貼簿資料顯示不同提示
                     if (hasLayer4Clipboard && layer4Clipboard.Count > 0)
                     {
-                        this.toolStripStatusLabel1.Text = $"已選取貼上位置 (原點: {gameX}, {gameY})，按 Ctrl+V 貼上 {layer4Clipboard.Count} 個物件，選中 {currentSelectedCells.Count} 格";
+                        this.toolStripStatusLabel1.Text = $"已選取貼上位置 (原點: {globalX}, {globalY})，按 Ctrl+V 貼上 {layer4Clipboard.Count} 個物件，選中 {currentSelectedCells.Count} 格";
                     }
                     else
                     {
-                        this.toolStripStatusLabel1.Text = $"已選取區域 (原點: {gameX}, {gameY})，選中 {currentSelectedCells.Count} 格，按 Ctrl+C 複製 Layer4 物件";
+                        this.toolStripStatusLabel1.Text = $"已選取區域 (原點: {globalX}, {globalY})，選中 {currentSelectedCells.Count} 格，按 Ctrl+C 複製 Layer4 物件";
                     }
                     // 保留選取框顯示
                     s32PictureBox.Invalidate();
@@ -4093,53 +4088,65 @@ namespace L1FlyMapViewer
         // S32 PictureBox 繪製事件 - 繪製選擇框
         private void s32PictureBox_Paint(object sender, PaintEventArgs e)
         {
-            // Layer4 複製模式：繪製選中的格子
-            if (isLayer4CopyMode && currentSelectedCells.Count > 0)
+            // 有選中的格子時，繪製對齊格線的菱形選取框
+            if (currentSelectedCells.Count > 0)
             {
-                DrawSelectedCells(e.Graphics, currentSelectedCells,
-                    isSelectingRegion ? Color.Green : Color.Orange);
-            }
-            // 非 Layer4 模式：繪製菱形選擇框
-            else if (isSelectingRegion && selectedRegion.Width > 0 && selectedRegion.Height > 0)
-            {
-                DrawIsometricSelectionBox(e.Graphics, selectedRegion, Color.Blue);
+                Color color = isSelectingRegion ? Color.Green : Color.Orange;
+                DrawSelectedCells(e.Graphics, currentSelectedCells, color);
+
+                // 顯示選取的格子數量
+                if (isSelectingRegion)
+                {
+                    string info = $"選取 {currentSelectedCells.Count} 格";
+                    using (Font font = new Font("Arial", 10, FontStyle.Bold))
+                    using (SolidBrush bgBrush = new SolidBrush(Color.FromArgb(180, Color.Black)))
+                    using (SolidBrush textBrush = new SolidBrush(Color.White))
+                    {
+                        SizeF textSize = e.Graphics.MeasureString(info, font);
+                        // 在滑鼠位置附近顯示
+                        float textX = regionEndPoint.X + 15;
+                        float textY = regionEndPoint.Y - 20;
+                        e.Graphics.FillRectangle(bgBrush, textX - 2, textY - 2, textSize.Width + 4, textSize.Height + 4);
+                        e.Graphics.DrawString(info, font, textBrush, textX, textY);
+                    }
+                }
             }
         }
 
-        // 繪製選中的格子（對齊 Layer1 地圖格子，使用 24x24 菱形）
+        // 繪製選中的格子（每個格子繪製獨立的菱形）
         private void DrawSelectedCells(Graphics g, List<SelectedCell> cells, Color color)
         {
             if (cells.Count == 0 || string.IsNullOrEmpty(currentMapId) || !Share.MapDataList.ContainsKey(currentMapId))
                 return;
 
-            Struct.L1Map currentMap = Share.MapDataList[currentMapId];
-
-            using (SolidBrush brush = new SolidBrush(Color.FromArgb(80, color)))
+            using (SolidBrush brush = new SolidBrush(Color.FromArgb(50, color)))
             using (Pen pen = new Pen(color, 2))
             {
                 foreach (var cell in cells)
                 {
-                    // 使用與 RenderS32Map 相同的座標計算方式（GetLoc + drawTilBlock 公式）
+                    // 與 DrawS32Grid 完全相同的座標計算（Layer3 格子，48x24）
                     int[] loc = cell.S32Data.SegInfo.GetLoc(1.0);
                     int mx = loc[0];
                     int my = loc[1];
 
-                    // 與 drawTilBlock 相同的像素計算
+                    int x = cell.LocalX;  // 已經是 Layer1 座標 (x3 * 2)
+                    int y = cell.LocalY;
+
                     int localBaseX = 0;
                     int localBaseY = 63 * 12;
-                    localBaseX -= 24 * (cell.LocalX / 2);
-                    localBaseY -= 12 * (cell.LocalX / 2);
+                    localBaseX -= 24 * (x / 2);
+                    localBaseY -= 12 * (x / 2);
 
-                    int X = mx + localBaseX + cell.LocalX * 24 + cell.LocalY * 24;
-                    int Y = my + localBaseY + cell.LocalY * 12;
+                    int X = mx + localBaseX + x * 24 + y * 24;
+                    int Y = my + localBaseY + y * 12;
 
-                    // Layer1 菱形的四個頂點（24x24）
+                    // Layer3 菱形四個頂點（48x24，與 DrawS32Grid 一致）
                     Point[] diamondPoints = new Point[]
                     {
-                        new Point(X + 0, Y + 12),   // 左
-                        new Point(X + 12, Y + 0),   // 上
-                        new Point(X + 24, Y + 12),  // 右
-                        new Point(X + 12, Y + 24)   // 下
+                        new Point(X, Y + 12),       // 左
+                        new Point(X + 24, Y),       // 上
+                        new Point(X + 48, Y + 12),  // 右
+                        new Point(X + 24, Y + 24)   // 下
                     };
 
                     g.FillPolygon(brush, diamondPoints);
@@ -4326,7 +4333,14 @@ namespace L1FlyMapViewer
 
             foreach (var cell in cells)
             {
-                var objectsAtCell = cell.S32Data.Layer4.Where(o => o.X == cell.LocalX && o.Y == cell.LocalY).ToList();
+                // 檢查物件是否在這個 Layer3 格子內（obj.X/2 == cell.LocalX/2 且 obj.Y == cell.LocalY）
+                var objectsAtCell = cell.S32Data.Layer4.Where(o => (o.X / 2) == (cell.LocalX / 2) && o.Y == cell.LocalY).ToList();
+
+                // 如果有選擇群組，只刪除選中群組的物件
+                if (isFilteringLayer4Groups && selectedLayer4Groups.Count > 0)
+                {
+                    objectsAtCell = objectsAtCell.Where(o => selectedLayer4Groups.Contains(o.GroupId)).ToList();
+                }
 
                 if (objectsAtCell.Count > 0)
                 {
@@ -4370,7 +4384,8 @@ namespace L1FlyMapViewer
                     foreach (var obj in kvp.Value)
                     {
                         // 記錄到 Undo（刪除的物件）
-                        int gameX = s32Data.SegInfo.nLinBeginX + obj.X;
+                        // obj.X 是 Layer1 座標 (0-127)，轉換為 Layer3 座標 (0-63) 來計算遊戲座標
+                        int gameX = s32Data.SegInfo.nLinBeginX + (obj.X / 2);
                         int gameY = s32Data.SegInfo.nLinBeginY + obj.Y;
                         undoAction.RemovedObjects.Add(new UndoObjectInfo
                         {
@@ -4403,6 +4418,12 @@ namespace L1FlyMapViewer
         {
             // 找出該格子的所有物件
             var objectsAtCell = currentS32Data.Layer4.Where(o => o.X == cellX && o.Y == cellY).ToList();
+
+            // 如果有選擇群組，只刪除選中群組的物件
+            if (isFilteringLayer4Groups && selectedLayer4Groups.Count > 0)
+            {
+                objectsAtCell = objectsAtCell.Where(o => selectedLayer4Groups.Contains(o.GroupId)).ToList();
+            }
 
             if (objectsAtCell.Count == 0)
             {
