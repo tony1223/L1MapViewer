@@ -3781,7 +3781,7 @@ namespace L1FlyMapViewer
                             }
 
                             // Ctrl + 左鍵：刪除該格子的所有第四層物件
-                            if (e.Button == MouseButtons.Left && ModifierKeys == Keys.Control && chkEnableEdit.Checked)
+                            if (e.Button == MouseButtons.Left && ModifierKeys == Keys.Control)
                             {
                                 DeleteAllLayer4ObjectsAtCell(x, y);
                             }
@@ -4603,31 +4603,28 @@ namespace L1FlyMapViewer
                 bottomPanel.Controls.Add(info);
 
                 // 刪除按鈕
-                if (chkEnableEdit.Checked)
+                Button btnDelete = new Button();
+                btnDelete.Text = "刪除此 Tile";
+                btnDelete.Dock = DockStyle.Bottom;
+                btnDelete.Height = 25;
+                btnDelete.BackColor = Color.Red;
+                btnDelete.ForeColor = Color.White;
+                btnDelete.Click += (s, e) =>
                 {
-                    Button btnDelete = new Button();
-                    btnDelete.Text = "刪除此 Tile";
-                    btnDelete.Dock = DockStyle.Bottom;
-                    btnDelete.Height = 25;
-                    btnDelete.BackColor = Color.Red;
-                    btnDelete.ForeColor = Color.White;
-                    btnDelete.Click += (s, e) =>
+                    if (MessageBox.Show("確定要刪除此 Tile 嗎？", "確認", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
                     {
-                        if (MessageBox.Show("確定要刪除此 Tile 嗎？", "確認", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
-                        {
-                            currentS32Data.Layer1[y, x] = new TileCell { X = x, Y = y, TileId = 0, IndexId = 0 };
-                            isS32Modified = true;
-                            RenderS32Map();
-                            this.toolStripStatusLabel1.Text = $"已刪除第1層 ({x},{y}) 的 Tile";
+                        currentS32Data.Layer1[y, x] = new TileCell { X = x, Y = y, TileId = 0, IndexId = 0 };
+                        isS32Modified = true;
+                        RenderS32Map();
+                        this.toolStripStatusLabel1.Text = $"已刪除第1層 ({x},{y}) 的 Tile";
 
-                            // 更新當前面板顯示
-                            pb.Image = null;
-                            info.Text = "已刪除";
-                            btnDelete.Enabled = false;
-                        }
-                    };
-                    bottomPanel.Controls.Add(btnDelete);
-                }
+                        // 更新當前面板顯示
+                        pb.Image = null;
+                        info.Text = "已刪除";
+                        btnDelete.Enabled = false;
+                    }
+                };
+                bottomPanel.Controls.Add(btnDelete);
 
                 panel.Controls.Add(bottomPanel);
             }
@@ -4704,30 +4701,27 @@ namespace L1FlyMapViewer
                 panel.Controls.Add(info);
 
                 // 刪除按鈕
-                if (chkEnableEdit.Checked)
+                Button btnDelete = new Button();
+                btnDelete.Text = "清除屬性";
+                btnDelete.Dock = DockStyle.Bottom;
+                btnDelete.Height = 25;
+                btnDelete.BackColor = Color.Red;
+                btnDelete.ForeColor = Color.White;
+                btnDelete.Click += (s, e) =>
                 {
-                    Button btnDelete = new Button();
-                    btnDelete.Text = "清除屬性";
-                    btnDelete.Dock = DockStyle.Bottom;
-                    btnDelete.Height = 25;
-                    btnDelete.BackColor = Color.Red;
-                    btnDelete.ForeColor = Color.White;
-                    btnDelete.Click += (s, e) =>
+                    if (MessageBox.Show("確定要清除此格的屬性嗎？", "確認", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
                     {
-                        if (MessageBox.Show("確定要清除此格的屬性嗎？", "確認", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
-                        {
-                            currentS32Data.Layer3[y, layer3X] = new MapAttribute { Attribute1 = 0, Attribute2 = 0 };
-                            isS32Modified = true;
-                            RenderS32Map();
-                            this.toolStripStatusLabel1.Text = $"已清除第3層 ({layer3X},{y}) 的屬性";
+                        currentS32Data.Layer3[y, layer3X] = new MapAttribute { Attribute1 = 0, Attribute2 = 0 };
+                        isS32Modified = true;
+                        RenderS32Map();
+                        this.toolStripStatusLabel1.Text = $"已清除第3層 ({layer3X},{y}) 的屬性";
 
-                            // 更新當前面板顯示
-                            info.Text = "已清除屬性";
-                            btnDelete.Enabled = false;
-                        }
-                    };
-                    panel.Controls.Add(btnDelete);
-                }
+                        // 更新當前面板顯示
+                        info.Text = "已清除屬性";
+                        btnDelete.Enabled = false;
+                    }
+                };
+                panel.Controls.Add(btnDelete);
             }
             else
             {
@@ -4771,7 +4765,7 @@ namespace L1FlyMapViewer
                 {
                     Panel objPanel = new Panel();
                     objPanel.Width = flow.Width - 25;
-                    objPanel.Height = chkEnableEdit.Checked ? 210 : 180;
+                    objPanel.Height = 210;
                     objPanel.BorderStyle = BorderStyle.FixedSingle;
                     objPanel.Margin = new Padding(5);
 
@@ -4791,33 +4785,30 @@ namespace L1FlyMapViewer
                     objPanel.Controls.Add(info);
 
                     // 刪除按鈕
-                    if (chkEnableEdit.Checked)
+                    Button btnDeleteObj = new Button();
+                    btnDeleteObj.Text = "刪除此物件";
+                    btnDeleteObj.Dock = DockStyle.Bottom;
+                    btnDeleteObj.Height = 25;
+                    btnDeleteObj.BackColor = Color.Red;
+                    btnDeleteObj.ForeColor = Color.White;
+                    var objToDelete = obj; // Capture for lambda
+                    btnDeleteObj.Click += (s, e) =>
                     {
-                        Button btnDeleteObj = new Button();
-                        btnDeleteObj.Text = "刪除此物件";
-                        btnDeleteObj.Dock = DockStyle.Bottom;
-                        btnDeleteObj.Height = 25;
-                        btnDeleteObj.BackColor = Color.Red;
-                        btnDeleteObj.ForeColor = Color.White;
-                        var objToDelete = obj; // Capture for lambda
-                        btnDeleteObj.Click += (s, e) =>
+                        if (MessageBox.Show($"確定要刪除此物件嗎？\n(Group:{objToDelete.GroupId}, Layer:{objToDelete.Layer})", "確認", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
                         {
-                            if (MessageBox.Show($"確定要刪除此物件嗎？\n(Group:{objToDelete.GroupId}, Layer:{objToDelete.Layer})", "確認", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
-                            {
-                                currentS32Data.Layer4.Remove(objToDelete);
+                            currentS32Data.Layer4.Remove(objToDelete);
 
-                                isS32Modified = true;
-                                RenderS32Map();
-                                this.toolStripStatusLabel1.Text = $"已刪除第4層物件 ({x},{y})";
+                            isS32Modified = true;
+                            RenderS32Map();
+                            this.toolStripStatusLabel1.Text = $"已刪除第4層物件 ({x},{y})";
 
-                                // 更新當前面板顯示
-                                pb.Image = null;
-                                info.Text = "已刪除";
-                                btnDeleteObj.Enabled = false;
-                            }
-                        };
-                        objPanel.Controls.Add(btnDeleteObj);
-                    }
+                            // 更新當前面板顯示
+                            pb.Image = null;
+                            info.Text = "已刪除";
+                            btnDeleteObj.Enabled = false;
+                        }
+                    };
+                    objPanel.Controls.Add(btnDeleteObj);
 
                     flow.Controls.Add(objPanel);
                 }
@@ -4954,7 +4945,7 @@ namespace L1FlyMapViewer
                 {
                     Panel objPanel = new Panel();
                     objPanel.Width = flow.Width - 25;
-                    objPanel.Height = chkEnableEdit.Checked ? 240 : 210;
+                    objPanel.Height = 240;
                     objPanel.BorderStyle = BorderStyle.FixedSingle;
                     objPanel.Margin = new Padding(5);
                     objPanel.BackColor = (obj.X == cellX && obj.Y == cellY) ? Color.LightYellow : Color.White;
@@ -4990,35 +4981,32 @@ namespace L1FlyMapViewer
                     objPanel.Controls.Add(info);
 
                     // 刪除按鈕
-                    if (chkEnableEdit.Checked)
+                    Button btnDeleteObj = new Button();
+                    btnDeleteObj.Text = "刪除此物件";
+                    btnDeleteObj.Dock = DockStyle.Bottom;
+                    btnDeleteObj.Height = 25;
+                    btnDeleteObj.BackColor = Color.Red;
+                    btnDeleteObj.ForeColor = Color.White;
+                    var objToDelete = obj;
+                    btnDeleteObj.Click += (s, e) =>
                     {
-                        Button btnDeleteObj = new Button();
-                        btnDeleteObj.Text = "刪除此物件";
-                        btnDeleteObj.Dock = DockStyle.Bottom;
-                        btnDeleteObj.Height = 25;
-                        btnDeleteObj.BackColor = Color.Red;
-                        btnDeleteObj.ForeColor = Color.White;
-                        var objToDelete = obj;
-                        btnDeleteObj.Click += (s, e) =>
+                        if (MessageBox.Show($"確定要刪除此物件嗎？\n位置:({objToDelete.X},{objToDelete.Y})\nGroup:{objToDelete.GroupId}, Layer:{objToDelete.Layer}",
+                            "確認", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
                         {
-                            if (MessageBox.Show($"確定要刪除此物件嗎？\n位置:({objToDelete.X},{objToDelete.Y})\nGroup:{objToDelete.GroupId}, Layer:{objToDelete.Layer}",
-                                "確認", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
-                            {
-                                currentS32Data.Layer4.Remove(objToDelete);
+                            currentS32Data.Layer4.Remove(objToDelete);
 
-                                isS32Modified = true;
-                                RenderS32Map();
-                                this.toolStripStatusLabel1.Text = $"已刪除物件 ({objToDelete.X},{objToDelete.Y})";
+                            isS32Modified = true;
+                            RenderS32Map();
+                            this.toolStripStatusLabel1.Text = $"已刪除物件 ({objToDelete.X},{objToDelete.Y})";
 
-                                // 更新當前面板顯示
-                                pb.Image = null;
-                                info.Text = "已刪除";
-                                btnDeleteObj.Enabled = false;
-                                objPanel.BackColor = Color.LightGray;
-                            }
-                        };
-                        objPanel.Controls.Add(btnDeleteObj);
-                    }
+                            // 更新當前面板顯示
+                            pb.Image = null;
+                            info.Text = "已刪除";
+                            btnDeleteObj.Enabled = false;
+                            objPanel.BackColor = Color.LightGray;
+                        }
+                    };
+                    objPanel.Controls.Add(btnDeleteObj);
 
                     flow.Controls.Add(objPanel);
                 }

@@ -125,7 +125,6 @@ namespace L1FlyMapViewer
             this.chkShowPassable = new CheckBox();
             this.chkShowGrid = new CheckBox();
             this.chkShowS32Boundary = new CheckBox();
-            this.chkEnableEdit = new CheckBox();
             this.btnSetPassable = new Button();
             this.btnSetImpassable = new Button();
             this.btnSaveS32 = new Button();
