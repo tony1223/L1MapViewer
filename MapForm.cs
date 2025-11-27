@@ -355,11 +355,85 @@ namespace L1FlyMapViewer
             hasLayer4Clipboard = cellClipboard.Count > 0;
             clipboardSourceMapId = currentMapId;
 
+            // 複製 Layer2 和 Layer5-8 資料（從所有涉及的 S32 收集，根據設定）
+            layer2Clipboard.Clear();
+            layer5Clipboard.Clear();
+            layer6Clipboard.Clear();
+            layer7Clipboard.Clear();
+            layer8Clipboard.Clear();
+            bool copyLayer2 = copySettingLayer2;
+            bool copyLayer5to8 = copySettingLayer5to8;
+
+            var processedS32 = new HashSet<S32Data>();
+            foreach (var cell in selectedCells)
+            {
+                if (!processedS32.Contains(cell.S32Data))
+                {
+                    processedS32.Add(cell.S32Data);
+                    // Layer2
+                    if (copyLayer2)
+                    {
+                        foreach (var item in cell.S32Data.Layer2)
+                        {
+                            // 避免重複加入
+                            if (!layer2Clipboard.Any(l => l.Value1 == item.Value1 && l.Value2 == item.Value2 && l.Value3 == item.Value3))
+                            {
+                                layer2Clipboard.Add(new Layer2Item
+                                {
+                                    Value1 = item.Value1,
+                                    Value2 = item.Value2,
+                                    Value3 = item.Value3
+                                });
+                            }
+                        }
+                    }
+                    // Layer5-8（收集所有涉及的 S32 的資料）
+                    if (copyLayer5to8)
+                    {
+                        // Layer5 - 透明圖塊
+                        foreach (var item in cell.S32Data.Layer5)
+                        {
+                            if (!layer5Clipboard.Any(l => l.X == item.X && l.Y == item.Y))
+                            {
+                                layer5Clipboard.Add(new Layer5Item { X = item.X, Y = item.Y, R = item.R, G = item.G, B = item.B });
+                            }
+                        }
+                        // Layer6 - 使用的 TilId（合併不重複的）
+                        foreach (var tilId in cell.S32Data.Layer6)
+                        {
+                            if (!layer6Clipboard.Contains(tilId))
+                            {
+                                layer6Clipboard.Add(tilId);
+                            }
+                        }
+                        // Layer7 - 傳送點
+                        foreach (var item in cell.S32Data.Layer7)
+                        {
+                            if (!layer7Clipboard.Any(l => l.Name == item.Name && l.X == item.X && l.Y == item.Y))
+                            {
+                                layer7Clipboard.Add(new Layer7Item { Name = item.Name, X = item.X, Y = item.Y, TargetMapId = item.TargetMapId, PortalId = item.PortalId });
+                            }
+                        }
+                        // Layer8 - 特效
+                        foreach (var item in cell.S32Data.Layer8)
+                        {
+                            if (!layer8Clipboard.Any(l => l.SprId == item.SprId && l.X == item.X && l.Y == item.Y))
+                            {
+                                layer8Clipboard.Add(new Layer8Item { SprId = item.SprId, X = item.X, Y = item.Y, Unknown = item.Unknown });
+                            }
+                        }
+                    }
+                }
+            }
+
             // 組合提示訊息
             var parts = new List<string>();
             if (copyLayer1 && layer1Count > 0) parts.Add($"L1:{layer1Count}");
+            if (copyLayer2 && layer2Clipboard.Count > 0) parts.Add($"L2:{layer2Clipboard.Count}");
             if (copyLayer3 && layer3Count > 0) parts.Add($"L3:{layer3Count}");
             if (copyLayer4 && layer4Count > 0) parts.Add($"L4:{layer4Count}");
+            if (copyLayer5to8 && (layer5Clipboard.Count > 0 || layer6Clipboard.Count > 0 || layer7Clipboard.Count > 0 || layer8Clipboard.Count > 0))
+                parts.Add($"L5:{layer5Clipboard.Count} L6:{layer6Clipboard.Count} L7:{layer7Clipboard.Count} L8:{layer8Clipboard.Count}");
 
             string layerInfo = parts.Count > 0 ? string.Join(", ", parts) : "無資料";
             this.toolStripStatusLabel1.Text = $"已複製 {selectedCells.Count} 格 ({layerInfo}) 來源: {currentMapId}，Shift+左鍵選取貼上位置後按 Ctrl+V";
@@ -501,6 +575,87 @@ namespace L1FlyMapViewer
                 }
             }
 
+            // 合併 Layer2 和 Layer5-8 到所有受影響的目標 S32（根據設定）
+            int layer2AddedCount = 0;
+            int layer5to8CopiedCount = 0;
+            var affectedS32Set = new HashSet<S32Data>();
+            foreach (var cellData in cellClipboard)
+            {
+                int targetGlobalX = pasteOriginX + cellData.RelativeX;
+                int targetGlobalY = pasteOriginY + cellData.RelativeY;
+                int targetGameX = targetGlobalX / 2;
+                int targetGameY = targetGlobalY;
+                S32Data targetS32 = GetS32DataByGameCoords(targetGameX, targetGameY);
+                if (targetS32 != null)
+                    affectedS32Set.Add(targetS32);
+            }
+
+            foreach (var targetS32 in affectedS32Set)
+            {
+                // 合併 Layer2（加入不存在的項目）- 根據設定
+                if (copySettingLayer2 && layer2Clipboard.Count > 0)
+                {
+                    foreach (var item in layer2Clipboard)
+                    {
+                        if (!targetS32.Layer2.Any(l => l.Value1 == item.Value1 && l.Value2 == item.Value2 && l.Value3 == item.Value3))
+                        {
+                            targetS32.Layer2.Add(new Layer2Item
+                            {
+                                Value1 = item.Value1,
+                                Value2 = item.Value2,
+                                Value3 = item.Value3
+                            });
+                            layer2AddedCount++;
+                            targetS32.IsModified = true;
+                        }
+                    }
+                }
+
+                // 複製 Layer5-8（合併到目標 S32）- 根據設定
+                if (copySettingLayer5to8)
+                {
+                    // Layer5 - 透明圖塊（合併不重複的）
+                    foreach (var item in layer5Clipboard)
+                    {
+                        if (!targetS32.Layer5.Any(l => l.X == item.X && l.Y == item.Y))
+                        {
+                            targetS32.Layer5.Add(new Layer5Item { X = item.X, Y = item.Y, R = item.R, G = item.G, B = item.B });
+                            targetS32.IsModified = true;
+                        }
+                    }
+                    // Layer6 - 使用的 TilId（合併不重複的）
+                    int layer6Added = 0;
+                    foreach (var tilId in layer6Clipboard)
+                    {
+                        if (!targetS32.Layer6.Contains(tilId))
+                        {
+                            targetS32.Layer6.Add(tilId);
+                            targetS32.IsModified = true;
+                            layer6Added++;
+                        }
+                    }
+                    if (layer6Added > 0) layer5to8CopiedCount++;
+                    // Layer7 - 傳送點（合併不重複的）
+                    foreach (var item in layer7Clipboard)
+                    {
+                        if (!targetS32.Layer7.Any(l => l.Name == item.Name && l.X == item.X && l.Y == item.Y))
+                        {
+                            targetS32.Layer7.Add(new Layer7Item { Name = item.Name, X = item.X, Y = item.Y, TargetMapId = item.TargetMapId, PortalId = item.PortalId });
+                            targetS32.IsModified = true;
+                        }
+                    }
+                    // Layer8 - 特效（合併不重複的）
+                    foreach (var item in layer8Clipboard)
+                    {
+                        if (!targetS32.Layer8.Any(l => l.SprId == item.SprId && l.X == item.X && l.Y == item.Y))
+                        {
+                            targetS32.Layer8.Add(new Layer8Item { SprId = item.SprId, X = item.X, Y = item.Y, Unknown = item.Unknown });
+                            targetS32.IsModified = true;
+                        }
+                    }
+                }
+            }
+
             // 清除選取模式
             isLayer4CopyMode = false;
             selectedRegion = new Rectangle();
@@ -516,8 +671,10 @@ namespace L1FlyMapViewer
             // 組合提示訊息
             var parts = new List<string>();
             if (layer1Count > 0) parts.Add($"L1:{layer1Count}");
+            if (layer2AddedCount > 0) parts.Add($"L2:+{layer2AddedCount}");
             if (layer3Count > 0) parts.Add($"L3:{layer3Count}");
             if (layer4Count > 0) parts.Add($"L4:{layer4Count}");
+            if (layer5to8CopiedCount > 0) parts.Add($"L6:+{layer5to8CopiedCount}");
 
             string layerInfo = parts.Count > 0 ? string.Join(", ", parts) : "無資料";
             string message = $"已貼上 {cellClipboard.Count} 格 ({layerInfo})";
@@ -1945,6 +2102,21 @@ namespace L1FlyMapViewer
             public int Layer4Offset { get; set; }
             public int Layer4EndOffset { get; set; }  // 第四層結束位置
 
+            // 第5-8層的原始資料（未解析）
+            public byte[] Layer5to8Data { get; set; }
+
+            // 第5層 - 可透明化的圖塊 (X, Y, R, G, B)
+            public List<Layer5Item> Layer5 { get; set; } = new List<Layer5Item>();
+
+            // 第6層 - 使用的 til
+            public List<int> Layer6 { get; set; } = new List<int>();
+
+            // 第7層 - 傳送點、入口點
+            public List<Layer7Item> Layer7 { get; set; } = new List<Layer7Item>();
+
+            // 第8層 - 特效、裝飾品
+            public List<Layer8Item> Layer8 { get; set; } = new List<Layer8Item>();
+
             // 檔案路徑和 SegInfo
             public string FilePath { get; set; }
             public Struct.L1MapSeg SegInfo { get; set; }
@@ -1977,6 +2149,35 @@ namespace L1FlyMapViewer
             public int Layer { get; set; }        // 層次（用於排序）
             public int IndexId { get; set; }      // 索引 ID
             public int TileId { get; set; }       // Tile ID
+        }
+
+        // 第五層項目 - 可透明化的圖塊
+        private class Layer5Item
+        {
+            public byte X { get; set; }
+            public byte Y { get; set; }
+            public byte R { get; set; }
+            public byte G { get; set; }
+            public byte B { get; set; }
+        }
+
+        // 第七層項目 - 傳送點、入口點
+        private class Layer7Item
+        {
+            public string Name { get; set; }      // 傳送點、入口點名稱
+            public byte X { get; set; }           // X軸
+            public byte Y { get; set; }           // Y軸
+            public ushort TargetMapId { get; set; }  // 進入傳送點、入口點要傳送的地圖編號
+            public int PortalId { get; set; }     // 傳送點、入口點的編號
+        }
+
+        // 第八層項目 - 特效、裝飾品
+        private class Layer8Item
+        {
+            public ushort SprId { get; set; }     // 特效編號
+            public ushort X { get; set; }         // X軸
+            public ushort Y { get; set; }         // Y軸
+            public int Unknown { get; set; }      // 未知
         }
 
         // 格子資料
@@ -2046,6 +2247,11 @@ namespace L1FlyMapViewer
         private bool isLayer4CopyMode = false;           // 是否在複製選取模式
         private bool hasLayer4Clipboard = false;         // 剪貼簿是否有資料
         private List<CopiedCellData> cellClipboard = new List<CopiedCellData>();  // 複製的格子資料（多層）
+        private List<Layer2Item> layer2Clipboard = new List<Layer2Item>();  // 複製的 Layer2 資料
+        private List<Layer5Item> layer5Clipboard = new List<Layer5Item>();  // 複製的 Layer5 資料
+        private List<int> layer6Clipboard = new List<int>();  // 複製的 Layer6 資料 (使用的 TilId)
+        private List<Layer7Item> layer7Clipboard = new List<Layer7Item>();  // 複製的 Layer7 資料
+        private List<Layer8Item> layer8Clipboard = new List<Layer8Item>();  // 複製的 Layer8 資料
         private Point copyRegionOrigin;                   // 複製區域的原點（全域 Layer1 座標）
         private Rectangle copyRegionBounds;               // 複製區域的範圍（螢幕座標）
         private Point pastePreviewLocation;               // 貼上預覽位置
@@ -2055,8 +2261,10 @@ namespace L1FlyMapViewer
 
         // 複製/刪除設定（由 Dialog 設定）
         private bool copySettingLayer1 = true;
+        private bool copySettingLayer2 = true;
         private bool copySettingLayer3 = true;
         private bool copySettingLayer4 = true;
+        private bool copySettingLayer5to8 = true;
 
         // 複製的格子資料（支援多層）
         private class CopiedCellData
@@ -2559,6 +2767,95 @@ namespace L1FlyMapViewer
 
                 // 記錄第四層結束位置（後面可能還有第5-8層等未知數據）
                 s32Data.Layer4EndOffset = (int)br.BaseStream.Position;
+
+                // 讀取第5-8層的原始資料
+                int remainingLength = (int)(br.BaseStream.Length - br.BaseStream.Position);
+                if (remainingLength > 0)
+                {
+                    s32Data.Layer5to8Data = br.ReadBytes(remainingLength);
+
+                    // 解析第5-8層
+                    using (var layerStream = new MemoryStream(s32Data.Layer5to8Data))
+                    using (var layerReader = new BinaryReader(layerStream))
+                    {
+                        try
+                        {
+                            // 第五層 - 可透明化的圖塊
+                            if (layerStream.Position + 4 <= layerStream.Length)
+                            {
+                                int lv5Count = layerReader.ReadInt32();
+                                for (int i = 0; i < lv5Count && layerStream.Position + 5 <= layerStream.Length; i++)
+                                {
+                                    s32Data.Layer5.Add(new Layer5Item
+                                    {
+                                        X = layerReader.ReadByte(),
+                                        Y = layerReader.ReadByte(),
+                                        R = layerReader.ReadByte(),
+                                        G = layerReader.ReadByte(),
+                                        B = layerReader.ReadByte()
+                                    });
+                                }
+                            }
+
+                            // 第六層 - 使用的 til
+                            if (layerStream.Position + 4 <= layerStream.Length)
+                            {
+                                int lv6Count = layerReader.ReadInt32();
+                                for (int i = 0; i < lv6Count && layerStream.Position + 4 <= layerStream.Length; i++)
+                                {
+                                    int til = layerReader.ReadInt32();
+                                    s32Data.Layer6.Add(til);
+                                }
+                            }
+
+                            // 第七層 - 傳送點、入口點
+                            if (layerStream.Position + 2 <= layerStream.Length)
+                            {
+                                int lv7Count = layerReader.ReadUInt16();
+                                for (int i = 0; i < lv7Count && layerStream.Position + 1 <= layerStream.Length; i++)
+                                {
+                                    byte len = layerReader.ReadByte();
+                                    if (layerStream.Position + len + 8 > layerStream.Length) break;
+
+                                    string name = Encoding.Default.GetString(layerReader.ReadBytes(len));
+                                    s32Data.Layer7.Add(new Layer7Item
+                                    {
+                                        Name = name,
+                                        X = layerReader.ReadByte(),
+                                        Y = layerReader.ReadByte(),
+                                        TargetMapId = layerReader.ReadUInt16(),
+                                        PortalId = layerReader.ReadInt32()
+                                    });
+                                }
+                            }
+
+                            // 第八層 - 特效、裝飾品
+                            if (layerStream.Position + 2 <= layerStream.Length)
+                            {
+                                int lv8Count = layerReader.ReadByte();
+                                layerReader.ReadByte(); // 跳過一個 byte
+                                for (int i = 0; i < lv8Count && layerStream.Position + 10 <= layerStream.Length; i++)
+                                {
+                                    s32Data.Layer8.Add(new Layer8Item
+                                    {
+                                        SprId = layerReader.ReadUInt16(),
+                                        X = layerReader.ReadUInt16(),
+                                        Y = layerReader.ReadUInt16(),
+                                        Unknown = layerReader.ReadInt32()
+                                    });
+                                }
+                            }
+                        }
+                        catch (EndOfStreamException)
+                        {
+                            // 忽略讀取超出範圍的錯誤
+                        }
+                    }
+                }
+                else
+                {
+                    s32Data.Layer5to8Data = new byte[0];
+                }
             }
 
             return s32Data;
@@ -2600,19 +2897,23 @@ namespace L1FlyMapViewer
         // 複製設定按鈕點擊事件
         private void btnCopySettings_Click(object sender, EventArgs e)
         {
-            using (var dialog = new CopySettingsDialog(copySettingLayer1, copySettingLayer3, copySettingLayer4))
+            using (var dialog = new CopySettingsDialog(copySettingLayer1, copySettingLayer2, copySettingLayer3, copySettingLayer4, copySettingLayer5to8))
             {
                 if (dialog.ShowDialog(this) == DialogResult.OK)
                 {
                     copySettingLayer1 = dialog.CopyLayer1;
+                    copySettingLayer2 = dialog.CopyLayer2;
                     copySettingLayer3 = dialog.CopyLayer3;
                     copySettingLayer4 = dialog.CopyLayer4;
+                    copySettingLayer5to8 = dialog.CopyLayer5to8;
 
                     // 更新按鈕文字顯示目前設定
                     var layers = new List<string>();
                     if (copySettingLayer1) layers.Add("L1");
+                    if (copySettingLayer2) layers.Add("L2");
                     if (copySettingLayer3) layers.Add("L3");
                     if (copySettingLayer4) layers.Add("L4");
+                    if (copySettingLayer5to8) layers.Add("L5-8");
                     string layerInfo = layers.Count > 0 ? string.Join(",", layers) : "無";
 
                     this.toolStripStatusLabel1.Text = $"複製/刪除設定已更新: {layerInfo}";
@@ -3978,14 +4279,17 @@ namespace L1FlyMapViewer
 
             string boundaryInfo = $"S32邊界: [{linBeginX},{linBeginY}~{linEndX},{linEndY}] GetLoc=({mx},{my}) Block=({s32Data.SegInfo.nBlockX:X4},{s32Data.SegInfo.nBlockY:X4})";
 
+            // 取得各層資訊
+            string layersInfo = $"L5:{s32Data.Layer5.Count} L6:{s32Data.Layer6.Count} L7:{s32Data.Layer7.Count} L8:{s32Data.Layer8.Count}";
+
             var attr = s32Data.Layer3[cellY, layer3X];
             if (attr != null)
             {
-                this.toolStripStatusLabel1.Text = $"格子({cellX},{cellY}) 遊戲座標({gameX},{gameY}) | 第3層[{layer3X},{cellY}]: Attr1={attr.Attribute1} (0x{attr.Attribute1:X4}) Attr2={attr.Attribute2} (0x{attr.Attribute2:X4}) | {boundaryInfo} | {s32RelativePath}";
+                this.toolStripStatusLabel1.Text = $"格子({cellX},{cellY}) 遊戲座標({gameX},{gameY}) | 第3層[{layer3X},{cellY}]: Attr1={attr.Attribute1} (0x{attr.Attribute1:X4}) Attr2={attr.Attribute2} (0x{attr.Attribute2:X4}) | {layersInfo} | {s32RelativePath}";
             }
             else
             {
-                this.toolStripStatusLabel1.Text = $"格子({cellX},{cellY}) 遊戲座標({gameX},{gameY}) | 第3層: 無資料 | {boundaryInfo} | {s32RelativePath}";
+                this.toolStripStatusLabel1.Text = $"格子({cellX},{cellY}) 遊戲座標({gameX},{gameY}) | 第3層: 無資料 | {layersInfo} | {s32RelativePath}";
             }
         }
 
@@ -4478,17 +4782,19 @@ namespace L1FlyMapViewer
         private void DeleteAllLayer4ObjectsInRegion(List<SelectedCell> cells)
         {
             bool deleteLayer1 = copySettingLayer1;
+            bool deleteLayer2 = copySettingLayer2;
             bool deleteLayer3 = copySettingLayer3;
             bool deleteLayer4 = copySettingLayer4;
+            bool deleteLayer5to8 = copySettingLayer5to8;
 
-            if (!deleteLayer1 && !deleteLayer3 && !deleteLayer4)
+            if (!deleteLayer1 && !deleteLayer2 && !deleteLayer3 && !deleteLayer4 && !deleteLayer5to8)
             {
                 this.toolStripStatusLabel1.Text = "請點擊「複製設定...」按鈕選擇要刪除的圖層";
                 return;
             }
 
             // 統計要刪除的資料
-            int layer1Count = 0, layer3Count = 0, layer4Count = 0;
+            int layer1Count = 0, layer2Count = 0, layer3Count = 0, layer4Count = 0, layer5to8Count = 0;
             Dictionary<S32Data, List<ObjectTile>> objectsToDeleteByS32 = new Dictionary<S32Data, List<ObjectTile>>();
             HashSet<S32Data> affectedS32 = new HashSet<S32Data>();
 
@@ -4545,7 +4851,24 @@ namespace L1FlyMapViewer
                 affectedS32.Add(cell.S32Data);
             }
 
-            if (layer1Count == 0 && layer3Count == 0 && layer4Count == 0)
+            // Layer2 和 Layer5-8 統計（這是整個 S32 共用的資料）
+            if (deleteLayer2)
+            {
+                foreach (var s32 in affectedS32)
+                {
+                    layer2Count += s32.Layer2.Count;
+                }
+            }
+            if (deleteLayer5to8)
+            {
+                foreach (var s32 in affectedS32)
+                {
+                    if (s32.Layer5to8Data != null && s32.Layer5to8Data.Length > 0)
+                        layer5to8Count++;
+                }
+            }
+
+            if (layer1Count == 0 && layer2Count == 0 && layer3Count == 0 && layer4Count == 0 && layer5to8Count == 0)
             {
                 this.toolStripStatusLabel1.Text = $"選中的 {cells.Count} 個格子內沒有可刪除的資料";
                 return;
@@ -4554,8 +4877,10 @@ namespace L1FlyMapViewer
             // 組合確認訊息
             var deleteParts = new List<string>();
             if (deleteLayer1 && layer1Count > 0) deleteParts.Add($"L1:{layer1Count}");
+            if (deleteLayer2 && layer2Count > 0) deleteParts.Add($"L2:{layer2Count} (整個S32)");
             if (deleteLayer3 && layer3Count > 0) deleteParts.Add($"L3:{layer3Count}");
             if (deleteLayer4 && layer4Count > 0) deleteParts.Add($"L4:{layer4Count}");
+            if (deleteLayer5to8 && layer5to8Count > 0) deleteParts.Add($"L5-8:{layer5to8Count}個S32");
 
             string deleteInfo = string.Join(", ", deleteParts);
 
@@ -4616,13 +4941,42 @@ namespace L1FlyMapViewer
                     }
                 }
 
+                // 刪除 Layer2（整個 S32 的資料）
+                int layer2Deleted = 0;
+                if (deleteLayer2)
+                {
+                    foreach (var s32 in affectedS32)
+                    {
+                        layer2Deleted += s32.Layer2.Count;
+                        s32.Layer2.Clear();
+                        s32.IsModified = true;
+                    }
+                }
+
+                // 刪除 Layer5-8（整個 S32 的資料）
+                int layer5to8Deleted = 0;
+                if (deleteLayer5to8)
+                {
+                    foreach (var s32 in affectedS32)
+                    {
+                        if (s32.Layer5to8Data != null && s32.Layer5to8Data.Length > 0)
+                        {
+                            s32.Layer5to8Data = new byte[0];
+                            s32.IsModified = true;
+                            layer5to8Deleted++;
+                        }
+                    }
+                }
+
                 RenderS32Map();
 
                 // 組合結果訊息
                 var resultParts = new List<string>();
                 if (deleteLayer1 && layer1Count > 0) resultParts.Add($"L1:{layer1Count}");
+                if (deleteLayer2 && layer2Deleted > 0) resultParts.Add($"L2:{layer2Deleted}");
                 if (deleteLayer3 && layer3Count > 0) resultParts.Add($"L3:{layer3Count}");
                 if (deleteLayer4 && layer4Count > 0) resultParts.Add($"L4:{layer4Count}");
+                if (deleteLayer5to8 && layer5to8Deleted > 0) resultParts.Add($"L5-8:{layer5to8Deleted}");
 
                 string resultInfo = resultParts.Count > 0 ? string.Join(", ", resultParts) : "無";
                 this.toolStripStatusLabel1.Text = $"已刪除 {cells.Count} 格 ({resultInfo})，影響 {affectedS32.Count} 個 S32 檔案";
@@ -4733,11 +5087,13 @@ namespace L1FlyMapViewer
             TableLayoutPanel table = new TableLayoutPanel();
             table.Dock = DockStyle.Fill;
             table.ColumnCount = 2;
-            table.RowCount = 2;
+            table.RowCount = 4;
             table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
             table.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
-            table.RowStyles.Add(new RowStyle(SizeType.Percent, 50));
-            table.RowStyles.Add(new RowStyle(SizeType.Percent, 50));
+            table.RowStyles.Add(new RowStyle(SizeType.Percent, 25));
+            table.RowStyles.Add(new RowStyle(SizeType.Percent, 25));
+            table.RowStyles.Add(new RowStyle(SizeType.Percent, 25));
+            table.RowStyles.Add(new RowStyle(SizeType.Percent, 25));
 
             // 第一層（地板）
             var layer1Panel = CreateLayerPanel(cellX, cellY, 1);
@@ -4754,6 +5110,22 @@ namespace L1FlyMapViewer
             // 第四層（物件） - 只顯示該位置的物件
             var layer4Panel = CreateLayer4Panel(cellX, cellY);
             table.Controls.Add(layer4Panel, 1, 1);
+
+            // 第五層（透明圖塊）
+            var layer5Panel = CreateLayer5Panel(cellX, cellY);
+            table.Controls.Add(layer5Panel, 0, 2);
+
+            // 第六層（使用的Til）
+            var layer6Panel = CreateLayer6Panel(cellX, cellY);
+            table.Controls.Add(layer6Panel, 1, 2);
+
+            // 第七層（傳送點）
+            var layer7Panel = CreateLayer7Panel(cellX, cellY);
+            table.Controls.Add(layer7Panel, 0, 3);
+
+            // 第八層（特效）
+            var layer8Panel = CreateLayer8Panel(cellX, cellY);
+            table.Controls.Add(layer8Panel, 1, 3);
 
             tabLayers.Controls.Add(table);
             tabControl.TabPages.Add(tabLayers);
@@ -5030,6 +5402,249 @@ namespace L1FlyMapViewer
                 noData.Dock = DockStyle.Fill;
                 noData.TextAlign = ContentAlignment.MiddleCenter;
                 panel.Controls.Add(noData);
+            }
+
+            return panel;
+        }
+
+        // 創建第五層面板 - 可透明化的圖塊
+        private Panel CreateLayer5Panel(int x, int y)
+        {
+            Panel panel = new Panel();
+            panel.BorderStyle = BorderStyle.FixedSingle;
+            panel.Dock = DockStyle.Fill;
+
+            Label title = new Label();
+            title.Text = "第5層 (透明圖塊)";
+            title.Font = new Font("Arial", 10, FontStyle.Bold);
+            title.Dock = DockStyle.Top;
+            title.Height = 25;
+            title.TextAlign = ContentAlignment.MiddleCenter;
+            panel.Controls.Add(title);
+
+            if (currentS32Data.Layer5.Count > 0)
+            {
+                Label countLabel = new Label();
+                countLabel.Text = $"數量: {currentS32Data.Layer5.Count}";
+                countLabel.Dock = DockStyle.Top;
+                countLabel.Height = 20;
+                countLabel.TextAlign = ContentAlignment.MiddleCenter;
+                panel.Controls.Add(countLabel);
+
+                ListView listView = new ListView();
+                listView.Dock = DockStyle.Fill;
+                listView.View = View.Details;
+                listView.FullRowSelect = true;
+                listView.GridLines = true;
+                listView.Font = new Font("Consolas", 9, FontStyle.Regular);
+
+                listView.Columns.Add("索引", 40);
+                listView.Columns.Add("X", 40);
+                listView.Columns.Add("Y", 40);
+                listView.Columns.Add("R", 40);
+                listView.Columns.Add("G", 40);
+                listView.Columns.Add("B", 40);
+
+                for (int i = 0; i < currentS32Data.Layer5.Count; i++)
+                {
+                    var item5 = currentS32Data.Layer5[i];
+                    var lvItem = new ListViewItem(i.ToString());
+                    lvItem.SubItems.Add(item5.X.ToString());
+                    lvItem.SubItems.Add(item5.Y.ToString());
+                    lvItem.SubItems.Add(item5.R.ToString());
+                    lvItem.SubItems.Add(item5.G.ToString());
+                    lvItem.SubItems.Add(item5.B.ToString());
+                    listView.Items.Add(lvItem);
+                }
+
+                panel.Controls.Add(listView);
+            }
+            else
+            {
+                Label info = new Label();
+                info.Text = "無資料";
+                info.Dock = DockStyle.Fill;
+                info.TextAlign = ContentAlignment.MiddleCenter;
+                panel.Controls.Add(info);
+            }
+
+            return panel;
+        }
+
+        // 創建第六層面板 - 使用的 til
+        private Panel CreateLayer6Panel(int x, int y)
+        {
+            Panel panel = new Panel();
+            panel.BorderStyle = BorderStyle.FixedSingle;
+            panel.Dock = DockStyle.Fill;
+
+            Label title = new Label();
+            title.Text = "第6層 (使用的Til)";
+            title.Font = new Font("Arial", 10, FontStyle.Bold);
+            title.Dock = DockStyle.Top;
+            title.Height = 25;
+            title.TextAlign = ContentAlignment.MiddleCenter;
+            panel.Controls.Add(title);
+
+            if (currentS32Data.Layer6.Count > 0)
+            {
+                Label countLabel = new Label();
+                countLabel.Text = $"數量: {currentS32Data.Layer6.Count}";
+                countLabel.Dock = DockStyle.Top;
+                countLabel.Height = 20;
+                countLabel.TextAlign = ContentAlignment.MiddleCenter;
+                panel.Controls.Add(countLabel);
+
+                ListView listView = new ListView();
+                listView.Dock = DockStyle.Fill;
+                listView.View = View.Details;
+                listView.FullRowSelect = true;
+                listView.GridLines = true;
+                listView.Font = new Font("Consolas", 9, FontStyle.Regular);
+
+                listView.Columns.Add("索引", 50);
+                listView.Columns.Add("TilId", 80);
+                listView.Columns.Add("十六進位", 80);
+
+                for (int i = 0; i < currentS32Data.Layer6.Count; i++)
+                {
+                    var lvItem = new ListViewItem(i.ToString());
+                    lvItem.SubItems.Add(currentS32Data.Layer6[i].ToString());
+                    lvItem.SubItems.Add($"0x{currentS32Data.Layer6[i]:X8}");
+                    listView.Items.Add(lvItem);
+                }
+
+                panel.Controls.Add(listView);
+            }
+            else
+            {
+                Label info = new Label();
+                info.Text = "無資料";
+                info.Dock = DockStyle.Fill;
+                info.TextAlign = ContentAlignment.MiddleCenter;
+                panel.Controls.Add(info);
+            }
+
+            return panel;
+        }
+
+        // 創建第七層面板 - 傳送點、入口點
+        private Panel CreateLayer7Panel(int x, int y)
+        {
+            Panel panel = new Panel();
+            panel.BorderStyle = BorderStyle.FixedSingle;
+            panel.Dock = DockStyle.Fill;
+
+            Label title = new Label();
+            title.Text = "第7層 (傳送點)";
+            title.Font = new Font("Arial", 10, FontStyle.Bold);
+            title.Dock = DockStyle.Top;
+            title.Height = 25;
+            title.TextAlign = ContentAlignment.MiddleCenter;
+            panel.Controls.Add(title);
+
+            if (currentS32Data.Layer7.Count > 0)
+            {
+                Label countLabel = new Label();
+                countLabel.Text = $"數量: {currentS32Data.Layer7.Count}";
+                countLabel.Dock = DockStyle.Top;
+                countLabel.Height = 20;
+                countLabel.TextAlign = ContentAlignment.MiddleCenter;
+                panel.Controls.Add(countLabel);
+
+                ListView listView = new ListView();
+                listView.Dock = DockStyle.Fill;
+                listView.View = View.Details;
+                listView.FullRowSelect = true;
+                listView.GridLines = true;
+                listView.Font = new Font("Consolas", 9, FontStyle.Regular);
+
+                listView.Columns.Add("名稱", 80);
+                listView.Columns.Add("X", 30);
+                listView.Columns.Add("Y", 30);
+                listView.Columns.Add("目標地圖", 60);
+                listView.Columns.Add("傳送點ID", 60);
+
+                for (int i = 0; i < currentS32Data.Layer7.Count; i++)
+                {
+                    var item7 = currentS32Data.Layer7[i];
+                    var lvItem = new ListViewItem(item7.Name);
+                    lvItem.SubItems.Add(item7.X.ToString());
+                    lvItem.SubItems.Add(item7.Y.ToString());
+                    lvItem.SubItems.Add(item7.TargetMapId.ToString());
+                    lvItem.SubItems.Add(item7.PortalId.ToString());
+                    listView.Items.Add(lvItem);
+                }
+
+                panel.Controls.Add(listView);
+            }
+            else
+            {
+                Label info = new Label();
+                info.Text = "無資料";
+                info.Dock = DockStyle.Fill;
+                info.TextAlign = ContentAlignment.MiddleCenter;
+                panel.Controls.Add(info);
+            }
+
+            return panel;
+        }
+
+        // 創建第八層面板 - 特效、裝飾品
+        private Panel CreateLayer8Panel(int x, int y)
+        {
+            Panel panel = new Panel();
+            panel.BorderStyle = BorderStyle.FixedSingle;
+            panel.Dock = DockStyle.Fill;
+
+            Label title = new Label();
+            title.Text = "第8層 (特效)";
+            title.Font = new Font("Arial", 10, FontStyle.Bold);
+            title.Dock = DockStyle.Top;
+            title.Height = 25;
+            title.TextAlign = ContentAlignment.MiddleCenter;
+            panel.Controls.Add(title);
+
+            if (currentS32Data.Layer8.Count > 0)
+            {
+                Label countLabel = new Label();
+                countLabel.Text = $"數量: {currentS32Data.Layer8.Count}";
+                countLabel.Dock = DockStyle.Top;
+                countLabel.Height = 20;
+                countLabel.TextAlign = ContentAlignment.MiddleCenter;
+                panel.Controls.Add(countLabel);
+
+                ListView listView = new ListView();
+                listView.Dock = DockStyle.Fill;
+                listView.View = View.Details;
+                listView.FullRowSelect = true;
+                listView.GridLines = true;
+                listView.Font = new Font("Consolas", 9, FontStyle.Regular);
+
+                listView.Columns.Add("SprId", 60);
+                listView.Columns.Add("X", 50);
+                listView.Columns.Add("Y", 50);
+                listView.Columns.Add("Unknown", 80);
+
+                for (int i = 0; i < currentS32Data.Layer8.Count; i++)
+                {
+                    var item8 = currentS32Data.Layer8[i];
+                    var lvItem = new ListViewItem(item8.SprId.ToString());
+                    lvItem.SubItems.Add(item8.X.ToString());
+                    lvItem.SubItems.Add(item8.Y.ToString());
+                    lvItem.SubItems.Add($"0x{item8.Unknown:X8}");
+                    listView.Items.Add(lvItem);
+                }
+
+                panel.Controls.Add(listView);
+            }
+            else
+            {
+                Label info = new Label();
+                info.Text = "無資料";
+                info.Dock = DockStyle.Fill;
+                info.TextAlign = ContentAlignment.MiddleCenter;
+                panel.Controls.Add(info);
             }
 
             return panel;
@@ -5516,11 +6131,47 @@ namespace L1FlyMapViewer
                     }
                 }
 
-                // 第六步：寫入第四層後面的剩餘數據（第5-8層等未知數據）
-                int remainingDataLength = s32Data.OriginalFileData.Length - s32Data.Layer4EndOffset;
-                if (remainingDataLength > 0)
+                // 第六步：寫入第5-8層數據（從解析後的資料重新生成）
+                // 第五層 - 可透明化的圖塊
+                bw.Write(s32Data.Layer5.Count);
+                foreach (var item in s32Data.Layer5)
                 {
-                    bw.Write(s32Data.OriginalFileData, s32Data.Layer4EndOffset, remainingDataLength);
+                    bw.Write(item.X);
+                    bw.Write(item.Y);
+                    bw.Write(item.R);
+                    bw.Write(item.G);
+                    bw.Write(item.B);
+                }
+
+                // 第六層 - 使用的 til
+                bw.Write(s32Data.Layer6.Count);
+                foreach (var tilId in s32Data.Layer6)
+                {
+                    bw.Write(tilId);
+                }
+
+                // 第七層 - 傳送點、入口點
+                bw.Write((ushort)s32Data.Layer7.Count);
+                foreach (var item in s32Data.Layer7)
+                {
+                    byte[] nameBytes = Encoding.Default.GetBytes(item.Name ?? "");
+                    bw.Write((byte)nameBytes.Length);
+                    bw.Write(nameBytes);
+                    bw.Write(item.X);
+                    bw.Write(item.Y);
+                    bw.Write(item.TargetMapId);
+                    bw.Write(item.PortalId);
+                }
+
+                // 第八層 - 特效、裝飾品
+                bw.Write((byte)s32Data.Layer8.Count);
+                bw.Write((byte)0); // 跳過一個 byte
+                foreach (var item in s32Data.Layer8)
+                {
+                    bw.Write(item.SprId);
+                    bw.Write(item.X);
+                    bw.Write(item.Y);
+                    bw.Write(item.Unknown);
                 }
 
                 // 第七步：將完整數據寫入文件
