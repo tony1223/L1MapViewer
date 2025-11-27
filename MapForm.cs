@@ -67,6 +67,10 @@ namespace L1FlyMapViewer
         private int highlightedCellX = -1;
         private int highlightedCellY = -1;
 
+        // Layer4 群組篩選（勾選的 GroupId 才會渲染）
+        private HashSet<int> selectedLayer4Groups = new HashSet<int>();
+        private bool isFilteringLayer4Groups = false;
+
         // 小地圖拖拽
         private bool isMiniMapDragging = false;
 
@@ -2684,6 +2688,13 @@ namespace L1FlyMapViewer
                 if (showLayer4)
                 {
                     var sortedObjects = s32Data.Layer4.OrderBy(o => o.Layer).ToList();
+
+                    // 如果有篩選條件，只渲染選中的群組
+                    if (isFilteringLayer4Groups && selectedLayer4Groups.Count > 0)
+                    {
+                        sortedObjects = sortedObjects.Where(o => selectedLayer4Groups.Contains(o.GroupId)).ToList();
+                    }
+
                     foreach (var obj in sortedObjects)
                     {
                         int baseX = 0;
@@ -3765,6 +3776,8 @@ namespace L1FlyMapViewer
                                 RenderS32Map();
                                 // 正常顯示格子詳細資料
                                 ShowCellLayersDialog(x, y);
+                                // 更新 Layer4 群組清單
+                                UpdateLayer4GroupsList(s32Data, x, y);
                             }
                             return;
                         }
@@ -5440,5 +5453,86 @@ namespace L1FlyMapViewer
                 return CreatePlaceholderThumbnail(tileId);
             }
          }
+
+        // 更新 Layer4 群組清單
+        private void UpdateLayer4GroupsList(S32Data s32Data, int cellX, int cellY)
+        {
+            lvLayer4Groups.Items.Clear();
+            selectedLayer4Groups.Clear();
+            isFilteringLayer4Groups = false;
+
+            if (s32Data == null || s32Data.Layer4 == null)
+                return;
+
+            // 找出該格子的所有 Layer4 物件，按 GroupId 分組
+            var objectsAtCell = s32Data.Layer4
+                .Where(o => o.X == cellX && o.Y == cellY)
+                .GroupBy(o => o.GroupId)
+                .OrderBy(g => g.Key)
+                .ToList();
+
+            // 另外收集整個 S32 中所有 Group 的統計
+            var allGroups = s32Data.Layer4
+                .GroupBy(o => o.GroupId)
+                .OrderBy(g => g.Key)
+                .ToDictionary(g => g.Key, g => g.ToList());
+
+            // 顯示該格子有的群組
+            foreach (var group in objectsAtCell)
+            {
+                int groupId = group.Key;
+                int countAtCell = group.Count();
+                int totalCount = allGroups.ContainsKey(groupId) ? allGroups[groupId].Count : countAtCell;
+
+                // 取得該群組物件的位置範圍
+                var groupObjects = allGroups.ContainsKey(groupId) ? allGroups[groupId] : group.ToList();
+                int minX = groupObjects.Min(o => o.X);
+                int maxX = groupObjects.Max(o => o.X);
+                int minY = groupObjects.Min(o => o.Y);
+                int maxY = groupObjects.Max(o => o.Y);
+                string posRange = $"{minX}-{maxX},{minY}-{maxY}";
+
+                ListViewItem item = new ListViewItem(groupId.ToString());
+                item.SubItems.Add(totalCount.ToString());
+                item.SubItems.Add(posRange);
+                item.Tag = groupId;
+                item.Checked = false;  // 預設不勾選
+                lvLayer4Groups.Items.Add(item);
+            }
+
+            // 更新標籤顯示
+            if (objectsAtCell.Count > 0)
+            {
+                lblLayer4Groups.Text = $"Layer4 群組 ({objectsAtCell.Count})";
+            }
+            else
+            {
+                lblLayer4Groups.Text = "Layer4 物件群組";
+            }
+        }
+
+        // Layer4 群組勾選變更事件
+        private void lvLayer4Groups_ItemChecked(object sender, ItemCheckedEventArgs e)
+        {
+            if (e.Item.Tag == null)
+                return;
+
+            int groupId = (int)e.Item.Tag;
+
+            if (e.Item.Checked)
+            {
+                selectedLayer4Groups.Add(groupId);
+            }
+            else
+            {
+                selectedLayer4Groups.Remove(groupId);
+            }
+
+            // 只要有任何勾選就啟用篩選
+            isFilteringLayer4Groups = selectedLayer4Groups.Count > 0;
+
+            // 重新渲染地圖
+            RenderS32Map();
+        }
     }
 }

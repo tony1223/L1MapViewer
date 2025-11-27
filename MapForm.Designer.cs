@@ -28,6 +28,8 @@ namespace L1FlyMapViewer
         private Panel rightPanel;
         private Label lblTileList;
         private ListView lvTiles;
+        private Label lblLayer4Groups;
+        private ListView lvLayer4Groups;
 
         // 中間 TabControl
         private TabControl tabControl1;
@@ -97,6 +99,8 @@ namespace L1FlyMapViewer
             this.rightPanel = new Panel();
             this.lblTileList = new Label();
             this.lvTiles = new ListView();
+            this.lblLayer4Groups = new Label();
+            this.lvLayer4Groups = new ListView();
 
             // 中間 TabControl
             this.tabControl1 = new TabControl();
@@ -629,6 +633,8 @@ namespace L1FlyMapViewer
             this.rightPanel.BorderStyle = BorderStyle.FixedSingle;
             this.rightPanel.Controls.Add(this.lblTileList);
             this.rightPanel.Controls.Add(this.lvTiles);
+            this.rightPanel.Controls.Add(this.lblLayer4Groups);
+            this.rightPanel.Controls.Add(this.lvLayer4Groups);
             this.rightPanel.Dock = DockStyle.Right;
             this.rightPanel.Location = new Point(1010, 24);
             this.rightPanel.Name = "rightPanel";
@@ -650,10 +656,35 @@ namespace L1FlyMapViewer
             //
             this.lvTiles.Location = new Point(5, 30);
             this.lvTiles.Name = "lvTiles";
-            this.lvTiles.Size = new Size(180, 615);
+            this.lvTiles.Size = new Size(180, 300);
             this.lvTiles.TabIndex = 1;
             this.lvTiles.View = View.LargeIcon;
             this.lvTiles.DoubleClick += new System.EventHandler(this.lvTiles_DoubleClick);
+
+            //
+            // lblLayer4Groups
+            //
+            this.lblLayer4Groups.Location = new Point(5, 340);
+            this.lblLayer4Groups.Name = "lblLayer4Groups";
+            this.lblLayer4Groups.Size = new Size(180, 20);
+            this.lblLayer4Groups.TabIndex = 2;
+            this.lblLayer4Groups.Text = "Layer4 物件群組";
+            this.lblLayer4Groups.TextAlign = ContentAlignment.MiddleLeft;
+
+            //
+            // lvLayer4Groups
+            //
+            this.lvLayer4Groups.Location = new Point(5, 365);
+            this.lvLayer4Groups.Name = "lvLayer4Groups";
+            this.lvLayer4Groups.Size = new Size(180, 280);
+            this.lvLayer4Groups.TabIndex = 3;
+            this.lvLayer4Groups.View = View.Details;
+            this.lvLayer4Groups.FullRowSelect = true;
+            this.lvLayer4Groups.CheckBoxes = true;
+            this.lvLayer4Groups.Columns.Add("GroupId", 60);
+            this.lvLayer4Groups.Columns.Add("數量", 50);
+            this.lvLayer4Groups.Columns.Add("位置", 65);
+            this.lvLayer4Groups.ItemChecked += new ItemCheckedEventHandler(this.lvLayer4Groups_ItemChecked);
 
             //
             // MapForm
