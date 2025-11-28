@@ -41,6 +41,7 @@ namespace L1FlyMapViewer
         private Button btnToolSave;
         private Button btnToolCellInfo;
         private Button btnToolReplaceTile;
+        private Button btnToolAddS32;
         private ToolTip toolTip1;
 
         // 中間 TabControl
@@ -124,6 +125,7 @@ namespace L1FlyMapViewer
             this.btnToolSave = new Button();
             this.btnToolCellInfo = new Button();
             this.btnToolReplaceTile = new Button();
+            this.btnToolAddS32 = new Button();
             this.toolTip1 = new ToolTip();
 
             // 中間 TabControl
@@ -721,6 +723,7 @@ namespace L1FlyMapViewer
             this.toolbarPanel.Controls.Add(this.btnToolSave);
             this.toolbarPanel.Controls.Add(this.btnToolCellInfo);
             this.toolbarPanel.Controls.Add(this.btnToolReplaceTile);
+            this.toolbarPanel.Controls.Add(this.btnToolAddS32);
             this.toolbarPanel.Dock = DockStyle.Right;
             this.toolbarPanel.Location = new Point(970, 24);
             this.toolbarPanel.Name = "toolbarPanel";
@@ -822,6 +825,18 @@ namespace L1FlyMapViewer
             this.btnToolReplaceTile.UseVisualStyleBackColor = true;
             this.toolTip1.SetToolTip(this.btnToolReplaceTile, "批次替換地板");
             this.btnToolReplaceTile.Click += new System.EventHandler(this.btnToolReplaceTile_Click);
+
+            //
+            // btnToolAddS32
+            //
+            this.btnToolAddS32.Location = new Point(2, 367);
+            this.btnToolAddS32.Name = "btnToolAddS32";
+            this.btnToolAddS32.Size = new Size(34, 34);
+            this.btnToolAddS32.TabIndex = 8;
+            this.btnToolAddS32.Text = "新增";
+            this.btnToolAddS32.UseVisualStyleBackColor = true;
+            this.toolTip1.SetToolTip(this.btnToolAddS32, "新增 S32 區塊");
+            this.btnToolAddS32.Click += new System.EventHandler(this.btnToolAddS32_Click);
 
             //
             // MapForm

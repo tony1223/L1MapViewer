@@ -6667,5 +6667,413 @@ namespace L1FlyMapViewer
 
             replaceForm.ShowDialog();
         }
+
+        private void btnToolAddS32_Click(object sender, EventArgs e)
+        {
+            // 檢查是否已載入地圖
+            if (string.IsNullOrEmpty(currentMapId) || !Share.MapDataList.ContainsKey(currentMapId))
+            {
+                MessageBox.Show("請先載入地圖", "提示", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            Struct.L1Map currentMap = Share.MapDataList[currentMapId];
+
+            // 創建新增 S32 對話框
+            Form addS32Form = new Form();
+            addS32Form.Text = "新增 S32 區塊";
+            addS32Form.Size = new Size(400, 280);
+            addS32Form.FormBorderStyle = FormBorderStyle.FixedDialog;
+            addS32Form.StartPosition = FormStartPosition.CenterParent;
+            addS32Form.MaximizeBox = false;
+            addS32Form.MinimizeBox = false;
+
+            // 說明
+            Label lblInfo = new Label();
+            lblInfo.Text = "輸入要新增的 S32 區塊座標（BlockX, BlockY）\n或輸入遊戲座標自動計算";
+            lblInfo.Location = new Point(20, 15);
+            lblInfo.Size = new Size(350, 35);
+            addS32Form.Controls.Add(lblInfo);
+
+            // BlockX
+            Label lblBlockX = new Label();
+            lblBlockX.Text = "BlockX (16進位):";
+            lblBlockX.Location = new Point(20, 60);
+            lblBlockX.Size = new Size(100, 20);
+            addS32Form.Controls.Add(lblBlockX);
+
+            TextBox txtBlockX = new TextBox();
+            txtBlockX.Location = new Point(130, 58);
+            txtBlockX.Size = new Size(80, 20);
+            txtBlockX.Text = "7FFF";
+            addS32Form.Controls.Add(txtBlockX);
+
+            // BlockY
+            Label lblBlockY = new Label();
+            lblBlockY.Text = "BlockY (16進位):";
+            lblBlockY.Location = new Point(20, 90);
+            lblBlockY.Size = new Size(100, 20);
+            addS32Form.Controls.Add(lblBlockY);
+
+            TextBox txtBlockY = new TextBox();
+            txtBlockY.Location = new Point(130, 88);
+            txtBlockY.Size = new Size(80, 20);
+            txtBlockY.Text = "8000";
+            addS32Form.Controls.Add(txtBlockY);
+
+            // 分隔線
+            Label lblSeparator = new Label();
+            lblSeparator.Text = "── 或用遊戲座標計算 ──";
+            lblSeparator.Location = new Point(20, 120);
+            lblSeparator.Size = new Size(350, 20);
+            lblSeparator.ForeColor = Color.Gray;
+            addS32Form.Controls.Add(lblSeparator);
+
+            // 遊戲座標 X
+            Label lblGameX = new Label();
+            lblGameX.Text = "遊戲座標 X:";
+            lblGameX.Location = new Point(20, 150);
+            lblGameX.Size = new Size(100, 20);
+            addS32Form.Controls.Add(lblGameX);
+
+            TextBox txtGameX = new TextBox();
+            txtGameX.Location = new Point(130, 148);
+            txtGameX.Size = new Size(80, 20);
+            addS32Form.Controls.Add(txtGameX);
+
+            // 遊戲座標 Y
+            Label lblGameY = new Label();
+            lblGameY.Text = "遊戲座標 Y:";
+            lblGameY.Location = new Point(220, 150);
+            lblGameY.Size = new Size(80, 20);
+            addS32Form.Controls.Add(lblGameY);
+
+            TextBox txtGameY = new TextBox();
+            txtGameY.Location = new Point(300, 148);
+            txtGameY.Size = new Size(80, 20);
+            addS32Form.Controls.Add(txtGameY);
+
+            // 計算按鈕
+            Button btnCalc = new Button();
+            btnCalc.Text = "計算";
+            btnCalc.Location = new Point(230, 58);
+            btnCalc.Size = new Size(60, 50);
+            addS32Form.Controls.Add(btnCalc);
+
+            // 新增按鈕
+            Button btnAdd = new Button();
+            btnAdd.Text = "新增";
+            btnAdd.Location = new Point(100, 195);
+            btnAdd.Size = new Size(80, 30);
+            addS32Form.Controls.Add(btnAdd);
+
+            // 取消按鈕
+            Button btnCancel = new Button();
+            btnCancel.Text = "取消";
+            btnCancel.Location = new Point(200, 195);
+            btnCancel.Size = new Size(80, 30);
+            btnCancel.Click += (s, args) => addS32Form.Close();
+            addS32Form.Controls.Add(btnCancel);
+
+            // 計算功能：從遊戲座標計算 BlockX, BlockY
+            btnCalc.Click += (s, args) =>
+            {
+                if (!int.TryParse(txtGameX.Text, out int gameX) ||
+                    !int.TryParse(txtGameY.Text, out int gameY))
+                {
+                    MessageBox.Show("請輸入有效的遊戲座標", "錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+
+                // 從遊戲座標計算 BlockX, BlockY
+                // 公式來自 L1MapSeg: nLinEndX = (nBlockX - 0x7fff) * 64 + 0x7fff
+                // 反推: nBlockX = (nLinEndX - 0x7fff) / 64 + 0x7fff
+                // 而 nLinEndX = nLinBeginX + 63，所以 nLinBeginX 在某個 block 內時
+                // blockX = ((gameX - 0x7fff) / 64) + 0x7fff + (if gameX > 0x7fff then 1 else 0)
+                int blockX = ((gameX - 0x7FFF - 1) / 64) + 0x8000;
+                int blockY = ((gameY - 0x7FFF - 1) / 64) + 0x8000;
+
+                txtBlockX.Text = blockX.ToString("X4");
+                txtBlockY.Text = blockY.ToString("X4");
+            };
+
+            // 新增功能
+            btnAdd.Click += (s, args) =>
+            {
+                int blockX, blockY;
+                try
+                {
+                    blockX = Convert.ToInt32(txtBlockX.Text, 16);
+                    blockY = Convert.ToInt32(txtBlockY.Text, 16);
+                }
+                catch
+                {
+                    MessageBox.Show("請輸入有效的 16 進位 BlockX 和 BlockY", "錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+
+                // 檢查檔案是否已存在
+                string fileName = $"{blockX:X4}{blockY:X4}.s32".ToLower();
+                string filePath = Path.Combine(currentMap.szFullDirName, fileName);
+
+                if (File.Exists(filePath))
+                {
+                    MessageBox.Show($"S32 檔案已存在: {fileName}", "錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+
+                // 檢查是否已在記憶體中
+                if (allS32DataDict.Keys.Any(k => k.EndsWith(fileName, StringComparison.OrdinalIgnoreCase)))
+                {
+                    MessageBox.Show($"S32 檔案已載入: {fileName}", "錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+
+                // 確認新增
+                var confirmResult = MessageBox.Show(
+                    $"確定要新增 S32 區塊嗎？\n\n檔案名稱: {fileName}\nBlockX: {blockX:X4}, BlockY: {blockY:X4}\n路徑: {filePath}",
+                    "確認新增",
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Question);
+
+                if (confirmResult != DialogResult.Yes) return;
+
+                // 創建空的 S32 資料
+                S32Data newS32Data = CreateEmptyS32Data(blockX, blockY, filePath);
+
+                // 創建 SegInfo
+                Struct.L1MapSeg segInfo = new Struct.L1MapSeg(blockX, blockY, true);
+                segInfo.isRemastered = false;
+                segInfo.nMapMinBlockX = currentMap.nMinBlockX;
+                segInfo.nMapMinBlockY = currentMap.nMinBlockY;
+                segInfo.nMapBlockCountX = currentMap.nBlockCountX;
+
+                newS32Data.SegInfo = segInfo;
+                newS32Data.IsModified = true;
+
+                // 寫入檔案
+                try
+                {
+                    SaveS32File(filePath, newS32Data);
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"寫入檔案失敗: {ex.Message}", "錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+
+                // 加入到記憶體
+                allS32DataDict[filePath] = newS32Data;
+
+                // 加入到 FullFileNameList
+                currentMap.FullFileNameList[filePath] = segInfo;
+
+                // 更新地圖邊界（如果新的 S32 超出現有邊界）
+                if (blockX < currentMap.nMinBlockX || blockX > currentMap.nMaxBlockX ||
+                    blockY < currentMap.nMinBlockY || blockY > currentMap.nMaxBlockY)
+                {
+                    currentMap.nMinBlockX = Math.Min(currentMap.nMinBlockX, blockX);
+                    currentMap.nMinBlockY = Math.Min(currentMap.nMinBlockY, blockY);
+                    currentMap.nMaxBlockX = Math.Max(currentMap.nMaxBlockX, blockX);
+                    currentMap.nMaxBlockY = Math.Max(currentMap.nMaxBlockY, blockY);
+                    currentMap.nBlockCountX = currentMap.nMaxBlockX - currentMap.nMinBlockX + 1;
+                    currentMap.nBlockCountY = currentMap.nMaxBlockY - currentMap.nMinBlockY + 1;
+                    currentMap.nLinLengthX = currentMap.nBlockCountX * 64;
+                    currentMap.nLinLengthY = currentMap.nBlockCountY * 64;
+                    currentMap.nLinEndX = (currentMap.nMaxBlockX - 0x7FFF) * 64 + 0x7FFF;
+                    currentMap.nLinEndY = (currentMap.nMaxBlockY - 0x7FFF) * 64 + 0x7FFF;
+                    currentMap.nLinBeginX = currentMap.nLinEndX - currentMap.nLinLengthX + 1;
+                    currentMap.nLinBeginY = currentMap.nLinEndY - currentMap.nLinLengthY + 1;
+
+                    // 更新所有 SegInfo 的共享值
+                    foreach (var seg in currentMap.FullFileNameList.Values)
+                    {
+                        seg.nMapMinBlockX = currentMap.nMinBlockX;
+                        seg.nMapMinBlockY = currentMap.nMinBlockY;
+                        seg.nMapBlockCountX = currentMap.nBlockCountX;
+                    }
+                }
+
+                // 加入到 UI 清單
+                string displayName = $"{fileName} ({blockX:X4},{blockY:X4}) [{segInfo.nLinBeginX},{segInfo.nLinBeginY}~{segInfo.nLinEndX},{segInfo.nLinEndY}]";
+                S32FileItem item = new S32FileItem
+                {
+                    FilePath = filePath,
+                    DisplayName = displayName,
+                    SegInfo = segInfo,
+                    IsChecked = true
+                };
+                int index = lstS32Files.Items.Add(item);
+                lstS32Files.SetItemChecked(index, true);
+
+                // 重新渲染地圖
+                RenderS32Map();
+
+                MessageBox.Show($"S32 區塊已新增！\n\n檔案: {fileName}", "完成", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                this.toolStripStatusLabel1.Text = $"已新增 S32: {fileName}";
+                addS32Form.Close();
+            };
+
+            addS32Form.ShowDialog();
+        }
+
+        // 創建空的 S32 資料
+        private S32Data CreateEmptyS32Data(int blockX, int blockY, string filePath)
+        {
+            S32Data s32Data = new S32Data();
+            s32Data.FilePath = filePath;
+
+            // 初始化 Layer1（128x64 的格子，全部設為空白）
+            s32Data.Layer1 = new TileCell[64, 128];
+            for (int y = 0; y < 64; y++)
+            {
+                for (int x = 0; x < 128; x++)
+                {
+                    s32Data.Layer1[y, x] = new TileCell
+                    {
+                        X = x,
+                        Y = y,
+                        TileId = 0,
+                        IndexId = 0,
+                        IsModified = false
+                    };
+                }
+            }
+
+            // 初始化 Layer2（空的）
+            s32Data.Layer2 = new List<Layer2Item>();
+
+            // 初始化 Layer3（64x64 的屬性，全部設為可通行）
+            s32Data.Layer3 = new MapAttribute[64, 64];
+            for (int y = 0; y < 64; y++)
+            {
+                for (int x = 0; x < 64; x++)
+                {
+                    s32Data.Layer3[y, x] = new MapAttribute { Attribute1 = 0, Attribute2 = 0 }; // 預設可通行
+                }
+            }
+
+            // 初始化 Layer4（物件列表，空的）
+            s32Data.Layer4 = new List<ObjectTile>();
+
+            // 初始化 Layer5-8
+            s32Data.Layer5 = new List<Layer5Item>();
+            s32Data.Layer6 = new List<int>();
+            s32Data.Layer7 = new List<Layer7Item>();
+            s32Data.Layer8 = new List<Layer8Item>();
+
+            // 初始化其他欄位
+            s32Data.UsedTiles = new Dictionary<int, TileInfo>();
+            s32Data.OriginalFileData = new byte[0];
+            s32Data.Layer1Offset = 0;
+            s32Data.Layer2Offset = 0;
+            s32Data.Layer3Offset = 0;
+            s32Data.Layer4Offset = 0;
+            s32Data.Layer4EndOffset = 0;
+            s32Data.Layer5to8Data = new byte[0];
+            s32Data.IsModified = true;
+
+            return s32Data;
+        }
+
+        // 保存 S32 檔案（用於新建檔案）
+        private void SaveS32File(string filePath, S32Data s32Data)
+        {
+            using (MemoryStream ms = new MemoryStream())
+            using (BinaryWriter bw = new BinaryWriter(ms))
+            {
+                // 第一層（地板）- 128x64 格子，每格 4 bytes (TileId:2 + IndexId:2)
+                for (int y = 0; y < 64; y++)
+                {
+                    for (int x = 0; x < 128; x++)
+                    {
+                        var cell = s32Data.Layer1[y, x];
+                        bw.Write((ushort)cell.TileId);
+                        bw.Write((ushort)cell.IndexId);
+                    }
+                }
+
+                // 第二層（原始資料）
+                if (s32Data.Layer2 != null && s32Data.Layer2.Count > 0)
+                {
+                    foreach (var item in s32Data.Layer2)
+                    {
+                        bw.Write(item.Value1);
+                        bw.Write(item.Value2);
+                        bw.Write(item.Value3);
+                    }
+                }
+
+                // 第三層（屬性）- 64x64 格子，每格 2 bytes
+                for (int y = 0; y < 64; y++)
+                {
+                    for (int x = 0; x < 64; x++)
+                    {
+                        var attr = s32Data.Layer3[y, x];
+                        bw.Write(attr.Attribute1);
+                    }
+                }
+
+                // 第四層（物件）
+                bw.Write(s32Data.Layer4.Count);
+                foreach (var obj in s32Data.Layer4)
+                {
+                    bw.Write((ushort)obj.X);
+                    bw.Write((ushort)obj.Y);
+                    bw.Write((ushort)obj.TileId);
+                    bw.Write((ushort)obj.IndexId);
+                    bw.Write((byte)obj.Layer);
+                    bw.Write(obj.GroupId);
+                }
+
+                // 第五層（透明圖塊）
+                bw.Write(s32Data.Layer5.Count);
+                foreach (var item in s32Data.Layer5)
+                {
+                    bw.Write(item.X);
+                    bw.Write(item.Y);
+                    bw.Write(item.R);
+                    bw.Write(item.G);
+                    bw.Write(item.B);
+                }
+
+                // 第六層（使用的 Til）
+                bw.Write(s32Data.Layer6.Count);
+                foreach (var tileId in s32Data.Layer6)
+                {
+                    bw.Write(tileId);
+                }
+
+                // 第七層（傳送點）
+                bw.Write(s32Data.Layer7.Count);
+                foreach (var portal in s32Data.Layer7)
+                {
+                    byte[] nameBytes = System.Text.Encoding.GetEncoding(950).GetBytes(portal.Name ?? "");
+                    bw.Write(nameBytes.Length);
+                    bw.Write(nameBytes);
+                    bw.Write(portal.X);
+                    bw.Write(portal.Y);
+                    bw.Write(portal.TargetMapId);
+                    bw.Write(portal.PortalId);
+                }
+
+                // 第八層（特效）
+                bw.Write(s32Data.Layer8.Count);
+                foreach (var effect in s32Data.Layer8)
+                {
+                    bw.Write((byte)0); // unknown byte
+                    bw.Write(effect.SprId);
+                    bw.Write(effect.X);
+                    bw.Write(effect.Y);
+                    bw.Write(effect.Unknown);
+                }
+
+                // 寫入檔案
+                File.WriteAllBytes(filePath, ms.ToArray());
+
+                // 更新原始資料
+                s32Data.OriginalFileData = ms.ToArray();
+            }
+        }
     }
 }
