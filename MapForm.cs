@@ -819,6 +819,24 @@ namespace L1FlyMapViewer
                 }
             }
 
+            // 還原刪除的第七層資料（重新新增）
+            foreach (var layer7Info in action.RemovedLayer7Items)
+            {
+                S32Data targetS32 = null;
+                if (allS32DataDict.TryGetValue(layer7Info.S32FilePath, out targetS32))
+                {
+                    targetS32.Layer7.Add(new Layer7Item
+                    {
+                        Name = layer7Info.Name,
+                        X = layer7Info.X,
+                        Y = layer7Info.Y,
+                        TargetMapId = layer7Info.TargetMapId,
+                        PortalId = layer7Info.PortalId
+                    });
+                    targetS32.IsModified = true;
+                }
+            }
+
             // 將此動作放入 redo 歷史
             redoHistory.Push(action);
 
@@ -876,6 +894,27 @@ namespace L1FlyMapViewer
                     if (objToRemove != null)
                     {
                         targetS32.Layer4.Remove(objToRemove);
+                        targetS32.IsModified = true;
+                    }
+                }
+            }
+
+            // 重做刪除的第七層資料（重新刪除）
+            foreach (var layer7Info in action.RemovedLayer7Items)
+            {
+                S32Data targetS32 = null;
+                if (allS32DataDict.TryGetValue(layer7Info.S32FilePath, out targetS32))
+                {
+                    var itemToRemove = targetS32.Layer7.FirstOrDefault(l =>
+                        l.Name == layer7Info.Name &&
+                        l.X == layer7Info.X &&
+                        l.Y == layer7Info.Y &&
+                        l.TargetMapId == layer7Info.TargetMapId &&
+                        l.PortalId == layer7Info.PortalId);
+
+                    if (itemToRemove != null)
+                    {
+                        targetS32.Layer7.Remove(itemToRemove);
                         targetS32.IsModified = true;
                     }
                 }
@@ -2454,6 +2493,7 @@ namespace L1FlyMapViewer
             public string Description { get; set; }
             public List<UndoObjectInfo> AddedObjects { get; set; } = new List<UndoObjectInfo>();    // 新增的物件（還原時要刪除）
             public List<UndoObjectInfo> RemovedObjects { get; set; } = new List<UndoObjectInfo>();  // 刪除的物件（還原時要新增回去）
+            public List<UndoLayer7Info> RemovedLayer7Items { get; set; } = new List<UndoLayer7Info>();  // 刪除的第七層資料
         }
 
         // 記錄物件資訊用於 Undo
@@ -2468,6 +2508,17 @@ namespace L1FlyMapViewer
             public int Layer { get; set; }
             public int IndexId { get; set; }
             public int TileId { get; set; }
+        }
+
+        // 記錄第七層資訊用於 Undo
+        private class UndoLayer7Info
+        {
+            public string S32FilePath { get; set; }
+            public string Name { get; set; }
+            public byte X { get; set; }
+            public byte Y { get; set; }
+            public ushort TargetMapId { get; set; }
+            public int PortalId { get; set; }
         }
 
         // 根據遊戲座標找到對應的 S32Data
@@ -4387,6 +4438,12 @@ namespace L1FlyMapViewer
 
             Struct.L1Map currentMap = Share.MapDataList[currentMapId];
 
+            // 將點擊位置轉換為原始座標（考慮縮放）
+            Point adjustedLocation = new Point(
+                (int)(e.Location.X / s32ZoomLevel),
+                (int)(e.Location.Y / s32ZoomLevel)
+            );
+
             // 遍歷所有 S32 檔案
             foreach (var s32Data in allS32DataDict.Values)
             {
@@ -4415,8 +4472,8 @@ namespace L1FlyMapViewer
                         Point p3 = new Point(X + 24, Y + 12);  // 右
                         Point p4 = new Point(X + 12, Y + 24);  // 下
 
-                        // 檢查點擊位置是否在這個菱形內
-                        if (IsPointInDiamond(e.Location, p1, p2, p3, p4))
+                        // 檢查點擊位置是否在這個菱形內（使用調整後的座標）
+                        if (IsPointInDiamond(adjustedLocation, p1, p2, p3, p4))
                         {
                             // 設置當前選中的 S32 檔案
                             currentS32FileItem = new S32FileItem
@@ -4462,7 +4519,7 @@ namespace L1FlyMapViewer
             // 只有左鍵點擊才觸發新增
             if (e.Button == MouseButtons.Left)
             {
-                TryCreateS32AtClickPosition(e.Location, currentMap);
+                TryCreateS32AtClickPosition(adjustedLocation, currentMap);
             }
         }
 
@@ -8571,6 +8628,88 @@ namespace L1FlyMapViewer
             };
 
             replaceForm.ShowDialog();
+        }
+
+        // 清除所有第七層（傳送點）資料
+        private void btnToolClearLayer7_Click(object sender, EventArgs e)
+        {
+            if (allS32DataDict.Count == 0)
+            {
+                MessageBox.Show("請先載入地圖", "提示", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            // 計算總共有多少個第七層資料
+            int totalLayer7Count = 0;
+            int affectedS32Count = 0;
+            foreach (var s32Data in allS32DataDict.Values)
+            {
+                if (s32Data.Layer7 != null && s32Data.Layer7.Count > 0)
+                {
+                    totalLayer7Count += s32Data.Layer7.Count;
+                    affectedS32Count++;
+                }
+            }
+
+            if (totalLayer7Count == 0)
+            {
+                MessageBox.Show("沒有第七層（傳送點）資料需要清除", "提示", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            // 確認刪除
+            var confirmResult = MessageBox.Show(
+                $"確定要清除所有第七層（傳送點）資料嗎？\n\n" +
+                $"共 {totalLayer7Count} 筆傳送點資料\n" +
+                $"分布在 {affectedS32Count} 個 S32 檔案中\n\n" +
+                $"此操作可以使用 Undo 還原。",
+                "確認清除",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Warning);
+
+            if (confirmResult != DialogResult.Yes) return;
+
+            // 建立 Undo 記錄
+            var undoAction = new UndoAction
+            {
+                Description = $"清除所有第七層資料 ({totalLayer7Count} 筆)"
+            };
+
+            // 備份並清除所有第七層資料
+            int clearedCount = 0;
+            foreach (var kvp in allS32DataDict)
+            {
+                S32Data s32Data = kvp.Value;
+                if (s32Data.Layer7 != null && s32Data.Layer7.Count > 0)
+                {
+                    // 備份到 Undo（儲存為 Layer7Backup）
+                    foreach (var item in s32Data.Layer7)
+                    {
+                        undoAction.RemovedLayer7Items.Add(new UndoLayer7Info
+                        {
+                            S32FilePath = kvp.Key,
+                            Name = item.Name,
+                            X = item.X,
+                            Y = item.Y,
+                            TargetMapId = item.TargetMapId,
+                            PortalId = item.PortalId
+                        });
+                    }
+
+                    clearedCount += s32Data.Layer7.Count;
+                    s32Data.Layer7.Clear();
+                    s32Data.IsModified = true;
+                }
+            }
+
+            // 加入 Undo 堆疊
+            PushUndoAction(undoAction);
+
+            // 重新渲染
+            RenderS32Map();
+
+            this.toolStripStatusLabel1.Text = $"已清除 {clearedCount} 筆第七層（傳送點）資料";
+            MessageBox.Show($"已清除 {clearedCount} 筆第七層（傳送點）資料\n\n請記得儲存修改。", "完成", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
 
         private void btnToolAddS32_Click(object sender, EventArgs e)

@@ -205,6 +205,7 @@ namespace L1MapViewer.Models
         public string Description { get; set; }
         public List<UndoObjectInfo> AddedObjects { get; set; } = new List<UndoObjectInfo>();
         public List<UndoObjectInfo> RemovedObjects { get; set; } = new List<UndoObjectInfo>();
+        public List<UndoLayer7Info> RemovedLayer7Items { get; set; } = new List<UndoLayer7Info>();
     }
 
     /// <summary>
@@ -219,5 +220,18 @@ namespace L1MapViewer.Models
         public int Layer { get; set; }
         public int IndexId { get; set; }
         public int TileId { get; set; }
+    }
+
+    /// <summary>
+    /// Undo 第七層資訊（傳送點）
+    /// </summary>
+    public class UndoLayer7Info
+    {
+        public string S32FilePath { get; set; }
+        public string Name { get; set; }
+        public byte X { get; set; }
+        public byte Y { get; set; }
+        public ushort TargetMapId { get; set; }
+        public int PortalId { get; set; }
     }
 }
