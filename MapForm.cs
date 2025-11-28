@@ -6606,7 +6606,7 @@ namespace L1FlyMapViewer
             public List<(S32Data s32, ObjectTile obj)> Objects { get; set; }
         }
 
-        // 生成群組縮圖（將同 GroupId 的物件按相對位置組裝，白底半透明疊加）
+        // 生成群組縮圖（將同 GroupId 的物件按相對位置組裝，使用與主畫布相同的繪製方式）
         private Bitmap GenerateGroupThumbnail(List<(S32Data s32, ObjectTile obj)> objects, int thumbnailSize)
         {
             if (objects == null || objects.Count == 0)
@@ -6620,65 +6620,92 @@ namespace L1FlyMapViewer
                 int minY = objects.Min(o => o.obj.Y);
                 int maxY = objects.Max(o => o.obj.Y);
 
-                // 計算實際像素範圍
-                // 等距投影：每個格子在 X 方向佔 24 像素，Y 方向佔 12 像素
-                // tile 縮圖是 48x48 像素
                 int rangeX = maxX - minX + 1;
                 int rangeY = maxY - minY + 1;
 
-                // 等距投影的實際寬高（考慮 tile 實際大小 48x48）
-                int actualWidth = (rangeX + rangeY) * 24 + 48;
-                int actualHeight = (rangeX + rangeY) * 12 + 48;
+                // 使用與主畫布相同的座標公式計算邊界
+                // baseX = 0, baseY = 63 * 12 (對於完整 S32 區塊)
+                // pixelX = baseX + x * 24 + y * 24 - 24 * (x / 2)
+                // pixelY = baseY + y * 12 - 12 * (x / 2)
+                // 簡化後: pixelX = x * 12 + y * 24, pixelY = 63*12 + y * 12 - x * 6
 
-                // 建立暫存圖片（不再限制大小，讓完整圖形能顯示）
+                // 計算所有物件的像素邊界
+                int pixelMinX = int.MaxValue, pixelMaxX = int.MinValue;
+                int pixelMinY = int.MaxValue, pixelMaxY = int.MinValue;
+
+                foreach (var item in objects)
+                {
+                    var obj = item.obj;
+                    // 使用與 RenderS32Block 相同的座標計算
+                    int baseX = 0;
+                    int baseY = 63 * 12;
+                    baseX -= 24 * (obj.X / 2);
+                    baseY -= 12 * (obj.X / 2);
+                    int px = baseX + obj.X * 24 + obj.Y * 24;
+                    int py = baseY + obj.Y * 12;
+
+                    pixelMinX = Math.Min(pixelMinX, px);
+                    pixelMaxX = Math.Max(pixelMaxX, px + 48);  // tile 寬度約 48
+                    pixelMinY = Math.Min(pixelMinY, py);
+                    pixelMaxY = Math.Max(pixelMaxY, py + 48);  // tile 高度預留空間
+                }
+
+                // 計算實際所需的圖片大小
+                int actualWidth = pixelMaxX - pixelMinX + 48;
+                int actualHeight = pixelMaxY - pixelMinY + 48;
+
+                // 建立暫存圖片
                 int tempWidth = Math.Max(actualWidth, 96);
                 int tempHeight = Math.Max(actualHeight, 96);
-                if (tempWidth > 1024) tempWidth = 1024;
-                if (tempHeight > 1024) tempHeight = 1024;
+                if (tempWidth > 2048) tempWidth = 2048;
+                if (tempHeight > 2048) tempHeight = 2048;
 
-                Bitmap tempBitmap = new Bitmap(tempWidth, tempHeight, PixelFormat.Format32bppArgb);
-                using (Graphics g = Graphics.FromImage(tempBitmap))
+                // 使用 16bpp 格式與主畫布相同
+                Bitmap tempBitmap = new Bitmap(tempWidth, tempHeight, PixelFormat.Format16bppRgb555);
+
+                Rectangle rect = new Rectangle(0, 0, tempBitmap.Width, tempBitmap.Height);
+                BitmapData bmpData = tempBitmap.LockBits(rect, ImageLockMode.ReadWrite, tempBitmap.PixelFormat);
+                int rowpix = bmpData.Stride;
+
+                unsafe
                 {
-                    g.Clear(Color.Transparent);
+                    byte* ptr = (byte*)bmpData.Scan0;
 
-                    // 計算偏移，讓圖片置中
-                    // tile 實際大小是 48x48，等距投影間距 24x12
-                    int offsetX = (tempWidth - actualWidth) / 2 + rangeY * 24;
-                    int offsetY = (tempHeight - actualHeight) / 2;
+                    // 填充白色背景 (RGB555: 0x7FFF = 白色)
+                    for (int y = 0; y < tempHeight; y++)
+                    {
+                        for (int x = 0; x < tempWidth; x++)
+                        {
+                            int v = y * rowpix + (x * 2);
+                            *(ptr + v) = 0xFF;
+                            *(ptr + v + 1) = 0x7F;
+                        }
+                    }
 
-                    // 按 Layer 排序後繪製（半透明疊加效果）
+                    // 計算偏移量，讓圖片置中
+                    int offsetX = (tempWidth - actualWidth) / 2 - pixelMinX + 24;
+                    int offsetY = (tempHeight - actualHeight) / 2 - pixelMinY + 24;
+
+                    // 按 Layer 排序後繪製（使用與主畫布完全相同的繪製方式）
                     foreach (var item in objects.OrderBy(o => o.obj.Layer))
                     {
                         var obj = item.obj;
 
-                        // 計算相對位置
-                        int relX = obj.X - minX;
-                        int relY = obj.Y - minY;
+                        // 使用與 RenderS32Block 相同的座標計算
+                        int baseX = 0;
+                        int baseY = 63 * 12;
+                        baseX -= 24 * (obj.X / 2);
+                        baseY -= 12 * (obj.X / 2);
 
-                        // 等距投影座標轉換（每格間距 24x12）
-                        int pixelX = offsetX + (relX - relY) * 24;
-                        int pixelY = offsetY + (relX + relY) * 12;
+                        int pixelX = offsetX + baseX + obj.X * 24 + obj.Y * 24;
+                        int pixelY = offsetY + baseY + obj.Y * 12;
 
-                        // 載入並繪製 tile（帶透明度）
-                        Bitmap tileBitmap = LoadTileThumbnail(obj.TileId, obj.IndexId);
-                        if (tileBitmap != null)
-                        {
-                            // 繪製時保持半透明（90% 不透明）
-                            // 使用 tile 的實際大小 48x48
-                            using (var ia = new ImageAttributes())
-                            {
-                                ColorMatrix cm = new ColorMatrix();
-                                cm.Matrix33 = 0.9f;
-                                ia.SetColorMatrix(cm);
-
-                                g.DrawImage(tileBitmap,
-                                    new Rectangle(pixelX, pixelY, 48, 48),
-                                    0, 0, tileBitmap.Width, tileBitmap.Height,
-                                    GraphicsUnit.Pixel, ia);
-                            }
-                        }
+                        // 使用與主畫布相同的繪製函數
+                        DrawTilToBufferDirect(pixelX, pixelY, obj.TileId, obj.IndexId, rowpix, ptr, tempWidth, tempHeight);
                     }
                 }
+
+                tempBitmap.UnlockBits(bmpData);
 
                 // 縮放到目標大小（白底）
                 Bitmap result = new Bitmap(thumbnailSize, thumbnailSize, PixelFormat.Format32bppArgb);
@@ -6742,41 +6769,167 @@ namespace L1FlyMapViewer
             }
         }
 
-        // 顯示群組預覽對話框
+        // 顯示群組預覽對話框（可縮放）
         private void ShowGroupPreviewDialog(GroupThumbnailInfo info)
         {
-            // 生成放大的預覽圖（400x400）
-            int previewSize = 400;
-            Bitmap previewImage = GenerateGroupThumbnail(info.Objects, previewSize);
+            // 生成高解析度預覽圖（800x800）
+            int baseSize = 800;
+            Bitmap previewImage = GenerateGroupThumbnail(info.Objects, baseSize);
 
             if (previewImage == null)
                 return;
 
+            // 縮放狀態
+            float currentZoom = 1.0f;
+            float minZoom = 0.25f;
+            float maxZoom = 4.0f;
+            Point dragStart = Point.Empty;
+            Point scrollOffset = Point.Empty;
+            bool isDragging = false;
+
             // 建立預覽對話框
             Form previewForm = new Form
             {
-                Text = $"群組 {info.GroupId} - {info.Objects.Count} 個物件",
-                Size = new Size(previewSize + 40, previewSize + 100),
+                Text = $"群組 {info.GroupId} - {info.Objects.Count} 個物件 (滾輪縮放, 拖曳平移)",
+                Size = new Size(520, 600),
                 StartPosition = FormStartPosition.CenterParent,
-                FormBorderStyle = FormBorderStyle.FixedDialog,
-                MaximizeBox = false,
+                FormBorderStyle = FormBorderStyle.Sizable,
+                MaximizeBox = true,
                 MinimizeBox = false
+            };
+
+            // 使用 Panel 作為容器，支援滾動
+            Panel container = new Panel
+            {
+                Location = new Point(10, 10),
+                Size = new Size(480, 480),
+                Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right,
+                BorderStyle = BorderStyle.FixedSingle,
+                BackColor = Color.White,
+                AutoScroll = true
             };
 
             PictureBox pb = new PictureBox
             {
                 Image = previewImage,
-                Size = new Size(previewSize, previewSize),
-                Location = new Point(10, 10),
+                Size = previewImage.Size,
+                Location = new Point(0, 0),
                 SizeMode = PictureBoxSizeMode.Zoom,
-                BorderStyle = BorderStyle.FixedSingle
+                BackColor = Color.White
+            };
+
+            // 更新 PictureBox 大小的函數
+            Action updateZoom = () =>
+            {
+                int newWidth = (int)(baseSize * currentZoom);
+                int newHeight = (int)(baseSize * currentZoom);
+                pb.Size = new Size(newWidth, newHeight);
+                previewForm.Text = $"群組 {info.GroupId} - {info.Objects.Count} 個物件 ({(int)(currentZoom * 100)}%)";
+            };
+
+            // 滾輪縮放
+            pb.MouseWheel += (s, ev) =>
+            {
+                float oldZoom = currentZoom;
+                if (ev.Delta > 0)
+                    currentZoom = Math.Min(currentZoom * 1.2f, maxZoom);
+                else
+                    currentZoom = Math.Max(currentZoom / 1.2f, minZoom);
+
+                if (Math.Abs(oldZoom - currentZoom) > 0.001f)
+                    updateZoom();
+            };
+
+            container.MouseWheel += (s, ev) =>
+            {
+                float oldZoom = currentZoom;
+                if (ev.Delta > 0)
+                    currentZoom = Math.Min(currentZoom * 1.2f, maxZoom);
+                else
+                    currentZoom = Math.Max(currentZoom / 1.2f, minZoom);
+
+                if (Math.Abs(oldZoom - currentZoom) > 0.001f)
+                    updateZoom();
+            };
+
+            // 拖曳平移
+            pb.MouseDown += (s, ev) =>
+            {
+                if (ev.Button == MouseButtons.Left)
+                {
+                    isDragging = true;
+                    dragStart = ev.Location;
+                    pb.Cursor = Cursors.Hand;
+                }
+            };
+
+            pb.MouseMove += (s, ev) =>
+            {
+                if (isDragging)
+                {
+                    int dx = ev.X - dragStart.X;
+                    int dy = ev.Y - dragStart.Y;
+                    container.AutoScrollPosition = new Point(
+                        -container.AutoScrollPosition.X - dx,
+                        -container.AutoScrollPosition.Y - dy);
+                }
+            };
+
+            pb.MouseUp += (s, ev) =>
+            {
+                isDragging = false;
+                pb.Cursor = Cursors.Default;
+            };
+
+            container.Controls.Add(pb);
+
+            // 縮放按鈕
+            Button btnZoomIn = new Button
+            {
+                Text = "+",
+                Size = new Size(40, 30),
+                Location = new Point(10, 500),
+                Anchor = AnchorStyles.Bottom | AnchorStyles.Left
+            };
+            btnZoomIn.Click += (s, ev) =>
+            {
+                currentZoom = Math.Min(currentZoom * 1.5f, maxZoom);
+                updateZoom();
+            };
+
+            Button btnZoomOut = new Button
+            {
+                Text = "-",
+                Size = new Size(40, 30),
+                Location = new Point(55, 500),
+                Anchor = AnchorStyles.Bottom | AnchorStyles.Left
+            };
+            btnZoomOut.Click += (s, ev) =>
+            {
+                currentZoom = Math.Max(currentZoom / 1.5f, minZoom);
+                updateZoom();
+            };
+
+            Button btnZoomReset = new Button
+            {
+                Text = "1:1",
+                Size = new Size(40, 30),
+                Location = new Point(100, 500),
+                Anchor = AnchorStyles.Bottom | AnchorStyles.Left
+            };
+            btnZoomReset.Click += (s, ev) =>
+            {
+                currentZoom = 1.0f;
+                updateZoom();
+                container.AutoScrollPosition = Point.Empty;
             };
 
             Button btnGoto = new Button
             {
                 Text = "跳轉到位置",
                 Size = new Size(100, 30),
-                Location = new Point(10, previewSize + 20)
+                Location = new Point(160, 500),
+                Anchor = AnchorStyles.Bottom | AnchorStyles.Left
             };
             btnGoto.Click += (s, ev) =>
             {
@@ -6788,7 +6941,8 @@ namespace L1FlyMapViewer
             {
                 Text = "關閉",
                 Size = new Size(80, 30),
-                Location = new Point(previewSize - 70, previewSize + 20)
+                Location = new Point(420, 500),
+                Anchor = AnchorStyles.Bottom | AnchorStyles.Right
             };
             btnClose.Click += (s, ev) => previewForm.Close();
 
@@ -6796,12 +6950,16 @@ namespace L1FlyMapViewer
             Label lblInfo = new Label
             {
                 Text = $"GroupId: {info.GroupId} | 物件數: {info.Objects.Count}",
-                Location = new Point(120, previewSize + 25),
-                Size = new Size(previewSize - 200, 20),
-                ForeColor = Color.Gray
+                Location = new Point(270, 505),
+                Size = new Size(140, 20),
+                ForeColor = Color.Gray,
+                Anchor = AnchorStyles.Bottom | AnchorStyles.Left
             };
 
-            previewForm.Controls.Add(pb);
+            previewForm.Controls.Add(container);
+            previewForm.Controls.Add(btnZoomIn);
+            previewForm.Controls.Add(btnZoomOut);
+            previewForm.Controls.Add(btnZoomReset);
             previewForm.Controls.Add(btnGoto);
             previewForm.Controls.Add(btnClose);
             previewForm.Controls.Add(lblInfo);
@@ -6810,6 +6968,9 @@ namespace L1FlyMapViewer
             {
                 previewImage.Dispose();
             };
+
+            // 設定焦點讓滾輪可用
+            previewForm.Shown += (s, ev) => container.Focus();
 
             previewForm.ShowDialog(this);
         }
