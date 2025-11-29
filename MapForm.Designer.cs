@@ -40,7 +40,9 @@ namespace L1FlyMapViewer
         private ListView lvGroupThumbnails;
 
         // 工具列面板（右側功能區）
+        private Panel toolbarContainer;
         private Panel toolbarPanel;
+        private Panel toolbarPanel2;
         private Button btnToolCopy;
         private Button btnToolPaste;
         private Button btnToolDelete;
@@ -52,6 +54,8 @@ namespace L1FlyMapViewer
         private Button btnToolAddS32;
         private Button btnToolClearLayer7;
         private Button btnToolClearCell;
+        private Button btnToolCheckL1;
+        private Button btnToolCheckL4;
         private Button btnToolCheckL5;
         private Button btnToolCheckL6;
         private Button btnToolCheckL7;
@@ -139,7 +143,9 @@ namespace L1FlyMapViewer
             this.lvGroupThumbnails = new ListView();
 
             // 工具列面板
+            this.toolbarContainer = new Panel();
             this.toolbarPanel = new Panel();
+            this.toolbarPanel2 = new Panel();
             this.btnToolCopy = new Button();
             this.btnToolPaste = new Button();
             this.btnToolDelete = new Button();
@@ -151,6 +157,8 @@ namespace L1FlyMapViewer
             this.btnToolAddS32 = new Button();
             this.btnToolClearLayer7 = new Button();
             this.btnToolClearCell = new Button();
+            this.btnToolCheckL1 = new Button();
+            this.btnToolCheckL4 = new Button();
             this.btnToolCheckL5 = new Button();
             this.btnToolCheckL6 = new Button();
             this.btnToolCheckL7 = new Button();
@@ -843,7 +851,7 @@ namespace L1FlyMapViewer
             this.lvGroupThumbnails.MouseUp += new MouseEventHandler(this.lvGroupThumbnails_MouseUp);
 
             //
-            // toolbarPanel
+            // toolbarPanel (第一排)
             //
             this.toolbarPanel.BorderStyle = BorderStyle.FixedSingle;
             this.toolbarPanel.Controls.Add(this.btnToolCopy);
@@ -857,15 +865,37 @@ namespace L1FlyMapViewer
             this.toolbarPanel.Controls.Add(this.btnToolAddS32);
             this.toolbarPanel.Controls.Add(this.btnToolClearLayer7);
             this.toolbarPanel.Controls.Add(this.btnToolClearCell);
-            this.toolbarPanel.Controls.Add(this.btnToolCheckL5);
-            this.toolbarPanel.Controls.Add(this.btnToolCheckL6);
-            this.toolbarPanel.Controls.Add(this.btnToolCheckL7);
-            this.toolbarPanel.Controls.Add(this.btnToolCheckL8);
-            this.toolbarPanel.Dock = DockStyle.Right;
-            this.toolbarPanel.Location = new Point(970, 24);
+            this.toolbarPanel.Dock = DockStyle.Left;
+            this.toolbarPanel.Location = new Point(0, 0);
             this.toolbarPanel.Name = "toolbarPanel";
             this.toolbarPanel.Size = new Size(40, 654);
             this.toolbarPanel.TabIndex = 7;
+
+            //
+            // toolbarPanel2 (第二排 - 查看各層)
+            //
+            this.toolbarPanel2.BorderStyle = BorderStyle.FixedSingle;
+            this.toolbarPanel2.Controls.Add(this.btnToolCheckL1);
+            this.toolbarPanel2.Controls.Add(this.btnToolCheckL4);
+            this.toolbarPanel2.Controls.Add(this.btnToolCheckL5);
+            this.toolbarPanel2.Controls.Add(this.btnToolCheckL6);
+            this.toolbarPanel2.Controls.Add(this.btnToolCheckL7);
+            this.toolbarPanel2.Controls.Add(this.btnToolCheckL8);
+            this.toolbarPanel2.Dock = DockStyle.Left;
+            this.toolbarPanel2.Location = new Point(40, 0);
+            this.toolbarPanel2.Name = "toolbarPanel2";
+            this.toolbarPanel2.Size = new Size(40, 654);
+            this.toolbarPanel2.TabIndex = 8;
+
+            //
+            // toolbarContainer (容器)
+            //
+            this.toolbarContainer.Controls.Add(this.toolbarPanel2);
+            this.toolbarContainer.Controls.Add(this.toolbarPanel);
+            this.toolbarContainer.Dock = DockStyle.Right;
+            this.toolbarContainer.Name = "toolbarContainer";
+            this.toolbarContainer.Size = new Size(80, 654);
+            this.toolbarContainer.TabIndex = 9;
 
             //
             // btnToolCopy
@@ -1000,9 +1030,33 @@ namespace L1FlyMapViewer
             this.btnToolClearCell.Click += new System.EventHandler(this.btnToolClearCell_Click);
 
             //
+            // btnToolCheckL1
+            //
+            this.btnToolCheckL1.Location = new Point(2, 2);
+            this.btnToolCheckL1.Name = "btnToolCheckL1";
+            this.btnToolCheckL1.Size = new Size(34, 34);
+            this.btnToolCheckL1.TabIndex = 11;
+            this.btnToolCheckL1.Text = "查L1";
+            this.btnToolCheckL1.UseVisualStyleBackColor = true;
+            this.toolTip1.SetToolTip(this.btnToolCheckL1, "查看與編輯第一層（地板圖塊）資料");
+            this.btnToolCheckL1.Click += new System.EventHandler(this.btnToolCheckL1_Click);
+
+            //
+            // btnToolCheckL4
+            //
+            this.btnToolCheckL4.Location = new Point(2, 40);
+            this.btnToolCheckL4.Name = "btnToolCheckL4";
+            this.btnToolCheckL4.Size = new Size(34, 34);
+            this.btnToolCheckL4.TabIndex = 11;
+            this.btnToolCheckL4.Text = "查L4";
+            this.btnToolCheckL4.UseVisualStyleBackColor = true;
+            this.toolTip1.SetToolTip(this.btnToolCheckL4, "查看與編輯第四層（物件）資料");
+            this.btnToolCheckL4.Click += new System.EventHandler(this.btnToolCheckL4_Click);
+
+            //
             // btnToolCheckL5
             //
-            this.btnToolCheckL5.Location = new Point(2, 481);
+            this.btnToolCheckL5.Location = new Point(2, 78);
             this.btnToolCheckL5.Name = "btnToolCheckL5";
             this.btnToolCheckL5.Size = new Size(34, 34);
             this.btnToolCheckL5.TabIndex = 11;
@@ -1014,7 +1068,7 @@ namespace L1FlyMapViewer
             //
             // btnToolCheckL6
             //
-            this.btnToolCheckL6.Location = new Point(2, 519);
+            this.btnToolCheckL6.Location = new Point(2, 116);
             this.btnToolCheckL6.Name = "btnToolCheckL6";
             this.btnToolCheckL6.Size = new Size(34, 34);
             this.btnToolCheckL6.TabIndex = 12;
@@ -1026,7 +1080,7 @@ namespace L1FlyMapViewer
             //
             // btnToolCheckL7
             //
-            this.btnToolCheckL7.Location = new Point(2, 557);
+            this.btnToolCheckL7.Location = new Point(2, 154);
             this.btnToolCheckL7.Name = "btnToolCheckL7";
             this.btnToolCheckL7.Size = new Size(34, 34);
             this.btnToolCheckL7.TabIndex = 13;
@@ -1038,7 +1092,7 @@ namespace L1FlyMapViewer
             //
             // btnToolCheckL8
             //
-            this.btnToolCheckL8.Location = new Point(2, 595);
+            this.btnToolCheckL8.Location = new Point(2, 192);
             this.btnToolCheckL8.Name = "btnToolCheckL8";
             this.btnToolCheckL8.Size = new Size(34, 34);
             this.btnToolCheckL8.TabIndex = 14;
@@ -1053,7 +1107,7 @@ namespace L1FlyMapViewer
             this.AutoScaleDimensions = new SizeF(6F, 13F);
             this.AutoScaleMode = AutoScaleMode.Font;
             this.ClientSize = new Size(1400, 700);
-            this.Controls.Add(this.toolbarPanel);
+            this.Controls.Add(this.toolbarContainer);
             this.Controls.Add(this.rightPanel);
             this.Controls.Add(this.tabControl1);
             this.Controls.Add(this.leftPanel);

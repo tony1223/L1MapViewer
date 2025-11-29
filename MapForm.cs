@@ -435,35 +435,78 @@ namespace L1FlyMapViewer
                             }
                         }
                     }
-                    // Layer5-8（收集所有涉及的 S32 的資料）
-                    if (copyLayer5to8)
+                }
+            }
+
+            // Layer5-8：只複製座標落在選取格子範圍內的項目
+            if (copyLayer5to8)
+            {
+                // 建立選取格子的本地座標集合（按 S32 檔案分組）
+                var selectedLocalCellsByS32 = new Dictionary<S32Data, HashSet<(int x, int y)>>();
+                foreach (var cell in selectedCells)
+                {
+                    if (!selectedLocalCellsByS32.ContainsKey(cell.S32Data))
+                        selectedLocalCellsByS32[cell.S32Data] = new HashSet<(int, int)>();
+                    // Layer3/Layer5/Layer7 使用的座標系是 64x64，LocalX 需要除以 2
+                    int localL3X = cell.LocalX / 2;
+                    selectedLocalCellsByS32[cell.S32Data].Add((localL3X, cell.LocalY));
+                }
+
+                foreach (var kvp in selectedLocalCellsByS32)
+                {
+                    var s32Data = kvp.Key;
+                    var localCells = kvp.Value;
+
+                    // Layer5 - 透明圖塊（檢查 X, Y 是否在選取範圍內）
+                    foreach (var item in s32Data.Layer5)
                     {
-                        // Layer5 - 透明圖塊
-                        foreach (var item in cell.S32Data.Layer5)
+                        // Layer5 的 X, Y 是 64x64 座標系
+                        if (localCells.Contains((item.X, item.Y)))
                         {
                             if (!layer5Clipboard.Any(l => l.X == item.X && l.Y == item.Y))
                             {
                                 layer5Clipboard.Add(new Layer5Item { X = item.X, Y = item.Y, R = item.R, G = item.G, B = item.B });
                             }
                         }
-                        // Layer6 - 使用的 TilId（合併不重複的）
-                        foreach (var tilId in cell.S32Data.Layer6)
+                    }
+
+                    // Layer6 - 使用的 TilId（合併不重複的，這個是整個 S32 的）
+                    foreach (var tilId in s32Data.Layer6)
+                    {
+                        if (!layer6Clipboard.Contains(tilId))
                         {
-                            if (!layer6Clipboard.Contains(tilId))
-                            {
-                                layer6Clipboard.Add(tilId);
-                            }
+                            layer6Clipboard.Add(tilId);
                         }
-                        // Layer7 - 傳送點
-                        foreach (var item in cell.S32Data.Layer7)
+                    }
+
+                    // Layer7 - 傳送點（檢查 X, Y 是否在選取範圍內）
+                    foreach (var item in s32Data.Layer7)
+                    {
+                        // Layer7 的 X, Y 是 64x64 座標系
+                        if (localCells.Contains((item.X, item.Y)))
                         {
                             if (!layer7Clipboard.Any(l => l.Name == item.Name && l.X == item.X && l.Y == item.Y))
                             {
                                 layer7Clipboard.Add(new Layer7Item { Name = item.Name, X = item.X, Y = item.Y, TargetMapId = item.TargetMapId, PortalId = item.PortalId });
                             }
                         }
-                        // Layer8 - 特效
-                        foreach (var item in cell.S32Data.Layer8)
+                    }
+
+                    // Layer8 - 特效（檢查 X, Y 是否在選取範圍內）
+                    // Layer8 的 X, Y 可能是像素座標，需要轉換為格子座標
+                    foreach (var item in s32Data.Layer8)
+                    {
+                        // 假設 Layer8 的 X, Y 也是 64x64 座標系（如果是像素座標則需要除以 tile 大小）
+                        // 根據實際檔案格式，Layer8 座標可能需要調整
+                        int cellX = item.X;
+                        int cellY = item.Y;
+                        // 如果座標超過 64，可能是像素座標，需要除以某個係數（假設是 24）
+                        if (cellX >= 64 || cellY >= 64)
+                        {
+                            cellX = item.X / 24;  // 假設 tile 寬度
+                            cellY = item.Y / 24;  // 假設 tile 高度
+                        }
+                        if (localCells.Contains((cellX, cellY)))
                         {
                             if (!layer8Clipboard.Any(l => l.SprId == item.SprId && l.X == item.X && l.Y == item.Y))
                             {
@@ -9449,7 +9492,7 @@ namespace L1FlyMapViewer
             resultForm.ShowDialog();
         }
 
-        // 查看哪些 S32 有 Layer8 資料
+        // 查看與編輯第八層（特效）資料
         private void btnToolCheckL8_Click(object sender, EventArgs e)
         {
             if (allS32DataDict.Count == 0)
@@ -9476,106 +9519,261 @@ namespace L1FlyMapViewer
 
             // 顯示結果
             Form resultForm = new Form();
-            resultForm.Text = $"L8 檢查與清除 - {s32WithL8.Count} 個 S32 有資料";
-            resultForm.Size = new Size(700, 550);
+            resultForm.Text = $"L8 檢查、編輯與清除 - {s32WithL8.Count} 個 S32 有資料";
+            resultForm.Size = new Size(750, 600);
             resultForm.FormBorderStyle = FormBorderStyle.Sizable;
             resultForm.StartPosition = FormStartPosition.CenterParent;
 
             int totalItems = s32WithL8.Sum(x => x.count);
             Label lblSummary = new Label();
-            lblSummary.Text = $"共 {s32WithL8.Count} 個 S32 檔案有 Layer8（特效）資料，總計 {totalItems} 項。勾選要清除的項目：";
+            lblSummary.Text = $"共 {s32WithL8.Count} 個 S32 檔案有 Layer8（特效）資料，總計 {totalItems} 項。選取項目後可編輯或刪除：";
             lblSummary.Location = new Point(10, 10);
-            lblSummary.Size = new Size(660, 20);
+            lblSummary.Size = new Size(710, 20);
             resultForm.Controls.Add(lblSummary);
 
-            // 使用 CheckedListBox 來顯示可選擇的項目
-            CheckedListBox clbItems = new CheckedListBox();
-            clbItems.Location = new Point(10, 35);
-            clbItems.Size = new Size(660, 380);
-            clbItems.Font = new Font("Consolas", 9);
-            clbItems.CheckOnClick = true;
+            // 使用 ListView 來顯示詳細資訊
+            ListView lvItems = new ListView();
+            lvItems.Location = new Point(10, 35);
+            lvItems.Size = new Size(710, 350);
+            lvItems.Font = new Font("Consolas", 9);
+            lvItems.View = View.Details;
+            lvItems.FullRowSelect = true;
+            lvItems.CheckBoxes = true;
+            lvItems.Columns.Add("S32 檔案", 120);
+            lvItems.Columns.Add("SprId", 70);
+            lvItems.Columns.Add("X", 60);
+            lvItems.Columns.Add("Y", 60);
+            lvItems.Columns.Add("Unknown", 80);
 
-            // 儲存每個項目對應的資訊
-            List<(string filePath, int itemIndex, Layer8Item item)> itemInfoList =
-                new List<(string, int, Layer8Item)>();
+            List<(string filePath, Layer8Item item)> itemInfoList = new List<(string, Layer8Item)>();
 
             if (s32WithL8.Count == 0)
             {
-                clbItems.Items.Add("沒有任何 S32 檔案有 Layer8 資料");
-                clbItems.Enabled = false;
+                lvItems.Items.Add(new ListViewItem("沒有任何 S32 檔案有 Layer8 資料"));
+                lvItems.Enabled = false;
             }
             else
             {
                 foreach (var (filePath, fileName, count, items) in s32WithL8)
                 {
-                    for (int i = 0; i < items.Count; i++)
+                    foreach (var item in items)
                     {
-                        var item = items[i];
-                        string displayText = $"[{fileName}] SprId={item.SprId}, X={item.X}, Y={item.Y}, Unk={item.Unknown}";
-                        clbItems.Items.Add(displayText);
-                        itemInfoList.Add((filePath, i, item));
+                        ListViewItem lvi = new ListViewItem(fileName);
+                        lvi.SubItems.Add(item.SprId.ToString());
+                        lvi.SubItems.Add(item.X.ToString());
+                        lvi.SubItems.Add(item.Y.ToString());
+                        lvi.SubItems.Add(item.Unknown.ToString());
+                        lvi.Tag = (filePath, item);
+                        lvItems.Items.Add(lvi);
+                        itemInfoList.Add((filePath, item));
                     }
                 }
             }
-            resultForm.Controls.Add(clbItems);
+            resultForm.Controls.Add(lvItems);
 
-            // 全選/取消全選按鈕
+            // 編輯區域
+            GroupBox gbEdit = new GroupBox();
+            gbEdit.Text = "編輯選取的項目";
+            gbEdit.Location = new Point(10, 395);
+            gbEdit.Size = new Size(710, 80);
+
+            Label lblSprId = new Label { Text = "SprId:", Location = new Point(10, 28), Size = new Size(45, 20) };
+            TextBox txtSprId = new TextBox { Location = new Point(60, 25), Size = new Size(80, 23) };
+            Label lblX = new Label { Text = "X:", Location = new Point(155, 28), Size = new Size(20, 20) };
+            TextBox txtX = new TextBox { Location = new Point(175, 25), Size = new Size(80, 23) };
+            Label lblY = new Label { Text = "Y:", Location = new Point(270, 28), Size = new Size(20, 20) };
+            TextBox txtY = new TextBox { Location = new Point(290, 25), Size = new Size(80, 23) };
+            Label lblUnknown = new Label { Text = "Unknown:", Location = new Point(385, 28), Size = new Size(60, 20) };
+            TextBox txtUnknown = new TextBox { Location = new Point(450, 25), Size = new Size(80, 23) };
+
+            Button btnApplyEdit = new Button();
+            btnApplyEdit.Text = "套用修改";
+            btnApplyEdit.Location = new Point(550, 22);
+            btnApplyEdit.Size = new Size(80, 28);
+            btnApplyEdit.Click += (s, args) =>
+            {
+                if (lvItems.SelectedItems.Count != 1)
+                {
+                    MessageBox.Show("請選取一個項目進行編輯", "提示", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    return;
+                }
+
+                var lvi = lvItems.SelectedItems[0];
+                var (filePath, item) = ((string, Layer8Item))lvi.Tag;
+
+                if (!ushort.TryParse(txtSprId.Text, out ushort newSprId) ||
+                    !ushort.TryParse(txtX.Text, out ushort newX) ||
+                    !ushort.TryParse(txtY.Text, out ushort newY) ||
+                    !int.TryParse(txtUnknown.Text, out int newUnknown))
+                {
+                    MessageBox.Show("請輸入有效的數值", "錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+
+                // 更新資料
+                item.SprId = newSprId;
+                item.X = newX;
+                item.Y = newY;
+                item.Unknown = newUnknown;
+
+                // 更新 ListView 顯示
+                lvi.SubItems[1].Text = item.SprId.ToString();
+                lvi.SubItems[2].Text = item.X.ToString();
+                lvi.SubItems[3].Text = item.Y.ToString();
+                lvi.SubItems[4].Text = item.Unknown.ToString();
+
+                // 標記已修改
+                if (allS32DataDict.TryGetValue(filePath, out S32Data s32Data))
+                {
+                    s32Data.IsModified = true;
+                }
+
+                MessageBox.Show("已套用修改。請記得儲存 S32 檔案。", "完成", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            };
+
+            // 新增項目按鈕
+            Button btnAddNew = new Button();
+            btnAddNew.Text = "新增";
+            btnAddNew.Location = new Point(640, 22);
+            btnAddNew.Size = new Size(60, 28);
+            btnAddNew.Click += (s, args) =>
+            {
+                if (allS32DataDict.Count == 0)
+                {
+                    MessageBox.Show("請先載入地圖", "提示", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    return;
+                }
+
+                if (!ushort.TryParse(txtSprId.Text, out ushort newSprId) ||
+                    !ushort.TryParse(txtX.Text, out ushort newX) ||
+                    !ushort.TryParse(txtY.Text, out ushort newY) ||
+                    !int.TryParse(txtUnknown.Text, out int newUnknown))
+                {
+                    MessageBox.Show("請輸入有效的數值", "錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+
+                // 選擇要加入的 S32 檔案
+                var s32Files = allS32DataDict.Keys.Select(k => Path.GetFileName(k)).ToArray();
+                Form selectForm = new Form();
+                selectForm.Text = "選擇 S32 檔案";
+                selectForm.Size = new Size(300, 150);
+                selectForm.FormBorderStyle = FormBorderStyle.FixedDialog;
+                selectForm.StartPosition = FormStartPosition.CenterParent;
+
+                Label lblSelect = new Label { Text = "選擇要新增 Layer8 項目的 S32 檔案:", Location = new Point(10, 15), Size = new Size(260, 20) };
+                ComboBox cmbS32 = new ComboBox { Location = new Point(10, 40), Size = new Size(260, 23), DropDownStyle = ComboBoxStyle.DropDownList };
+                cmbS32.Items.AddRange(s32Files);
+                if (cmbS32.Items.Count > 0) cmbS32.SelectedIndex = 0;
+
+                Button btnOK = new Button { Text = "確定", Location = new Point(100, 75), Size = new Size(80, 28), DialogResult = DialogResult.OK };
+                selectForm.Controls.AddRange(new Control[] { lblSelect, cmbS32, btnOK });
+                selectForm.AcceptButton = btnOK;
+
+                if (selectForm.ShowDialog() == DialogResult.OK && cmbS32.SelectedIndex >= 0)
+                {
+                    string selectedFileName = cmbS32.SelectedItem.ToString();
+                    string selectedFilePath = allS32DataDict.Keys.FirstOrDefault(k => Path.GetFileName(k) == selectedFileName);
+
+                    if (selectedFilePath != null && allS32DataDict.TryGetValue(selectedFilePath, out S32Data s32Data))
+                    {
+                        Layer8Item newItem = new Layer8Item
+                        {
+                            SprId = newSprId,
+                            X = newX,
+                            Y = newY,
+                            Unknown = newUnknown
+                        };
+                        s32Data.Layer8.Add(newItem);
+                        s32Data.IsModified = true;
+
+                        // 更新 ListView
+                        ListViewItem lvi = new ListViewItem(selectedFileName);
+                        lvi.SubItems.Add(newItem.SprId.ToString());
+                        lvi.SubItems.Add(newItem.X.ToString());
+                        lvi.SubItems.Add(newItem.Y.ToString());
+                        lvi.SubItems.Add(newItem.Unknown.ToString());
+                        lvi.Tag = (selectedFilePath, newItem);
+                        lvItems.Items.Add(lvi);
+                        itemInfoList.Add((selectedFilePath, newItem));
+
+                        MessageBox.Show($"已新增 Layer8 項目到 {selectedFileName}。\n\n請記得儲存 S32 檔案。", "完成",
+                            MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    }
+                }
+            };
+
+            gbEdit.Controls.AddRange(new Control[] { lblSprId, txtSprId, lblX, txtX, lblY, txtY, lblUnknown, txtUnknown, btnApplyEdit, btnAddNew });
+            resultForm.Controls.Add(gbEdit);
+
+            // 選取項目時填入編輯區
+            lvItems.SelectedIndexChanged += (s, args) =>
+            {
+                if (lvItems.SelectedItems.Count == 1)
+                {
+                    var lvi = lvItems.SelectedItems[0];
+                    var (filePath, item) = ((string, Layer8Item))lvi.Tag;
+                    txtSprId.Text = item.SprId.ToString();
+                    txtX.Text = item.X.ToString();
+                    txtY.Text = item.Y.ToString();
+                    txtUnknown.Text = item.Unknown.ToString();
+                }
+            };
+
             Button btnSelectAll = new Button();
             btnSelectAll.Text = "全選";
-            btnSelectAll.Location = new Point(10, 425);
+            btnSelectAll.Location = new Point(10, 485);
             btnSelectAll.Size = new Size(80, 30);
             btnSelectAll.Click += (s, args) =>
             {
-                for (int i = 0; i < clbItems.Items.Count; i++)
-                    clbItems.SetItemChecked(i, true);
+                foreach (ListViewItem lvi in lvItems.Items)
+                    lvi.Checked = true;
             };
             resultForm.Controls.Add(btnSelectAll);
 
             Button btnDeselectAll = new Button();
             btnDeselectAll.Text = "取消全選";
-            btnDeselectAll.Location = new Point(100, 425);
+            btnDeselectAll.Location = new Point(100, 485);
             btnDeselectAll.Size = new Size(80, 30);
             btnDeselectAll.Click += (s, args) =>
             {
-                for (int i = 0; i < clbItems.Items.Count; i++)
-                    clbItems.SetItemChecked(i, false);
+                foreach (ListViewItem lvi in lvItems.Items)
+                    lvi.Checked = false;
             };
             resultForm.Controls.Add(btnDeselectAll);
 
-            // 清除選中項目按鈕
             Button btnClearSelected = new Button();
-            btnClearSelected.Text = "清除勾選項目";
-            btnClearSelected.Location = new Point(10, 465);
+            btnClearSelected.Text = "刪除勾選項目";
+            btnClearSelected.Location = new Point(10, 525);
             btnClearSelected.Size = new Size(120, 35);
             btnClearSelected.BackColor = Color.LightCoral;
             btnClearSelected.Enabled = s32WithL8.Count > 0;
             btnClearSelected.Click += (s, args) =>
             {
-                if (clbItems.CheckedIndices.Count == 0)
+                int checkedCount = lvItems.CheckedItems.Count;
+                if (checkedCount == 0)
                 {
-                    MessageBox.Show("請先勾選要清除的項目", "提示", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    MessageBox.Show("請先勾選要刪除的項目", "提示", MessageBoxButtons.OK, MessageBoxIcon.Information);
                     return;
                 }
 
                 var confirmResult = MessageBox.Show(
-                    $"確定要清除勾選的 {clbItems.CheckedIndices.Count} 個 Layer8 項目嗎？\n\n此操作無法 Undo。",
-                    "確認清除",
+                    $"確定要刪除勾選的 {checkedCount} 個 Layer8 項目嗎？",
+                    "確認刪除",
                     MessageBoxButtons.YesNo,
                     MessageBoxIcon.Warning);
 
                 if (confirmResult != DialogResult.Yes) return;
 
-                // 收集要刪除的項目（按檔案分組）
                 Dictionary<string, List<Layer8Item>> toRemove = new Dictionary<string, List<Layer8Item>>();
-                foreach (int idx in clbItems.CheckedIndices)
+                foreach (ListViewItem lvi in lvItems.CheckedItems)
                 {
-                    var info = itemInfoList[idx];
-                    if (!toRemove.ContainsKey(info.filePath))
-                        toRemove[info.filePath] = new List<Layer8Item>();
-                    toRemove[info.filePath].Add(info.item);
+                    var (filePath, item) = ((string, Layer8Item))lvi.Tag;
+                    if (!toRemove.ContainsKey(filePath))
+                        toRemove[filePath] = new List<Layer8Item>();
+                    toRemove[filePath].Add(item);
                 }
 
-                // 執行刪除
                 int removedCount = 0;
                 foreach (var kvp in toRemove)
                 {
@@ -9590,28 +9788,25 @@ namespace L1FlyMapViewer
                     }
                 }
 
-                MessageBox.Show($"已清除 {removedCount} 個 Layer8 項目。\n\n請記得儲存 S32 檔案。", "完成",
+                MessageBox.Show($"已刪除 {removedCount} 個 Layer8 項目。\n\n請記得儲存 S32 檔案。", "完成",
                     MessageBoxButtons.OK, MessageBoxIcon.Information);
 
                 resultForm.Close();
-
-                // 重繪地圖
                 RenderS32Map();
             };
             resultForm.Controls.Add(btnClearSelected);
 
-            // 清除全部按鈕
             Button btnClearAll = new Button();
-            btnClearAll.Text = "清除全部 L8";
-            btnClearAll.Location = new Point(140, 465);
+            btnClearAll.Text = "刪除全部 L8";
+            btnClearAll.Location = new Point(140, 525);
             btnClearAll.Size = new Size(120, 35);
             btnClearAll.BackColor = Color.Salmon;
             btnClearAll.Enabled = s32WithL8.Count > 0;
             btnClearAll.Click += (s, args) =>
             {
                 var confirmResult = MessageBox.Show(
-                    $"確定要清除所有 {totalItems} 個 Layer8 項目嗎？\n\n此操作無法 Undo。",
-                    "確認清除全部",
+                    $"確定要刪除所有 {totalItems} 個 Layer8 項目嗎？",
+                    "確認刪除全部",
                     MessageBoxButtons.YesNo,
                     MessageBoxIcon.Warning);
 
@@ -9628,7 +9823,7 @@ namespace L1FlyMapViewer
                     }
                 }
 
-                MessageBox.Show($"已清除 {removedCount} 個 Layer8 項目。\n\n請記得儲存 S32 檔案。", "完成",
+                MessageBox.Show($"已刪除 {removedCount} 個 Layer8 項目。\n\n請記得儲存 S32 檔案。", "完成",
                     MessageBoxButtons.OK, MessageBoxIcon.Information);
 
                 resultForm.Close();
@@ -9638,20 +9833,803 @@ namespace L1FlyMapViewer
 
             Button btnClose = new Button();
             btnClose.Text = "關閉";
-            btnClose.Location = new Point(580, 465);
+            btnClose.Location = new Point(630, 525);
             btnClose.Size = new Size(90, 35);
             btnClose.Click += (s, args) => resultForm.Close();
             resultForm.Controls.Add(btnClose);
 
-            // 處理視窗大小改變
             resultForm.Resize += (s, args) =>
             {
-                clbItems.Size = new Size(resultForm.ClientSize.Width - 20, resultForm.ClientSize.Height - 130);
-                btnSelectAll.Location = new Point(10, resultForm.ClientSize.Height - 85);
-                btnDeselectAll.Location = new Point(100, resultForm.ClientSize.Height - 85);
-                btnClearSelected.Location = new Point(10, resultForm.ClientSize.Height - 45);
-                btnClearAll.Location = new Point(140, resultForm.ClientSize.Height - 45);
+                lvItems.Size = new Size(resultForm.ClientSize.Width - 20, resultForm.ClientSize.Height - 210);
+                gbEdit.Location = new Point(10, resultForm.ClientSize.Height - 165);
+                gbEdit.Size = new Size(resultForm.ClientSize.Width - 20, 80);
+                btnSelectAll.Location = new Point(10, resultForm.ClientSize.Height - 75);
+                btnDeselectAll.Location = new Point(100, resultForm.ClientSize.Height - 75);
+                btnClearSelected.Location = new Point(10, resultForm.ClientSize.Height - 35);
+                btnClearAll.Location = new Point(140, resultForm.ClientSize.Height - 35);
+                btnClose.Location = new Point(resultForm.ClientSize.Width - 100, resultForm.ClientSize.Height - 35);
+            };
+
+            resultForm.ShowDialog();
+        }
+
+        // 查看與編輯第一層（地板圖塊）資料
+        private void btnToolCheckL1_Click(object sender, EventArgs e)
+        {
+            if (allS32DataDict.Count == 0)
+            {
+                MessageBox.Show("請先載入地圖", "提示", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            // 顯示結果
+            Form resultForm = new Form();
+            resultForm.Text = $"L1 檢查與編輯 - {allS32DataDict.Count} 個 S32 檔案";
+            resultForm.Size = new Size(750, 550);
+            resultForm.FormBorderStyle = FormBorderStyle.Sizable;
+            resultForm.StartPosition = FormStartPosition.CenterParent;
+
+            Label lblSummary = new Label();
+            lblSummary.Text = $"共 {allS32DataDict.Count} 個 S32 檔案。選擇 S32 檔案後可編輯指定座標的 Layer1 資料：";
+            lblSummary.Location = new Point(10, 10);
+            lblSummary.Size = new Size(710, 20);
+            resultForm.Controls.Add(lblSummary);
+
+            // S32 檔案選擇清單
+            Label lblS32 = new Label { Text = "S32 檔案:", Location = new Point(10, 40), Size = new Size(70, 20) };
+            resultForm.Controls.Add(lblS32);
+
+            ComboBox cmbS32Files = new ComboBox();
+            cmbS32Files.Location = new Point(85, 37);
+            cmbS32Files.Size = new Size(200, 23);
+            cmbS32Files.DropDownStyle = ComboBoxStyle.DropDownList;
+            foreach (var kvp in allS32DataDict)
+            {
+                cmbS32Files.Items.Add(Path.GetFileName(kvp.Key));
+            }
+            if (cmbS32Files.Items.Count > 0)
+                cmbS32Files.SelectedIndex = 0;
+            resultForm.Controls.Add(cmbS32Files);
+
+            // 座標輸入
+            Label lblLocX = new Label { Text = "X:", Location = new Point(300, 40), Size = new Size(20, 20) };
+            TextBox txtLocX = new TextBox { Location = new Point(325, 37), Size = new Size(50, 23), Text = "0" };
+            Label lblLocY = new Label { Text = "Y:", Location = new Point(385, 40), Size = new Size(20, 20) };
+            TextBox txtLocY = new TextBox { Location = new Point(410, 37), Size = new Size(50, 23), Text = "0" };
+            resultForm.Controls.AddRange(new Control[] { lblLocX, txtLocX, lblLocY, txtLocY });
+
+            Button btnQuery = new Button();
+            btnQuery.Text = "查詢";
+            btnQuery.Location = new Point(470, 35);
+            btnQuery.Size = new Size(60, 27);
+            resultForm.Controls.Add(btnQuery);
+
+            // 結果顯示區
+            GroupBox gbResult = new GroupBox();
+            gbResult.Text = "查詢結果 / 編輯區域";
+            gbResult.Location = new Point(10, 75);
+            gbResult.Size = new Size(710, 120);
+
+            Label lblResultInfo = new Label { Text = "請選擇 S32 檔案並輸入座標後點擊「查詢」", Location = new Point(10, 25), Size = new Size(400, 20) };
+            gbResult.Controls.Add(lblResultInfo);
+
+            Label lblTileId = new Label { Text = "TileId:", Location = new Point(10, 55), Size = new Size(50, 20) };
+            TextBox txtTileId = new TextBox { Location = new Point(65, 52), Size = new Size(80, 23), Enabled = false };
+            Label lblIndexId = new Label { Text = "IndexId:", Location = new Point(160, 55), Size = new Size(55, 20) };
+            TextBox txtIndexId = new TextBox { Location = new Point(220, 52), Size = new Size(80, 23), Enabled = false };
+            gbResult.Controls.AddRange(new Control[] { lblTileId, txtTileId, lblIndexId, txtIndexId });
+
+            Button btnApplyEdit = new Button();
+            btnApplyEdit.Text = "套用修改";
+            btnApplyEdit.Location = new Point(320, 50);
+            btnApplyEdit.Size = new Size(80, 28);
+            btnApplyEdit.Enabled = false;
+            gbResult.Controls.Add(btnApplyEdit);
+
+            resultForm.Controls.Add(gbResult);
+
+            // 批量修改區域
+            GroupBox gbBatch = new GroupBox();
+            gbBatch.Text = "批量替換 TileId";
+            gbBatch.Location = new Point(10, 205);
+            gbBatch.Size = new Size(710, 80);
+
+            Label lblOldTileId = new Label { Text = "原 TileId:", Location = new Point(10, 30), Size = new Size(60, 20) };
+            TextBox txtOldTileId = new TextBox { Location = new Point(75, 27), Size = new Size(80, 23) };
+            Label lblNewTileId = new Label { Text = "新 TileId:", Location = new Point(170, 30), Size = new Size(60, 20) };
+            TextBox txtNewTileId = new TextBox { Location = new Point(235, 27), Size = new Size(80, 23) };
+            Label lblBatchScope = new Label { Text = "範圍:", Location = new Point(330, 30), Size = new Size(40, 20) };
+            ComboBox cmbBatchScope = new ComboBox { Location = new Point(375, 27), Size = new Size(150, 23), DropDownStyle = ComboBoxStyle.DropDownList };
+            cmbBatchScope.Items.Add("當前選擇的 S32");
+            cmbBatchScope.Items.Add("所有 S32 檔案");
+            cmbBatchScope.SelectedIndex = 0;
+
+            Button btnBatchReplace = new Button();
+            btnBatchReplace.Text = "批量替換";
+            btnBatchReplace.Location = new Point(540, 25);
+            btnBatchReplace.Size = new Size(80, 28);
+            btnBatchReplace.BackColor = Color.LightYellow;
+
+            gbBatch.Controls.AddRange(new Control[] { lblOldTileId, txtOldTileId, lblNewTileId, txtNewTileId, lblBatchScope, cmbBatchScope, btnBatchReplace });
+            resultForm.Controls.Add(gbBatch);
+
+            // 統計資訊
+            GroupBox gbStats = new GroupBox();
+            gbStats.Text = "統計資訊";
+            gbStats.Location = new Point(10, 295);
+            gbStats.Size = new Size(710, 160);
+
+            ListView lvStats = new ListView();
+            lvStats.Location = new Point(10, 20);
+            lvStats.Size = new Size(690, 130);
+            lvStats.Font = new Font("Consolas", 9);
+            lvStats.View = View.Details;
+            lvStats.FullRowSelect = true;
+            lvStats.Columns.Add("TileId", 80);
+            lvStats.Columns.Add("使用次數", 80);
+            lvStats.Columns.Add("IndexId", 80);
+            gbStats.Controls.Add(lvStats);
+
+            resultForm.Controls.Add(gbStats);
+
+            Button btnClose = new Button();
+            btnClose.Text = "關閉";
+            btnClose.Location = new Point(630, 465);
+            btnClose.Size = new Size(90, 35);
+            btnClose.Click += (s, args) => resultForm.Close();
+            resultForm.Controls.Add(btnClose);
+
+            // 當前查詢的 TileCell
+            TileCell currentCell = null;
+            string currentFilePath = null;
+            int currentX = -1, currentY = -1;
+
+            // 更新統計資訊
+            Action updateStats = () =>
+            {
+                lvStats.Items.Clear();
+                if (cmbS32Files.SelectedItem == null) return;
+
+                string selectedFileName = cmbS32Files.SelectedItem.ToString();
+                string selectedFilePath = allS32DataDict.Keys.FirstOrDefault(k => Path.GetFileName(k) == selectedFileName);
+                if (selectedFilePath == null || !allS32DataDict.TryGetValue(selectedFilePath, out S32Data s32Data)) return;
+
+                // 統計 TileId 使用次數
+                Dictionary<int, (int count, int indexId)> tileStats = new Dictionary<int, (int, int)>();
+                for (int y = 0; y < 64; y++)
+                {
+                    for (int x = 0; x < 128; x++)
+                    {
+                        var cell = s32Data.Layer1[y, x];
+                        if (cell != null)
+                        {
+                            if (!tileStats.ContainsKey(cell.TileId))
+                                tileStats[cell.TileId] = (1, cell.IndexId);
+                            else
+                                tileStats[cell.TileId] = (tileStats[cell.TileId].count + 1, cell.IndexId);
+                        }
+                    }
+                }
+
+                // 排序顯示
+                foreach (var kvp in tileStats.OrderByDescending(k => k.Value.count))
+                {
+                    ListViewItem lvi = new ListViewItem(kvp.Key.ToString());
+                    lvi.SubItems.Add(kvp.Value.count.ToString());
+                    lvi.SubItems.Add(kvp.Value.indexId.ToString());
+                    lvStats.Items.Add(lvi);
+                }
+            };
+
+            // 查詢按鈕事件
+            btnQuery.Click += (s, args) =>
+            {
+                if (cmbS32Files.SelectedItem == null)
+                {
+                    MessageBox.Show("請選擇 S32 檔案", "提示", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    return;
+                }
+
+                if (!int.TryParse(txtLocX.Text, out int locX) || !int.TryParse(txtLocY.Text, out int locY))
+                {
+                    MessageBox.Show("請輸入有效的座標", "錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+
+                if (locX < 0 || locX >= 128 || locY < 0 || locY >= 64)
+                {
+                    MessageBox.Show("座標超出範圍。X 範圍: 0-127, Y 範圍: 0-63", "錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+
+                string selectedFileName = cmbS32Files.SelectedItem.ToString();
+                string selectedFilePath = allS32DataDict.Keys.FirstOrDefault(k => Path.GetFileName(k) == selectedFileName);
+                if (selectedFilePath == null || !allS32DataDict.TryGetValue(selectedFilePath, out S32Data s32Data))
+                {
+                    MessageBox.Show("無法載入 S32 資料", "錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+
+                var cell = s32Data.Layer1[locY, locX];
+                if (cell == null)
+                {
+                    lblResultInfo.Text = $"座標 ({locX}, {locY}) 無資料";
+                    txtTileId.Text = "";
+                    txtIndexId.Text = "";
+                    txtTileId.Enabled = false;
+                    txtIndexId.Enabled = false;
+                    btnApplyEdit.Enabled = false;
+                    currentCell = null;
+                }
+                else
+                {
+                    lblResultInfo.Text = $"座標 ({locX}, {locY}) 的 Layer1 資料：";
+                    txtTileId.Text = cell.TileId.ToString();
+                    txtIndexId.Text = cell.IndexId.ToString();
+                    txtTileId.Enabled = true;
+                    txtIndexId.Enabled = true;
+                    btnApplyEdit.Enabled = true;
+                    currentCell = cell;
+                    currentFilePath = selectedFilePath;
+                    currentX = locX;
+                    currentY = locY;
+                }
+            };
+
+            // 套用修改按鈕事件
+            btnApplyEdit.Click += (s, args) =>
+            {
+                if (currentCell == null || currentFilePath == null)
+                {
+                    MessageBox.Show("請先查詢一個有效的座標", "提示", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    return;
+                }
+
+                if (!int.TryParse(txtTileId.Text, out int newTileId) || !int.TryParse(txtIndexId.Text, out int newIndexId))
+                {
+                    MessageBox.Show("請輸入有效的數值", "錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+
+                currentCell.TileId = newTileId;
+                currentCell.IndexId = newIndexId;
+
+                if (allS32DataDict.TryGetValue(currentFilePath, out S32Data s32Data))
+                {
+                    s32Data.IsModified = true;
+                }
+
+                MessageBox.Show($"已修改座標 ({currentX}, {currentY}) 的 Layer1 資料。\n\n請記得儲存 S32 檔案。", "完成",
+                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+
+                updateStats();
+            };
+
+            // 批量替換按鈕事件
+            btnBatchReplace.Click += (s, args) =>
+            {
+                if (!int.TryParse(txtOldTileId.Text, out int oldTileId) || !int.TryParse(txtNewTileId.Text, out int newTileId))
+                {
+                    MessageBox.Show("請輸入有效的 TileId", "錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+
+                bool allFiles = cmbBatchScope.SelectedIndex == 1;
+                int replacedCount = 0;
+
+                if (allFiles)
+                {
+                    var confirmResult = MessageBox.Show(
+                        $"確定要在所有 S32 檔案中將 TileId {oldTileId} 替換為 {newTileId} 嗎？",
+                        "確認批量替換",
+                        MessageBoxButtons.YesNo,
+                        MessageBoxIcon.Warning);
+                    if (confirmResult != DialogResult.Yes) return;
+
+                    foreach (var kvp in allS32DataDict)
+                    {
+                        S32Data s32Data = kvp.Value;
+                        for (int y = 0; y < 64; y++)
+                        {
+                            for (int x = 0; x < 128; x++)
+                            {
+                                var cell = s32Data.Layer1[y, x];
+                                if (cell != null && cell.TileId == oldTileId)
+                                {
+                                    cell.TileId = newTileId;
+                                    replacedCount++;
+                                }
+                            }
+                        }
+                        if (replacedCount > 0)
+                            s32Data.IsModified = true;
+                    }
+                }
+                else
+                {
+                    if (cmbS32Files.SelectedItem == null)
+                    {
+                        MessageBox.Show("請選擇 S32 檔案", "提示", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        return;
+                    }
+
+                    string selectedFileName = cmbS32Files.SelectedItem.ToString();
+                    string selectedFilePath = allS32DataDict.Keys.FirstOrDefault(k => Path.GetFileName(k) == selectedFileName);
+                    if (selectedFilePath == null || !allS32DataDict.TryGetValue(selectedFilePath, out S32Data s32Data))
+                    {
+                        MessageBox.Show("無法載入 S32 資料", "錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        return;
+                    }
+
+                    var confirmResult = MessageBox.Show(
+                        $"確定要在 {selectedFileName} 中將 TileId {oldTileId} 替換為 {newTileId} 嗎？",
+                        "確認批量替換",
+                        MessageBoxButtons.YesNo,
+                        MessageBoxIcon.Warning);
+                    if (confirmResult != DialogResult.Yes) return;
+
+                    for (int y = 0; y < 64; y++)
+                    {
+                        for (int x = 0; x < 128; x++)
+                        {
+                            var cell = s32Data.Layer1[y, x];
+                            if (cell != null && cell.TileId == oldTileId)
+                            {
+                                cell.TileId = newTileId;
+                                replacedCount++;
+                            }
+                        }
+                    }
+                    if (replacedCount > 0)
+                        s32Data.IsModified = true;
+                }
+
+                MessageBox.Show($"已替換 {replacedCount} 個 Layer1 項目。\n\n請記得儲存 S32 檔案。", "完成",
+                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+
+                updateStats();
+                RenderS32Map();
+            };
+
+            // S32 檔案選擇變更時更新統計
+            cmbS32Files.SelectedIndexChanged += (s, args) =>
+            {
+                updateStats();
+                // 清除查詢結果
+                lblResultInfo.Text = "請選擇 S32 檔案並輸入座標後點擊「查詢」";
+                txtTileId.Text = "";
+                txtIndexId.Text = "";
+                txtTileId.Enabled = false;
+                txtIndexId.Enabled = false;
+                btnApplyEdit.Enabled = false;
+                currentCell = null;
+            };
+
+            // 初始載入統計
+            updateStats();
+
+            resultForm.Resize += (s, args) =>
+            {
+                gbResult.Size = new Size(resultForm.ClientSize.Width - 20, 120);
+                gbBatch.Size = new Size(resultForm.ClientSize.Width - 20, 80);
+                gbBatch.Location = new Point(10, 205);
+                gbStats.Size = new Size(resultForm.ClientSize.Width - 20, resultForm.ClientSize.Height - 350);
+                gbStats.Location = new Point(10, 295);
+                lvStats.Size = new Size(gbStats.Width - 20, gbStats.Height - 30);
                 btnClose.Location = new Point(resultForm.ClientSize.Width - 100, resultForm.ClientSize.Height - 45);
+            };
+
+            resultForm.ShowDialog();
+        }
+
+        // 查看與編輯第四層（物件）資料
+        private void btnToolCheckL4_Click(object sender, EventArgs e)
+        {
+            if (allS32DataDict.Count == 0)
+            {
+                MessageBox.Show("請先載入地圖", "提示", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            // 收集所有 Layer4 資料
+            List<(string filePath, string fileName, List<ObjectTile> items)> s32WithL4 =
+                new List<(string, string, List<ObjectTile>)>();
+
+            foreach (var kvp in allS32DataDict)
+            {
+                string filePath = kvp.Key;
+                string fileName = Path.GetFileName(kvp.Key);
+                S32Data s32Data = kvp.Value;
+
+                if (s32Data.Layer4.Count > 0)
+                {
+                    s32WithL4.Add((filePath, fileName, s32Data.Layer4.ToList()));
+                }
+            }
+
+            // 顯示結果
+            Form resultForm = new Form();
+            resultForm.Text = $"L4 檢查、編輯與清除 - {s32WithL4.Count} 個 S32 有資料";
+            resultForm.Size = new Size(900, 650);
+            resultForm.FormBorderStyle = FormBorderStyle.Sizable;
+            resultForm.StartPosition = FormStartPosition.CenterParent;
+
+            int totalItems = s32WithL4.Sum(x => x.items.Count);
+            Label lblSummary = new Label();
+            lblSummary.Text = $"共 {s32WithL4.Count} 個 S32 檔案有 Layer4（物件）資料，總計 {totalItems} 項。選取項目後可編輯或刪除：";
+            lblSummary.Location = new Point(10, 10);
+            lblSummary.Size = new Size(860, 20);
+            resultForm.Controls.Add(lblSummary);
+
+            // 使用 ListView 來顯示詳細資訊
+            ListView lvItems = new ListView();
+            lvItems.Location = new Point(10, 35);
+            lvItems.Size = new Size(860, 380);
+            lvItems.Font = new Font("Consolas", 9);
+            lvItems.View = View.Details;
+            lvItems.FullRowSelect = true;
+            lvItems.CheckBoxes = true;
+            lvItems.Columns.Add("S32 檔案", 100);
+            lvItems.Columns.Add("GroupId", 65);
+            lvItems.Columns.Add("X", 50);
+            lvItems.Columns.Add("Y", 50);
+            lvItems.Columns.Add("Layer", 50);
+            lvItems.Columns.Add("IndexId", 65);
+            lvItems.Columns.Add("TileId", 65);
+
+            List<(string filePath, ObjectTile item)> itemInfoList = new List<(string, ObjectTile)>();
+
+            if (s32WithL4.Count == 0)
+            {
+                lvItems.Items.Add(new ListViewItem("沒有任何 S32 檔案有 Layer4 資料"));
+                lvItems.Enabled = false;
+            }
+            else
+            {
+                foreach (var (filePath, fileName, items) in s32WithL4)
+                {
+                    foreach (var item in items)
+                    {
+                        ListViewItem lvi = new ListViewItem(fileName);
+                        lvi.SubItems.Add(item.GroupId.ToString());
+                        lvi.SubItems.Add(item.X.ToString());
+                        lvi.SubItems.Add(item.Y.ToString());
+                        lvi.SubItems.Add(item.Layer.ToString());
+                        lvi.SubItems.Add(item.IndexId.ToString());
+                        lvi.SubItems.Add(item.TileId.ToString());
+                        lvi.Tag = (filePath, item);
+                        lvItems.Items.Add(lvi);
+                        itemInfoList.Add((filePath, item));
+                    }
+                }
+            }
+            resultForm.Controls.Add(lvItems);
+
+            // 編輯區域
+            GroupBox gbEdit = new GroupBox();
+            gbEdit.Text = "編輯選取的項目";
+            gbEdit.Location = new Point(10, 425);
+            gbEdit.Size = new Size(860, 80);
+
+            Label lblGroupId = new Label { Text = "GroupId:", Location = new Point(10, 25), Size = new Size(55, 20) };
+            TextBox txtGroupId = new TextBox { Location = new Point(70, 22), Size = new Size(60, 23) };
+            Label lblX = new Label { Text = "X:", Location = new Point(140, 25), Size = new Size(20, 20) };
+            TextBox txtX = new TextBox { Location = new Point(160, 22), Size = new Size(50, 23) };
+            Label lblY = new Label { Text = "Y:", Location = new Point(220, 25), Size = new Size(20, 20) };
+            TextBox txtY = new TextBox { Location = new Point(240, 22), Size = new Size(50, 23) };
+            Label lblLayer = new Label { Text = "Layer:", Location = new Point(300, 25), Size = new Size(40, 20) };
+            TextBox txtLayer = new TextBox { Location = new Point(345, 22), Size = new Size(50, 23) };
+            Label lblIndexId = new Label { Text = "IndexId:", Location = new Point(405, 25), Size = new Size(50, 20) };
+            TextBox txtIndexId = new TextBox { Location = new Point(460, 22), Size = new Size(60, 23) };
+            Label lblTileId = new Label { Text = "TileId:", Location = new Point(530, 25), Size = new Size(40, 20) };
+            TextBox txtTileId = new TextBox { Location = new Point(575, 22), Size = new Size(70, 23) };
+
+            Button btnApplyEdit = new Button();
+            btnApplyEdit.Text = "套用修改";
+            btnApplyEdit.Location = new Point(660, 20);
+            btnApplyEdit.Size = new Size(80, 28);
+            btnApplyEdit.Click += (s, args) =>
+            {
+                if (lvItems.SelectedItems.Count != 1)
+                {
+                    MessageBox.Show("請選取一個項目進行編輯", "提示", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    return;
+                }
+
+                var lvi = lvItems.SelectedItems[0];
+                var (filePath, item) = ((string, ObjectTile))lvi.Tag;
+
+                if (!int.TryParse(txtGroupId.Text, out int newGroupId) ||
+                    !int.TryParse(txtX.Text, out int newX) ||
+                    !int.TryParse(txtY.Text, out int newY) ||
+                    !int.TryParse(txtLayer.Text, out int newLayer) ||
+                    !int.TryParse(txtIndexId.Text, out int newIndexId) ||
+                    !int.TryParse(txtTileId.Text, out int newTileId))
+                {
+                    MessageBox.Show("請輸入有效的數值", "錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+
+                // 更新資料
+                item.GroupId = newGroupId;
+                item.X = newX;
+                item.Y = newY;
+                item.Layer = newLayer;
+                item.IndexId = newIndexId;
+                item.TileId = newTileId;
+
+                // 更新 ListView 顯示
+                lvi.SubItems[1].Text = item.GroupId.ToString();
+                lvi.SubItems[2].Text = item.X.ToString();
+                lvi.SubItems[3].Text = item.Y.ToString();
+                lvi.SubItems[4].Text = item.Layer.ToString();
+                lvi.SubItems[5].Text = item.IndexId.ToString();
+                lvi.SubItems[6].Text = item.TileId.ToString();
+
+                // 標記已修改
+                if (allS32DataDict.TryGetValue(filePath, out S32Data s32Data))
+                {
+                    s32Data.IsModified = true;
+                }
+
+                MessageBox.Show("已套用修改。請記得儲存 S32 檔案。", "完成", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            };
+
+            // 新增項目按鈕
+            Button btnAddNew = new Button();
+            btnAddNew.Text = "新增";
+            btnAddNew.Location = new Point(760, 20);
+            btnAddNew.Size = new Size(80, 28);
+            btnAddNew.Click += (s, args) =>
+            {
+                // 選擇要新增到哪個 S32 檔案
+                Form selectForm = new Form();
+                selectForm.Text = "選擇 S32 檔案";
+                selectForm.Size = new Size(400, 350);
+                selectForm.FormBorderStyle = FormBorderStyle.FixedDialog;
+                selectForm.StartPosition = FormStartPosition.CenterParent;
+                selectForm.MaximizeBox = false;
+                selectForm.MinimizeBox = false;
+
+                Label lblSelect = new Label();
+                lblSelect.Text = "選擇要新增 Layer4 項目的 S32 檔案：";
+                lblSelect.Location = new Point(10, 10);
+                lblSelect.Size = new Size(360, 20);
+                selectForm.Controls.Add(lblSelect);
+
+                ListBox lbS32Files = new ListBox();
+                lbS32Files.Location = new Point(10, 35);
+                lbS32Files.Size = new Size(360, 220);
+                foreach (var kvp in allS32DataDict)
+                {
+                    lbS32Files.Items.Add(Path.GetFileName(kvp.Key));
+                }
+                if (lbS32Files.Items.Count > 0)
+                    lbS32Files.SelectedIndex = 0;
+                selectForm.Controls.Add(lbS32Files);
+
+                Button btnOK = new Button();
+                btnOK.Text = "確定";
+                btnOK.Location = new Point(100, 265);
+                btnOK.Size = new Size(80, 30);
+                btnOK.DialogResult = DialogResult.OK;
+                selectForm.Controls.Add(btnOK);
+
+                Button btnCancel = new Button();
+                btnCancel.Text = "取消";
+                btnCancel.Location = new Point(200, 265);
+                btnCancel.Size = new Size(80, 30);
+                btnCancel.DialogResult = DialogResult.Cancel;
+                selectForm.Controls.Add(btnCancel);
+
+                selectForm.AcceptButton = btnOK;
+                selectForm.CancelButton = btnCancel;
+
+                if (selectForm.ShowDialog() == DialogResult.OK && lbS32Files.SelectedItem != null)
+                {
+                    string selectedFileName = lbS32Files.SelectedItem.ToString();
+                    string selectedFilePath = allS32DataDict.Keys.FirstOrDefault(k => Path.GetFileName(k) == selectedFileName);
+
+                    if (selectedFilePath != null && allS32DataDict.TryGetValue(selectedFilePath, out S32Data s32Data))
+                    {
+                        // 驗證輸入
+                        if (!int.TryParse(txtGroupId.Text, out int newGroupId))
+                            newGroupId = 0;
+                        if (!int.TryParse(txtX.Text, out int newX))
+                            newX = 0;
+                        if (!int.TryParse(txtY.Text, out int newY))
+                            newY = 0;
+                        if (!int.TryParse(txtLayer.Text, out int newLayer))
+                            newLayer = 0;
+                        if (!int.TryParse(txtIndexId.Text, out int newIndexId))
+                            newIndexId = 0;
+                        if (!int.TryParse(txtTileId.Text, out int newTileId))
+                            newTileId = 0;
+
+                        // 建立新項目
+                        ObjectTile newItem = new ObjectTile
+                        {
+                            GroupId = newGroupId,
+                            X = newX,
+                            Y = newY,
+                            Layer = newLayer,
+                            IndexId = newIndexId,
+                            TileId = newTileId
+                        };
+
+                        // 加入 S32 資料
+                        s32Data.Layer4.Add(newItem);
+                        s32Data.IsModified = true;
+
+                        // 更新 ListView
+                        ListViewItem newLvi = new ListViewItem(selectedFileName);
+                        newLvi.SubItems.Add(newItem.GroupId.ToString());
+                        newLvi.SubItems.Add(newItem.X.ToString());
+                        newLvi.SubItems.Add(newItem.Y.ToString());
+                        newLvi.SubItems.Add(newItem.Layer.ToString());
+                        newLvi.SubItems.Add(newItem.IndexId.ToString());
+                        newLvi.SubItems.Add(newItem.TileId.ToString());
+                        newLvi.Tag = (selectedFilePath, newItem);
+                        lvItems.Items.Add(newLvi);
+                        itemInfoList.Add((selectedFilePath, newItem));
+
+                        // 選取新增的項目
+                        newLvi.Selected = true;
+                        newLvi.EnsureVisible();
+
+                        MessageBox.Show($"已新增 Layer4 項目到 {selectedFileName}。\n\n請記得儲存 S32 檔案。", "完成",
+                            MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    }
+                }
+            };
+
+            gbEdit.Controls.AddRange(new Control[] { lblGroupId, txtGroupId, lblX, txtX, lblY, txtY, lblLayer, txtLayer, lblIndexId, txtIndexId, lblTileId, txtTileId, btnApplyEdit, btnAddNew });
+            resultForm.Controls.Add(gbEdit);
+
+            // 選取項目時填入編輯區
+            lvItems.SelectedIndexChanged += (s, args) =>
+            {
+                if (lvItems.SelectedItems.Count == 1)
+                {
+                    var lvi = lvItems.SelectedItems[0];
+                    var (filePath, item) = ((string, ObjectTile))lvi.Tag;
+                    txtGroupId.Text = item.GroupId.ToString();
+                    txtX.Text = item.X.ToString();
+                    txtY.Text = item.Y.ToString();
+                    txtLayer.Text = item.Layer.ToString();
+                    txtIndexId.Text = item.IndexId.ToString();
+                    txtTileId.Text = item.TileId.ToString();
+                }
+            };
+
+            Button btnSelectAll = new Button();
+            btnSelectAll.Text = "全選";
+            btnSelectAll.Location = new Point(10, 515);
+            btnSelectAll.Size = new Size(80, 30);
+            btnSelectAll.Click += (s, args) =>
+            {
+                foreach (ListViewItem lvi in lvItems.Items)
+                    lvi.Checked = true;
+            };
+            resultForm.Controls.Add(btnSelectAll);
+
+            Button btnDeselectAll = new Button();
+            btnDeselectAll.Text = "取消全選";
+            btnDeselectAll.Location = new Point(100, 515);
+            btnDeselectAll.Size = new Size(80, 30);
+            btnDeselectAll.Click += (s, args) =>
+            {
+                foreach (ListViewItem lvi in lvItems.Items)
+                    lvi.Checked = false;
+            };
+            resultForm.Controls.Add(btnDeselectAll);
+
+            Button btnClearSelected = new Button();
+            btnClearSelected.Text = "刪除勾選項目";
+            btnClearSelected.Location = new Point(10, 555);
+            btnClearSelected.Size = new Size(120, 35);
+            btnClearSelected.BackColor = Color.LightCoral;
+            btnClearSelected.Enabled = s32WithL4.Count > 0;
+            btnClearSelected.Click += (s, args) =>
+            {
+                int checkedCount = lvItems.CheckedItems.Count;
+                if (checkedCount == 0)
+                {
+                    MessageBox.Show("請先勾選要刪除的項目", "提示", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    return;
+                }
+
+                var confirmResult = MessageBox.Show(
+                    $"確定要刪除勾選的 {checkedCount} 個 Layer4 項目嗎？",
+                    "確認刪除",
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Warning);
+
+                if (confirmResult != DialogResult.Yes) return;
+
+                Dictionary<string, List<ObjectTile>> toRemove = new Dictionary<string, List<ObjectTile>>();
+                foreach (ListViewItem lvi in lvItems.CheckedItems)
+                {
+                    var (filePath, item) = ((string, ObjectTile))lvi.Tag;
+                    if (!toRemove.ContainsKey(filePath))
+                        toRemove[filePath] = new List<ObjectTile>();
+                    toRemove[filePath].Add(item);
+                }
+
+                int removedCount = 0;
+                foreach (var kvp in toRemove)
+                {
+                    if (allS32DataDict.TryGetValue(kvp.Key, out S32Data s32Data))
+                    {
+                        foreach (var item in kvp.Value)
+                        {
+                            if (s32Data.Layer4.Remove(item))
+                                removedCount++;
+                        }
+                        s32Data.IsModified = true;
+                    }
+                }
+
+                MessageBox.Show($"已刪除 {removedCount} 個 Layer4 項目。\n\n請記得儲存 S32 檔案。", "完成",
+                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+
+                resultForm.Close();
+                RenderS32Map();
+            };
+            resultForm.Controls.Add(btnClearSelected);
+
+            Button btnClearAll = new Button();
+            btnClearAll.Text = "刪除全部 L4";
+            btnClearAll.Location = new Point(140, 555);
+            btnClearAll.Size = new Size(120, 35);
+            btnClearAll.BackColor = Color.Salmon;
+            btnClearAll.Enabled = s32WithL4.Count > 0;
+            btnClearAll.Click += (s, args) =>
+            {
+                var confirmResult = MessageBox.Show(
+                    $"確定要刪除所有 {totalItems} 個 Layer4 項目嗎？",
+                    "確認刪除全部",
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Warning);
+
+                if (confirmResult != DialogResult.Yes) return;
+
+                int removedCount = 0;
+                foreach (var (filePath, fileName, items) in s32WithL4)
+                {
+                    if (allS32DataDict.TryGetValue(filePath, out S32Data s32Data))
+                    {
+                        removedCount += s32Data.Layer4.Count;
+                        s32Data.Layer4.Clear();
+                        s32Data.IsModified = true;
+                    }
+                }
+
+                MessageBox.Show($"已刪除 {removedCount} 個 Layer4 項目。\n\n請記得儲存 S32 檔案。", "完成",
+                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+
+                resultForm.Close();
+                RenderS32Map();
+            };
+            resultForm.Controls.Add(btnClearAll);
+
+            Button btnClose = new Button();
+            btnClose.Text = "關閉";
+            btnClose.Location = new Point(780, 555);
+            btnClose.Size = new Size(90, 35);
+            btnClose.Click += (s, args) => resultForm.Close();
+            resultForm.Controls.Add(btnClose);
+
+            resultForm.Resize += (s, args) =>
+            {
+                lvItems.Size = new Size(resultForm.ClientSize.Width - 20, resultForm.ClientSize.Height - 230);
+                gbEdit.Location = new Point(10, resultForm.ClientSize.Height - 185);
+                gbEdit.Size = new Size(resultForm.ClientSize.Width - 20, 80);
+                btnSelectAll.Location = new Point(10, resultForm.ClientSize.Height - 95);
+                btnDeselectAll.Location = new Point(100, resultForm.ClientSize.Height - 95);
+                btnClearSelected.Location = new Point(10, resultForm.ClientSize.Height - 55);
+                btnClearAll.Location = new Point(140, resultForm.ClientSize.Height - 55);
+                btnClose.Location = new Point(resultForm.ClientSize.Width - 100, resultForm.ClientSize.Height - 55);
             };
 
             resultForm.ShowDialog();
@@ -10000,7 +10978,109 @@ namespace L1FlyMapViewer
                 MessageBox.Show("已套用修改。請記得儲存 S32 檔案。", "完成", MessageBoxButtons.OK, MessageBoxIcon.Information);
             };
 
-            gbEdit.Controls.AddRange(new Control[] { lblName, txtName, lblX, txtX, lblY, txtY, lblTarget, txtTarget, lblPortal, txtPortal, btnApplyEdit });
+            // 新增項目按鈕
+            Button btnAddNew = new Button();
+            btnAddNew.Text = "新增";
+            btnAddNew.Location = new Point(620, 52);
+            btnAddNew.Size = new Size(80, 28);
+            btnAddNew.Click += (s, args) =>
+            {
+                // 選擇要新增到哪個 S32 檔案
+                Form selectForm = new Form();
+                selectForm.Text = "選擇 S32 檔案";
+                selectForm.Size = new Size(400, 350);
+                selectForm.FormBorderStyle = FormBorderStyle.FixedDialog;
+                selectForm.StartPosition = FormStartPosition.CenterParent;
+                selectForm.MaximizeBox = false;
+                selectForm.MinimizeBox = false;
+
+                Label lblSelect = new Label();
+                lblSelect.Text = "選擇要新增 Layer7 項目的 S32 檔案：";
+                lblSelect.Location = new Point(10, 10);
+                lblSelect.Size = new Size(360, 20);
+                selectForm.Controls.Add(lblSelect);
+
+                ListBox lbS32Files = new ListBox();
+                lbS32Files.Location = new Point(10, 35);
+                lbS32Files.Size = new Size(360, 220);
+                foreach (var kvp in allS32DataDict)
+                {
+                    lbS32Files.Items.Add(Path.GetFileName(kvp.Key));
+                }
+                if (lbS32Files.Items.Count > 0)
+                    lbS32Files.SelectedIndex = 0;
+                selectForm.Controls.Add(lbS32Files);
+
+                Button btnOK = new Button();
+                btnOK.Text = "確定";
+                btnOK.Location = new Point(100, 265);
+                btnOK.Size = new Size(80, 30);
+                btnOK.DialogResult = DialogResult.OK;
+                selectForm.Controls.Add(btnOK);
+
+                Button btnCancel = new Button();
+                btnCancel.Text = "取消";
+                btnCancel.Location = new Point(200, 265);
+                btnCancel.Size = new Size(80, 30);
+                btnCancel.DialogResult = DialogResult.Cancel;
+                selectForm.Controls.Add(btnCancel);
+
+                selectForm.AcceptButton = btnOK;
+                selectForm.CancelButton = btnCancel;
+
+                if (selectForm.ShowDialog() == DialogResult.OK && lbS32Files.SelectedItem != null)
+                {
+                    string selectedFileName = lbS32Files.SelectedItem.ToString();
+                    string selectedFilePath = allS32DataDict.Keys.FirstOrDefault(k => Path.GetFileName(k) == selectedFileName);
+
+                    if (selectedFilePath != null && allS32DataDict.TryGetValue(selectedFilePath, out S32Data s32Data))
+                    {
+                        // 驗證輸入
+                        if (!byte.TryParse(txtX.Text, out byte newX))
+                            newX = 0;
+                        if (!byte.TryParse(txtY.Text, out byte newY))
+                            newY = 0;
+                        if (!ushort.TryParse(txtTarget.Text, out ushort newTarget))
+                            newTarget = 0;
+                        if (!int.TryParse(txtPortal.Text, out int newPortal))
+                            newPortal = 0;
+
+                        // 建立新項目
+                        Layer7Item newItem = new Layer7Item
+                        {
+                            Name = string.IsNullOrEmpty(txtName.Text) ? "NewPortal" : txtName.Text,
+                            X = newX,
+                            Y = newY,
+                            TargetMapId = newTarget,
+                            PortalId = newPortal
+                        };
+
+                        // 加入 S32 資料
+                        s32Data.Layer7.Add(newItem);
+                        s32Data.IsModified = true;
+
+                        // 更新 ListView
+                        ListViewItem newLvi = new ListViewItem(selectedFileName);
+                        newLvi.SubItems.Add(newItem.Name);
+                        newLvi.SubItems.Add(newItem.X.ToString());
+                        newLvi.SubItems.Add(newItem.Y.ToString());
+                        newLvi.SubItems.Add(newItem.TargetMapId.ToString());
+                        newLvi.SubItems.Add(newItem.PortalId.ToString());
+                        newLvi.Tag = (selectedFilePath, newItem);
+                        lvItems.Items.Add(newLvi);
+                        itemInfoList.Add((selectedFilePath, newItem));
+
+                        // 選取新增的項目
+                        newLvi.Selected = true;
+                        newLvi.EnsureVisible();
+
+                        MessageBox.Show($"已新增 Layer7 項目到 {selectedFileName}。\n\n請記得儲存 S32 檔案。", "完成",
+                            MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    }
+                }
+            };
+
+            gbEdit.Controls.AddRange(new Control[] { lblName, txtName, lblX, txtX, lblY, txtY, lblTarget, txtTarget, lblPortal, txtPortal, btnApplyEdit, btnAddNew });
             resultForm.Controls.Add(gbEdit);
 
             // 選取項目時填入編輯區
