@@ -52,6 +52,10 @@ namespace L1MapViewer.CLI
                         return CmdLayer8(cmdArgs);
                     case "export":
                         return CmdExport(cmdArgs);
+                    case "fix":
+                        return CmdFix(cmdArgs);
+                    case "coords":
+                        return CmdCoords(cmdArgs);
                     case "help":
                     case "-h":
                     case "--help":
@@ -91,6 +95,8 @@ L1MapViewer CLI - S32 檔案解析工具
   l7 <s32檔案>                顯示第七層（傳送點）資訊
   l8 <s32檔案>                顯示第八層（特效）資訊
   export <s32檔案> <輸出檔>   匯出 S32 資訊為 JSON
+  fix <s32檔案> [--apply]     修復異常資料（如 X>=128 的 Layer4 物件）
+  coords <地圖資料夾>         計算地圖的遊戲座標範圍（startX, endX, startY, endY）
   help                        顯示此幫助資訊
 
 範例:
@@ -320,12 +326,13 @@ L1MapViewer CLI - S32 檔案解析工具
         {
             if (args.Length < 1)
             {
-                Console.WriteLine("用法: -cli l4 <s32檔案> [--groups]");
+                Console.WriteLine("用法: -cli l4 <s32檔案> [--groups] [--all]");
                 return 1;
             }
 
             string filePath = args[0];
             bool showGroups = args.Contains("--groups");
+            bool showAll = args.Contains("--all");
 
             if (!File.Exists(filePath))
             {
@@ -352,6 +359,18 @@ L1MapViewer CLI - S32 檔案解析工具
                 foreach (var g in groupStats)
                 {
                     Console.WriteLine($"  GroupId {g.GroupId}: {g.Count} 個物件");
+                }
+            }
+
+            // 顯示所有物件詳細資訊
+            if (showAll && s32.Layer4.Count > 0)
+            {
+                Console.WriteLine();
+                Console.WriteLine("所有物件:");
+                for (int i = 0; i < s32.Layer4.Count; i++)
+                {
+                    var obj = s32.Layer4[i];
+                    Console.WriteLine($"  [{i}] GroupId={obj.GroupId}, X={obj.X}, Y={obj.Y}, Layer={obj.Layer}, IndexId={obj.IndexId}, TileId={obj.TileId}");
                 }
             }
 
@@ -566,6 +585,317 @@ L1MapViewer CLI - S32 檔案解析工具
             Console.WriteLine($"已匯出到: {outputPath}");
 
             return 0;
+        }
+
+        /// <summary>
+        /// fix 命令 - 修復異常資料
+        /// </summary>
+        private static int CmdFix(string[] args)
+        {
+            if (args.Length < 1)
+            {
+                Console.WriteLine("用法: -cli fix <s32檔案> [--apply]");
+                Console.WriteLine("  --apply: 實際執行修復並覆蓋原檔案（不加則只顯示問題）");
+                return 1;
+            }
+
+            string filePath = args[0];
+            bool applyFix = args.Contains("--apply");
+
+            if (!File.Exists(filePath))
+            {
+                Console.WriteLine($"檔案不存在: {filePath}");
+                return 1;
+            }
+
+            var s32 = S32Parser.ParseFile(filePath);
+
+            Console.WriteLine($"=== 檢查 S32 資料 ===");
+            Console.WriteLine($"檔案: {Path.GetFileName(filePath)}");
+            Console.WriteLine();
+
+            // 找出所有 X>=128 的物件（溢出物件）
+            var overflowLayer4 = s32.Layer4.Where(o => o.X >= 128).ToList();
+
+            Console.WriteLine($"Layer4 溢出物件 (X>=128): {overflowLayer4.Count} 個");
+            Console.WriteLine("（這些物件的 X 座標超出正常範圍 0-127，無法在編輯器中被選取刪除）");
+            Console.WriteLine();
+            foreach (var obj in overflowLayer4)
+            {
+                Console.WriteLine($"  GroupId={obj.GroupId}, X={obj.X}, Y={obj.Y}, Layer={obj.Layer}, IndexId={obj.IndexId}, TileId={obj.TileId}");
+            }
+
+            if (overflowLayer4.Count == 0)
+            {
+                Console.WriteLine("沒有發現溢出物件！");
+                return 0;
+            }
+
+            if (!applyFix)
+            {
+                Console.WriteLine();
+                Console.WriteLine("若要清除這些溢出物件，請加上 --apply 參數");
+                return 0;
+            }
+
+            // 執行修復
+            Console.WriteLine();
+            Console.WriteLine("正在清除溢出物件...");
+
+            // 移除溢出物件
+            int removedCount = s32.Layer4.RemoveAll(o => o.X >= 128);
+
+            // 重新寫入檔案
+            SaveS32File(s32, filePath);
+
+            Console.WriteLine($"已移除 {removedCount} 個溢出 Layer4 物件");
+            Console.WriteLine($"已儲存到: {filePath}");
+
+            return 0;
+        }
+
+        /// <summary>
+        /// coords 命令 - 計算地圖座標範圍
+        /// </summary>
+        private static int CmdCoords(string[] args)
+        {
+            if (args.Length < 1)
+            {
+                Console.WriteLine("用法: -cli coords <地圖資料夾>");
+                Console.WriteLine("  例如: -cli coords \"C:\\Lin\\map\\8100\"");
+                return 1;
+            }
+
+            string mapFolder = args[0];
+            if (!Directory.Exists(mapFolder))
+            {
+                Console.WriteLine($"資料夾不存在: {mapFolder}");
+                return 1;
+            }
+
+            // 找出所有 S32 檔案
+            var s32Files = Directory.GetFiles(mapFolder, "*.s32");
+            if (s32Files.Length == 0)
+            {
+                Console.WriteLine($"資料夾中沒有 S32 檔案: {mapFolder}");
+                return 1;
+            }
+
+            Console.WriteLine($"=== 地圖座標計算 ===");
+            Console.WriteLine($"資料夾: {mapFolder}");
+            Console.WriteLine($"S32 檔案數: {s32Files.Length}");
+            Console.WriteLine();
+
+            // 從檔名解析 Block 座標，計算地圖範圍
+            int minBlockX = int.MaxValue;
+            int minBlockY = int.MaxValue;
+            int maxBlockX = int.MinValue;
+            int maxBlockY = int.MinValue;
+
+            foreach (var file in s32Files)
+            {
+                string fileName = Path.GetFileNameWithoutExtension(file);
+                // 檔名格式: XXXXYYYYYYY.s32 (例如 7fff8000.s32)
+                if (fileName.Length >= 8)
+                {
+                    try
+                    {
+                        int blockX = Convert.ToInt32(fileName.Substring(0, 4), 16);
+                        int blockY = Convert.ToInt32(fileName.Substring(4, 4), 16);
+
+                        minBlockX = Math.Min(minBlockX, blockX);
+                        minBlockY = Math.Min(minBlockY, blockY);
+                        maxBlockX = Math.Max(maxBlockX, blockX);
+                        maxBlockY = Math.Max(maxBlockY, blockY);
+                    }
+                    catch
+                    {
+                        // 忽略無法解析的檔名
+                    }
+                }
+            }
+
+            if (minBlockX == int.MaxValue)
+            {
+                Console.WriteLine("無法從 S32 檔名解析 Block 座標");
+                return 1;
+            }
+
+            // 計算遊戲座標
+            // 每個 Block 是 64x64 格
+            // 遊戲座標公式: (blockX - 0x7FFF) * 64 + 0x7FFF
+            int startX = (minBlockX - 0x7FFF) * 64 + 0x7FFF - 64 + 1;
+            int endX = (maxBlockX - 0x7FFF) * 64 + 0x7FFF;
+            int startY = (minBlockY - 0x7FFF) * 64 + 0x7FFF - 64 + 1;
+            int endY = (maxBlockY - 0x7FFF) * 64 + 0x7FFF;
+
+            Console.WriteLine($"Block 座標範圍:");
+            Console.WriteLine($"  X: 0x{minBlockX:X4} ~ 0x{maxBlockX:X4} ({minBlockX} ~ {maxBlockX})");
+            Console.WriteLine($"  Y: 0x{minBlockY:X4} ~ 0x{maxBlockY:X4} ({minBlockY} ~ {maxBlockY})");
+            Console.WriteLine();
+            Console.WriteLine($"遊戲座標範圍:");
+            Console.WriteLine($"  startX={startX}, endX={endX}, startY={startY}, endY={endY}");
+            Console.WriteLine();
+
+            // 輸出可直接複製的格式
+            string coordText = $"startX={startX}, endX={endX}, startY={startY}, endY={endY}";
+            Console.WriteLine($"可複製格式: {coordText}");
+
+            return 0;
+        }
+
+        /// <summary>
+        /// 儲存 S32 檔案
+        /// </summary>
+        private static void SaveS32File(S32Data s32, string filePath)
+        {
+            using (var ms = new MemoryStream())
+            using (var bw = new BinaryWriter(ms))
+            {
+                // 第一層（地板）- 64x128
+                for (int y = 0; y < 64; y++)
+                {
+                    for (int x = 0; x < 128; x++)
+                    {
+                        var cell = s32.Layer1[y, x];
+                        if (cell != null)
+                        {
+                            bw.Write((byte)cell.IndexId);
+                            bw.Write((ushort)cell.TileId);
+                            bw.Write((byte)0); // nk
+                        }
+                        else
+                        {
+                            bw.Write((byte)0);
+                            bw.Write((ushort)0);
+                            bw.Write((byte)0);
+                        }
+                    }
+                }
+
+                // 第二層
+                bw.Write((ushort)s32.Layer2.Count);
+                foreach (var item in s32.Layer2)
+                {
+                    bw.Write(item.Value1);
+                    bw.Write(item.Value2);
+                    bw.Write(item.Value3);
+                }
+
+                // 第三層（地圖屬性）- 64x64
+                for (int y = 0; y < 64; y++)
+                {
+                    for (int x = 0; x < 64; x++)
+                    {
+                        var attr = s32.Layer3[y, x];
+                        if (attr != null)
+                        {
+                            bw.Write(attr.Attribute1);
+                            bw.Write(attr.Attribute2);
+                        }
+                        else
+                        {
+                            bw.Write((short)0);
+                            bw.Write((short)0);
+                        }
+                    }
+                }
+
+                // 第四層（物件）- 按 GroupId 分組
+                var groupedObjects = s32.Layer4.GroupBy(o => o.GroupId).OrderBy(g => g.Key).ToList();
+                bw.Write(groupedObjects.Count); // 群組數
+
+                foreach (var group in groupedObjects)
+                {
+                    bw.Write((short)group.Key); // GroupId
+                    bw.Write((ushort)group.Count()); // blockCount
+
+                    foreach (var obj in group)
+                    {
+                        bw.Write((byte)obj.X);
+                        bw.Write((byte)obj.Y);
+                        bw.Write((byte)obj.Layer);
+                        bw.Write((byte)obj.IndexId);
+                        bw.Write((short)obj.TileId);
+                        bw.Write((byte)0); // uk
+                    }
+                }
+
+                // 第五層 - 可透明化的圖塊
+                bw.Write(s32.Layer5.Count);
+                foreach (var item in s32.Layer5)
+                {
+                    bw.Write(item.X);
+                    bw.Write(item.Y);
+                    bw.Write(item.R);
+                    bw.Write(item.G);
+                    bw.Write(item.B);
+                }
+
+                // 第六層 - 使用的 til（重新計算並排序）
+                // 收集 Layer1 和 Layer4 使用的所有 TileId
+                HashSet<int> usedTileIds = new HashSet<int>();
+
+                // 從 Layer1 收集
+                for (int y = 0; y < 64; y++)
+                {
+                    for (int x = 0; x < 128; x++)
+                    {
+                        var cell = s32.Layer1[y, x];
+                        if (cell != null && cell.TileId > 0)
+                        {
+                            usedTileIds.Add(cell.TileId);
+                        }
+                    }
+                }
+
+                // 從 Layer4 收集
+                foreach (var obj in s32.Layer4)
+                {
+                    if (obj.TileId > 0)
+                    {
+                        usedTileIds.Add(obj.TileId);
+                    }
+                }
+
+                // 排序後寫入
+                List<int> sortedTileIds = usedTileIds.OrderBy(id => id).ToList();
+                bw.Write(sortedTileIds.Count);
+                foreach (var tilId in sortedTileIds)
+                {
+                    bw.Write(tilId);
+                }
+
+                // 更新記憶體中的 Layer6 資料
+                s32.Layer6.Clear();
+                s32.Layer6.AddRange(sortedTileIds);
+
+                // 第七層 - 傳送點、入口點
+                bw.Write((ushort)s32.Layer7.Count);
+                foreach (var item in s32.Layer7)
+                {
+                    byte[] nameBytes = Encoding.Default.GetBytes(item.Name ?? "");
+                    bw.Write((byte)nameBytes.Length);
+                    bw.Write(nameBytes);
+                    bw.Write(item.X);
+                    bw.Write(item.Y);
+                    bw.Write(item.TargetMapId);
+                    bw.Write(item.PortalId);
+                }
+
+                // 第八層 - 特效、裝飾品
+                bw.Write((byte)s32.Layer8.Count);
+                bw.Write((byte)0); // 跳過一個 byte
+                foreach (var item in s32.Layer8)
+                {
+                    bw.Write(item.SprId);
+                    bw.Write(item.X);
+                    bw.Write(item.Y);
+                    bw.Write(item.Unknown);
+                }
+
+                File.WriteAllBytes(filePath, ms.ToArray());
+            }
         }
     }
 }

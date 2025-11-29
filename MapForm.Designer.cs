@@ -52,7 +52,9 @@ namespace L1FlyMapViewer
         private Button btnToolAddS32;
         private Button btnToolClearLayer7;
         private Button btnToolClearCell;
+        private Button btnToolCheckL5;
         private Button btnToolCheckL6;
+        private Button btnToolCheckL7;
         private Button btnToolCheckL8;
         private ToolTip toolTip1;
 
@@ -81,6 +83,7 @@ namespace L1FlyMapViewer
         private CheckBox chkShowGrid;
         private CheckBox chkShowS32Boundary;
         private Button btnCopySettings;
+        private Button btnCopyMapCoords;
         private Button btnSetPassable;
         private Button btnSetImpassable;
         private Button btnSaveS32;
@@ -148,7 +151,9 @@ namespace L1FlyMapViewer
             this.btnToolAddS32 = new Button();
             this.btnToolClearLayer7 = new Button();
             this.btnToolClearCell = new Button();
+            this.btnToolCheckL5 = new Button();
             this.btnToolCheckL6 = new Button();
+            this.btnToolCheckL7 = new Button();
             this.btnToolCheckL8 = new Button();
             this.toolTip1 = new ToolTip();
 
@@ -177,6 +182,7 @@ namespace L1FlyMapViewer
             this.chkShowGrid = new CheckBox();
             this.chkShowS32Boundary = new CheckBox();
             this.btnCopySettings = new Button();
+            this.btnCopyMapCoords = new Button();
             this.btnSetPassable = new Button();
             this.btnSetImpassable = new Button();
             this.btnSaveS32 = new Button();
@@ -519,6 +525,7 @@ namespace L1FlyMapViewer
             this.s32LayerControlPanel.Controls.Add(this.chkShowGrid);
             this.s32LayerControlPanel.Controls.Add(this.chkShowS32Boundary);
             this.s32LayerControlPanel.Controls.Add(this.btnCopySettings);
+            this.s32LayerControlPanel.Controls.Add(this.btnCopyMapCoords);
             this.s32LayerControlPanel.Controls.Add(this.btnSetPassable);
             this.s32LayerControlPanel.Controls.Add(this.btnSetImpassable);
             this.s32LayerControlPanel.Controls.Add(this.btnSaveS32);
@@ -630,6 +637,17 @@ namespace L1FlyMapViewer
             this.btnCopySettings.Text = "複製設定...";
             this.btnCopySettings.UseVisualStyleBackColor = true;
             this.btnCopySettings.Click += new System.EventHandler(this.btnCopySettings_Click);
+
+            //
+            // btnCopyMapCoords
+            //
+            this.btnCopyMapCoords.Location = new Point(615, 33);
+            this.btnCopyMapCoords.Name = "btnCopyMapCoords";
+            this.btnCopyMapCoords.Size = new Size(75, 25);
+            this.btnCopyMapCoords.TabIndex = 13;
+            this.btnCopyMapCoords.Text = "複製座標";
+            this.btnCopyMapCoords.UseVisualStyleBackColor = true;
+            this.btnCopyMapCoords.Click += new System.EventHandler(this.btnCopyMapCoords_Click);
 
             //
             // btnSetPassable
@@ -839,7 +857,9 @@ namespace L1FlyMapViewer
             this.toolbarPanel.Controls.Add(this.btnToolAddS32);
             this.toolbarPanel.Controls.Add(this.btnToolClearLayer7);
             this.toolbarPanel.Controls.Add(this.btnToolClearCell);
+            this.toolbarPanel.Controls.Add(this.btnToolCheckL5);
             this.toolbarPanel.Controls.Add(this.btnToolCheckL6);
+            this.toolbarPanel.Controls.Add(this.btnToolCheckL7);
             this.toolbarPanel.Controls.Add(this.btnToolCheckL8);
             this.toolbarPanel.Dock = DockStyle.Right;
             this.toolbarPanel.Location = new Point(970, 24);
@@ -980,24 +1000,48 @@ namespace L1FlyMapViewer
             this.btnToolClearCell.Click += new System.EventHandler(this.btnToolClearCell_Click);
 
             //
+            // btnToolCheckL5
+            //
+            this.btnToolCheckL5.Location = new Point(2, 481);
+            this.btnToolCheckL5.Name = "btnToolCheckL5";
+            this.btnToolCheckL5.Size = new Size(34, 34);
+            this.btnToolCheckL5.TabIndex = 11;
+            this.btnToolCheckL5.Text = "查L5";
+            this.btnToolCheckL5.UseVisualStyleBackColor = true;
+            this.toolTip1.SetToolTip(this.btnToolCheckL5, "查看與管理第五層（透明圖塊）資料");
+            this.btnToolCheckL5.Click += new System.EventHandler(this.btnToolCheckL5_Click);
+
+            //
             // btnToolCheckL6
             //
-            this.btnToolCheckL6.Location = new Point(2, 481);
+            this.btnToolCheckL6.Location = new Point(2, 519);
             this.btnToolCheckL6.Name = "btnToolCheckL6";
             this.btnToolCheckL6.Size = new Size(34, 34);
-            this.btnToolCheckL6.TabIndex = 11;
+            this.btnToolCheckL6.TabIndex = 12;
             this.btnToolCheckL6.Text = "查L6";
             this.btnToolCheckL6.UseVisualStyleBackColor = true;
-            this.toolTip1.SetToolTip(this.btnToolCheckL6, "檢查L1/L4的TileId是否都登記在L6");
+            this.toolTip1.SetToolTip(this.btnToolCheckL6, "查看與管理第六層（使用的TileId）資料");
             this.btnToolCheckL6.Click += new System.EventHandler(this.btnToolCheckL6_Click);
+
+            //
+            // btnToolCheckL7
+            //
+            this.btnToolCheckL7.Location = new Point(2, 557);
+            this.btnToolCheckL7.Name = "btnToolCheckL7";
+            this.btnToolCheckL7.Size = new Size(34, 34);
+            this.btnToolCheckL7.TabIndex = 13;
+            this.btnToolCheckL7.Text = "查L7";
+            this.btnToolCheckL7.UseVisualStyleBackColor = true;
+            this.toolTip1.SetToolTip(this.btnToolCheckL7, "查看與編輯第七層（傳送點）資料");
+            this.btnToolCheckL7.Click += new System.EventHandler(this.btnToolCheckL7_Click);
 
             //
             // btnToolCheckL8
             //
-            this.btnToolCheckL8.Location = new Point(2, 519);
+            this.btnToolCheckL8.Location = new Point(2, 595);
             this.btnToolCheckL8.Name = "btnToolCheckL8";
             this.btnToolCheckL8.Size = new Size(34, 34);
-            this.btnToolCheckL8.TabIndex = 12;
+            this.btnToolCheckL8.TabIndex = 14;
             this.btnToolCheckL8.Text = "查L8";
             this.btnToolCheckL8.UseVisualStyleBackColor = true;
             this.toolTip1.SetToolTip(this.btnToolCheckL8, "查看哪些S32有第八層（特效）資料");
