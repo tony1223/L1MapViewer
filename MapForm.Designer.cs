@@ -53,6 +53,7 @@ namespace L1FlyMapViewer
         private Button btnToolClearLayer7;
         private Button btnToolClearCell;
         private Button btnToolCheckL6;
+        private Button btnToolCheckL8;
         private ToolTip toolTip1;
 
         // 中間 TabControl
@@ -148,6 +149,7 @@ namespace L1FlyMapViewer
             this.btnToolClearLayer7 = new Button();
             this.btnToolClearCell = new Button();
             this.btnToolCheckL6 = new Button();
+            this.btnToolCheckL8 = new Button();
             this.toolTip1 = new ToolTip();
 
             // 中間 TabControl
@@ -838,6 +840,7 @@ namespace L1FlyMapViewer
             this.toolbarPanel.Controls.Add(this.btnToolClearLayer7);
             this.toolbarPanel.Controls.Add(this.btnToolClearCell);
             this.toolbarPanel.Controls.Add(this.btnToolCheckL6);
+            this.toolbarPanel.Controls.Add(this.btnToolCheckL8);
             this.toolbarPanel.Dock = DockStyle.Right;
             this.toolbarPanel.Location = new Point(970, 24);
             this.toolbarPanel.Name = "toolbarPanel";
@@ -987,6 +990,18 @@ namespace L1FlyMapViewer
             this.btnToolCheckL6.UseVisualStyleBackColor = true;
             this.toolTip1.SetToolTip(this.btnToolCheckL6, "檢查L1/L4的TileId是否都登記在L6");
             this.btnToolCheckL6.Click += new System.EventHandler(this.btnToolCheckL6_Click);
+
+            //
+            // btnToolCheckL8
+            //
+            this.btnToolCheckL8.Location = new Point(2, 519);
+            this.btnToolCheckL8.Name = "btnToolCheckL8";
+            this.btnToolCheckL8.Size = new Size(34, 34);
+            this.btnToolCheckL8.TabIndex = 12;
+            this.btnToolCheckL8.Text = "查L8";
+            this.btnToolCheckL8.UseVisualStyleBackColor = true;
+            this.toolTip1.SetToolTip(this.btnToolCheckL8, "查看哪些S32有第八層（特效）資料");
+            this.btnToolCheckL8.Click += new System.EventHandler(this.btnToolCheckL8_Click);
 
             //
             // MapForm

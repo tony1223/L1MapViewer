@@ -9298,6 +9298,93 @@ namespace L1FlyMapViewer
             }
         }
 
+        // 查看哪些 S32 有 Layer8 資料
+        private void btnToolCheckL8_Click(object sender, EventArgs e)
+        {
+            if (allS32DataDict.Count == 0)
+            {
+                MessageBox.Show("請先載入地圖", "提示", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            // 收集有 Layer8 資料的 S32
+            List<(string fileName, int count, List<string> details)> s32WithL8 = new List<(string, int, List<string>)>();
+
+            foreach (var kvp in allS32DataDict)
+            {
+                string fileName = Path.GetFileName(kvp.Key);
+                S32Data s32Data = kvp.Value;
+
+                if (s32Data.Layer8.Count > 0)
+                {
+                    var details = new List<string>();
+                    foreach (var item in s32Data.Layer8)
+                    {
+                        details.Add($"  SprId={item.SprId}, X={item.X}, Y={item.Y}, Unk={item.Unknown}");
+                    }
+                    s32WithL8.Add((fileName, s32Data.Layer8.Count, details));
+                }
+            }
+
+            // 顯示結果
+            Form resultForm = new Form();
+            resultForm.Text = $"L8 檢查結果 - {s32WithL8.Count} 個 S32 有資料";
+            resultForm.Size = new Size(600, 450);
+            resultForm.FormBorderStyle = FormBorderStyle.Sizable;
+            resultForm.StartPosition = FormStartPosition.CenterParent;
+
+            int totalItems = s32WithL8.Sum(x => x.count);
+            Label lblSummary = new Label();
+            lblSummary.Text = $"共 {s32WithL8.Count} 個 S32 檔案有 Layer8（特效）資料，總計 {totalItems} 項";
+            lblSummary.Location = new Point(10, 10);
+            lblSummary.Size = new Size(560, 20);
+            resultForm.Controls.Add(lblSummary);
+
+            TextBox txtResult = new TextBox();
+            txtResult.Multiline = true;
+            txtResult.ScrollBars = ScrollBars.Both;
+            txtResult.Location = new Point(10, 35);
+            txtResult.Size = new Size(560, 330);
+            txtResult.ReadOnly = true;
+            txtResult.Font = new Font("Consolas", 9);
+
+            if (s32WithL8.Count == 0)
+            {
+                txtResult.Text = "沒有任何 S32 檔案有 Layer8 資料";
+            }
+            else
+            {
+                StringBuilder sb = new StringBuilder();
+                foreach (var (fileName, count, details) in s32WithL8)
+                {
+                    sb.AppendLine($"【{fileName}】 - {count} 項");
+                    foreach (var detail in details)
+                    {
+                        sb.AppendLine(detail);
+                    }
+                    sb.AppendLine();
+                }
+                txtResult.Text = sb.ToString();
+            }
+            resultForm.Controls.Add(txtResult);
+
+            Button btnClose = new Button();
+            btnClose.Text = "關閉";
+            btnClose.Location = new Point(480, 375);
+            btnClose.Size = new Size(90, 30);
+            btnClose.Click += (s, args) => resultForm.Close();
+            resultForm.Controls.Add(btnClose);
+
+            // 處理視窗大小改變
+            resultForm.Resize += (s, args) =>
+            {
+                txtResult.Size = new Size(resultForm.ClientSize.Width - 20, resultForm.ClientSize.Height - 80);
+                btnClose.Location = new Point(resultForm.ClientSize.Width - 100, resultForm.ClientSize.Height - 45);
+            };
+
+            resultForm.ShowDialog();
+        }
+
         private void btnToolAddS32_Click(object sender, EventArgs e)
         {
             // 檢查是否已載入地圖
