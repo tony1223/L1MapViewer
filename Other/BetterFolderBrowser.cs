@@ -64,6 +64,7 @@ namespace L1MapViewer.Other {
         /// </summary>
         [Category("Better Folder Browsing")]
         [Description("Sets the folder dialog box title.")]
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         public string Title {
             get {
                 return _dialog.Title;
@@ -79,6 +80,7 @@ namespace L1MapViewer.Other {
         [Category("Better Folder Browsing")]
         [Editor(typeof(SelectedPathEditor), typeof(UITypeEditor))]
         [Description("Sets the root folder where the browsing starts from.")]
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         public string RootFolder {
             get {
                 return _dialog.InitialDirectory;
@@ -89,12 +91,13 @@ namespace L1MapViewer.Other {
         }
 
         /// <summary>
-        /// Gets or sets a value indicating whether the 
+        /// Gets or sets a value indicating whether the
         /// dialog box allows multiple folders to be selected.
         /// </summary>
         [Category("Better Folder Browsing")]
         [Description("Sets a value indicating whether the dialog " +
                      "box allows multiple folders to be selected.")]
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         public bool Multiselect {
             get {
                 return _dialog.AllowMultiselect;

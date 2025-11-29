@@ -71,6 +71,7 @@ namespace L1FlyMapViewer
         private List<SpawnData> currentSpawnList = new List<SpawnData>();
 
         // 縮放相關
+        [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
         public double zoomLevel { get; set; } = 1.0;  // 當前縮放級別
         private const double ZOOM_MIN = 0.1;  // 最小縮放
         private const double ZOOM_MAX = 5.0;  // 最大縮放

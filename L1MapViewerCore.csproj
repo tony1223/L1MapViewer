@@ -2,11 +2,12 @@
 
     <PropertyGroup>
         <OutputType>WinExe</OutputType>
-        <TargetFramework>net7.0-windows</TargetFramework>
+        <TargetFramework>net10.0-windows</TargetFramework>
         <Nullable>enable</Nullable>
         <UseWindowsForms>true</UseWindowsForms>
         <ImplicitUsings>enable</ImplicitUsings>
         <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+        <EnableWindowsTargeting>true</EnableWindowsTargeting>
 
         <!-- Enable auto-generation of version attributes for build script -->
         <GenerateAssemblyCompanyAttribute>false</GenerateAssemblyCompanyAttribute>

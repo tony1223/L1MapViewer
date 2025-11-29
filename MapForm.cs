@@ -37,6 +37,7 @@ namespace L1FlyMapViewer
         private const int DRAG_THRESHOLD = 5;
 
         // 縮放相關（地圖預覽）
+        [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
         public double zoomLevel { get; set; } = 1.0;
         private const double ZOOM_MIN = 0.1;
         private const double ZOOM_MAX = 5.0;
@@ -44,6 +45,7 @@ namespace L1FlyMapViewer
         private Image originalMapImage;
 
         // S32 編輯器縮放相關
+        [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
         public double s32ZoomLevel { get; set; } = 1.0;
         private Image originalS32Image;
         private double pendingS32ZoomLevel = 1.0;
