@@ -173,7 +173,7 @@ namespace L1MapViewer.CLI
             {
                 try
                 {
-                    // 第五層 - 可透明化的圖塊
+                    // 第五層 - 事件
                     if (layerStream.Position + 4 <= layerStream.Length)
                     {
                         int lv5Count = layerReader.ReadInt32();
@@ -183,9 +183,8 @@ namespace L1MapViewer.CLI
                             {
                                 X = layerReader.ReadByte(),
                                 Y = layerReader.ReadByte(),
-                                R = layerReader.ReadByte(),
-                                G = layerReader.ReadByte(),
-                                B = layerReader.ReadByte()
+                                ObjectIndex = layerReader.ReadUInt16(),
+                                Type = layerReader.ReadByte()
                             });
                         }
                     }
@@ -225,17 +224,25 @@ namespace L1MapViewer.CLI
                     // 第八層 - 特效、裝飾品
                     if (layerStream.Position + 2 <= layerStream.Length)
                     {
-                        int lv8Count = layerReader.ReadByte();
-                        layerReader.ReadByte(); // 跳過一個 byte
-                        for (int i = 0; i < lv8Count && layerStream.Position + 10 <= layerStream.Length; i++)
+                        ushort lv8Num = layerReader.ReadUInt16();
+                        bool hasExtendedData = (lv8Num >= 0x8000);
+                        if (hasExtendedData)
                         {
-                            s32Data.Layer8.Add(new Layer8Item
+                            lv8Num = (ushort)(lv8Num & 0x7FFF);  // 取消高位
+                        }
+                        s32Data.Layer8HasExtendedData = hasExtendedData;
+
+                        int itemSize = hasExtendedData ? 10 : 6;  // 6 bytes 基本, +4 bytes 擴展
+                        for (int i = 0; i < lv8Num && layerStream.Position + itemSize <= layerStream.Length; i++)
+                        {
+                            var item = new Layer8Item
                             {
                                 SprId = layerReader.ReadUInt16(),
                                 X = layerReader.ReadUInt16(),
                                 Y = layerReader.ReadUInt16(),
-                                Unknown = layerReader.ReadInt32()
-                            });
+                                ExtendedData = hasExtendedData ? layerReader.ReadInt32() : 0
+                            };
+                            s32Data.Layer8.Add(item);
                         }
                     }
                 }

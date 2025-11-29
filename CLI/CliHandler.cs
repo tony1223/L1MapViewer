@@ -405,7 +405,7 @@ L1MapViewer CLI - S32 檔案解析工具
                 Console.WriteLine();
                 foreach (var item in s32.Layer5)
                 {
-                    Console.WriteLine($"  X={item.X}, Y={item.Y}, RGB=({item.R},{item.G},{item.B})");
+                    Console.WriteLine($"  X={item.X}, Y={item.Y}, ObjectIndex={item.ObjectIndex}, Type={item.Type}");
                 }
             }
 
@@ -516,7 +516,7 @@ L1MapViewer CLI - S32 檔案解析工具
                 Console.WriteLine();
                 foreach (var item in s32.Layer8)
                 {
-                    Console.WriteLine($"  SprId={item.SprId}, X={item.X}, Y={item.Y}, Unknown={item.Unknown}");
+                    Console.WriteLine($"  SprId={item.SprId}, X={item.X}, Y={item.Y}, ExtendedData={item.ExtendedData}");
                 }
             }
 
@@ -575,7 +575,7 @@ L1MapViewer CLI - S32 檔案解析工具
             for (int i = 0; i < s32.Layer8.Count; i++)
             {
                 var item = s32.Layer8[i];
-                sb.Append($"    {{\"sprId\": {item.SprId}, \"x\": {item.X}, \"y\": {item.Y}, \"unknown\": {item.Unknown}}}");
+                sb.Append($"    {{\"sprId\": {item.SprId}, \"x\": {item.X}, \"y\": {item.Y}, \"extendedData\": {item.ExtendedData}}}");
                 sb.AppendLine(i < s32.Layer8.Count - 1 ? "," : "");
             }
             sb.AppendLine("  ]");
@@ -829,9 +829,8 @@ L1MapViewer CLI - S32 檔案解析工具
                 {
                     bw.Write(item.X);
                     bw.Write(item.Y);
-                    bw.Write(item.R);
-                    bw.Write(item.G);
-                    bw.Write(item.B);
+                    bw.Write(item.ObjectIndex);
+                    bw.Write(item.Type);
                 }
 
                 // 第六層 - 使用的 til（重新計算並排序）
@@ -886,14 +885,21 @@ L1MapViewer CLI - S32 檔案解析工具
                 }
 
                 // 第八層 - 特效、裝飾品
-                bw.Write((byte)s32.Layer8.Count);
-                bw.Write((byte)0); // 跳過一個 byte
+                ushort lv8Count = (ushort)s32.Layer8.Count;
+                if (s32.Layer8HasExtendedData)
+                {
+                    lv8Count |= 0x8000;  // 設置高位表示有擴展資料
+                }
+                bw.Write(lv8Count);
                 foreach (var item in s32.Layer8)
                 {
                     bw.Write(item.SprId);
                     bw.Write(item.X);
                     bw.Write(item.Y);
-                    bw.Write(item.Unknown);
+                    if (s32.Layer8HasExtendedData)
+                    {
+                        bw.Write(item.ExtendedData);
+                    }
                 }
 
                 File.WriteAllBytes(filePath, ms.ToArray());

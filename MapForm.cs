@@ -64,6 +64,9 @@ namespace L1FlyMapViewer
             SetImpassable   // 設定為不可通行
         }
         private PassableEditMode currentPassableEditMode = PassableEditMode.None;
+        private List<Point> passabilityPolygonPoints = new List<Point>(); // 通行性編輯的多邊形頂點
+        private bool isDrawingPassabilityPolygon = false; // 是否正在繪製多邊形
+        private Label lblPassabilityHelp; // 通行性編輯操作說明標籤
 
         // 當前選中的格子（用於高亮顯示）
         private S32Data highlightedS32Data = null;
@@ -158,6 +161,21 @@ namespace L1FlyMapViewer
                 scrollUpdateTimer.Stop();
                 scrollUpdateTimer.Start();
             };
+
+            // 建立通行性編輯操作說明標籤
+            lblPassabilityHelp = new Label
+            {
+                AutoSize = true,
+                BackColor = Color.FromArgb(200, 30, 30, 30),
+                ForeColor = Color.White,
+                Font = new Font("Microsoft JhengHei", 9, FontStyle.Regular),
+                Padding = new Padding(8),
+                Visible = false,
+                BorderStyle = BorderStyle.FixedSingle
+            };
+            this.s32MapPanel.Controls.Add(lblPassabilityHelp);
+            lblPassabilityHelp.BringToFront();
+            lblPassabilityHelp.Location = new Point(10, 10);
 
             // 註冊 F5 快捷鍵重新載入
             this.KeyPreview = true;
@@ -472,7 +490,7 @@ namespace L1FlyMapViewer
                         {
                             if (!layer5Clipboard.Any(l => l.X == item.X && l.Y == item.Y))
                             {
-                                layer5Clipboard.Add(new Layer5Item { X = item.X, Y = item.Y, R = item.R, G = item.G, B = item.B });
+                                layer5Clipboard.Add(new Layer5Item { X = item.X, Y = item.Y, ObjectIndex = item.ObjectIndex, Type = item.Type });
                             }
                         }
                     }
@@ -517,7 +535,7 @@ namespace L1FlyMapViewer
                         {
                             if (!layer8Clipboard.Any(l => l.SprId == item.SprId && l.X == item.X && l.Y == item.Y))
                             {
-                                layer8Clipboard.Add(new Layer8Item { SprId = item.SprId, X = item.X, Y = item.Y, Unknown = item.Unknown });
+                                layer8Clipboard.Add(new Layer8Item { SprId = item.SprId, X = item.X, Y = item.Y, ExtendedData = item.ExtendedData });
                             }
                         }
                     }
@@ -742,7 +760,7 @@ namespace L1FlyMapViewer
                     {
                         if (!targetS32.Layer5.Any(l => l.X == item.X && l.Y == item.Y))
                         {
-                            targetS32.Layer5.Add(new Layer5Item { X = item.X, Y = item.Y, R = item.R, G = item.G, B = item.B });
+                            targetS32.Layer5.Add(new Layer5Item { X = item.X, Y = item.Y, ObjectIndex = item.ObjectIndex, Type = item.Type });
                             targetS32.IsModified = true;
                         }
                     }
@@ -772,7 +790,7 @@ namespace L1FlyMapViewer
                     {
                         if (!targetS32.Layer8.Any(l => l.SprId == item.SprId && l.X == item.X && l.Y == item.Y))
                         {
-                            targetS32.Layer8.Add(new Layer8Item { SprId = item.SprId, X = item.X, Y = item.Y, Unknown = item.Unknown });
+                            targetS32.Layer8.Add(new Layer8Item { SprId = item.SprId, X = item.X, Y = item.Y, ExtendedData = item.ExtendedData });
                             targetS32.IsModified = true;
                         }
                     }
@@ -2386,6 +2404,9 @@ namespace L1FlyMapViewer
             // 第8層 - 特效、裝飾品
             public List<Layer8Item> Layer8 { get; set; } = new List<Layer8Item>();
 
+            // 第8層擴展資訊
+            public bool Layer8HasExtendedData { get; set; } = false;
+
             // 檔案路徑和 SegInfo
             public string FilePath { get; set; }
             public Struct.L1MapSeg SegInfo { get; set; }
@@ -2422,14 +2443,13 @@ namespace L1FlyMapViewer
             public int TileId { get; set; }       // Tile ID
         }
 
-        // 第五層項目 - 可透明化的圖塊
+        // 第五層項目 - 事件
         private class Layer5Item
         {
             public byte X { get; set; }
             public byte Y { get; set; }
-            public byte R { get; set; }
-            public byte G { get; set; }
-            public byte B { get; set; }
+            public ushort ObjectIndex { get; set; }
+            public byte Type { get; set; }
         }
 
         // 第七層項目 - 傳送點、入口點
@@ -2448,7 +2468,7 @@ namespace L1FlyMapViewer
             public ushort SprId { get; set; }     // 特效編號
             public ushort X { get; set; }         // X軸
             public ushort Y { get; set; }         // Y軸
-            public int Unknown { get; set; }      // 未知
+            public int ExtendedData { get; set; } // 擴展資料 (僅當 Layer8HasExtendedData 為 true 時使用)
         }
 
         // 格子資料
@@ -3075,7 +3095,7 @@ namespace L1FlyMapViewer
                     {
                         try
                         {
-                            // 第五層 - 可透明化的圖塊
+                            // 第五層 - 事件
                             if (layerStream.Position + 4 <= layerStream.Length)
                             {
                                 int lv5Count = layerReader.ReadInt32();
@@ -3085,9 +3105,8 @@ namespace L1FlyMapViewer
                                     {
                                         X = layerReader.ReadByte(),
                                         Y = layerReader.ReadByte(),
-                                        R = layerReader.ReadByte(),
-                                        G = layerReader.ReadByte(),
-                                        B = layerReader.ReadByte()
+                                        ObjectIndex = layerReader.ReadUInt16(),
+                                        Type = layerReader.ReadByte()
                                     });
                                 }
                             }
@@ -3127,16 +3146,23 @@ namespace L1FlyMapViewer
                             // 第八層 - 特效、裝飾品
                             if (layerStream.Position + 2 <= layerStream.Length)
                             {
-                                int lv8Count = layerReader.ReadByte();
-                                layerReader.ReadByte(); // 跳過一個 byte
-                                for (int i = 0; i < lv8Count && layerStream.Position + 10 <= layerStream.Length; i++)
+                                ushort lv8Num = layerReader.ReadUInt16();
+                                bool hasExtendedData = (lv8Num >= 0x8000);
+                                if (hasExtendedData)
+                                {
+                                    lv8Num = (ushort)(lv8Num & 0x7FFF);  // 取消高位
+                                }
+                                s32Data.Layer8HasExtendedData = hasExtendedData;
+
+                                int itemSize = hasExtendedData ? 10 : 6;  // 6 bytes 基本, +4 bytes 擴展
+                                for (int i = 0; i < lv8Num && layerStream.Position + itemSize <= layerStream.Length; i++)
                                 {
                                     s32Data.Layer8.Add(new Layer8Item
                                     {
                                         SprId = layerReader.ReadUInt16(),
                                         X = layerReader.ReadUInt16(),
                                         Y = layerReader.ReadUInt16(),
-                                        Unknown = layerReader.ReadInt32()
+                                        ExtendedData = hasExtendedData ? layerReader.ReadInt32() : 0
                                     });
                                 }
                             }
@@ -3339,6 +3365,7 @@ namespace L1FlyMapViewer
                 currentPassableEditMode = PassableEditMode.None;
                 btnSetPassable.BackColor = SystemColors.Control;
                 this.toolStripStatusLabel1.Text = "已取消允許通行模式";
+                UpdatePassabilityHelpLabel();
             }
             else
             {
@@ -3346,7 +3373,8 @@ namespace L1FlyMapViewer
                 currentPassableEditMode = PassableEditMode.SetPassable;
                 btnSetPassable.BackColor = Color.LightGreen;
                 btnSetImpassable.BackColor = SystemColors.Control;
-                this.toolStripStatusLabel1.Text = "允許通行模式：點擊格子設定為可通行 | Ctrl+拖拽批次設定";
+                this.toolStripStatusLabel1.Text = "允許通行模式：點擊格子設定 | Ctrl+左鍵繪製多邊形，右鍵完成";
+                UpdatePassabilityHelpLabel();
             }
         }
 
@@ -3359,6 +3387,7 @@ namespace L1FlyMapViewer
                 currentPassableEditMode = PassableEditMode.None;
                 btnSetImpassable.BackColor = SystemColors.Control;
                 this.toolStripStatusLabel1.Text = "已取消禁止通行模式";
+                UpdatePassabilityHelpLabel();
             }
             else
             {
@@ -3366,8 +3395,31 @@ namespace L1FlyMapViewer
                 currentPassableEditMode = PassableEditMode.SetImpassable;
                 btnSetImpassable.BackColor = Color.LightCoral;
                 btnSetPassable.BackColor = SystemColors.Control;
-                this.toolStripStatusLabel1.Text = "禁止通行模式：點擊格子設定為不可通行 | Ctrl+拖拽批次設定";
+                this.toolStripStatusLabel1.Text = "禁止通行模式：點擊格子設定 | Ctrl+左鍵繪製多邊形，右鍵完成";
+                UpdatePassabilityHelpLabel();
             }
+        }
+
+        // 更新通行性編輯操作說明標籤
+        private void UpdatePassabilityHelpLabel()
+        {
+            if (currentPassableEditMode == PassableEditMode.None)
+            {
+                lblPassabilityHelp.Visible = false;
+                return;
+            }
+
+            string modeText = currentPassableEditMode == PassableEditMode.SetPassable ? "允許通行" : "禁止通行";
+            Color borderColor = currentPassableEditMode == PassableEditMode.SetPassable ? Color.LimeGreen : Color.Red;
+
+            lblPassabilityHelp.Text = $"【{modeText}模式】\n" +
+                                      "• 點擊格子：設定整格通行性\n" +
+                                      "• Ctrl+左鍵：新增多邊形頂點\n" +
+                                      "• 右鍵：完成多邊形 (≥3點)\n" +
+                                      "• 再按按鈕：取消模式";
+            lblPassabilityHelp.ForeColor = borderColor;
+            lblPassabilityHelp.Visible = true;
+            lblPassabilityHelp.BringToFront();
         }
 
         // 重新載入按鈕點擊事件
@@ -5131,6 +5183,150 @@ namespace L1FlyMapViewer
             this.toolStripStatusLabel1.Text = $"已批次設定 {modifiedCount} 個格子為{(passable ? "可通行" : "不可通行")} (影響 {modifiedS32Files.Count} 個 S32 檔案)";
         }
 
+        // 多邊形通行性設定：找出多邊形內的格子邊界，設定對應的通行屬性
+        private void SetPolygonPassable(List<Point> polygonPoints, bool passable)
+        {
+            if (string.IsNullOrEmpty(currentMapId) || !Share.MapDataList.ContainsKey(currentMapId))
+                return;
+
+            if (polygonPoints.Count < 3)
+            {
+                this.toolStripStatusLabel1.Text = "多邊形至少需要 3 個頂點";
+                return;
+            }
+
+            // 將螢幕座標轉換為原始圖片座標（考慮縮放）
+            var scaledPolygon = polygonPoints.Select(p => new PointF(
+                (float)(p.X / s32ZoomLevel),
+                (float)(p.Y / s32ZoomLevel)
+            )).ToArray();
+
+            // 收集多邊形內的邊界資訊 (S32Data, layer3X, layer3Y, isAttribute1)
+            var includedEdges = new List<(S32Data s32, int layer3X, int layer3Y, bool isAttribute1)>();
+
+            // 遍歷所有 S32 的所有格子，檢查邊界中點是否在多邊形內
+            foreach (var s32Data in allS32DataDict.Values)
+            {
+                int[] loc = s32Data.SegInfo.GetLoc(1.0);
+                int mx = loc[0];
+                int my = loc[1];
+
+                // Layer3 是 64x64
+                for (int layer3Y = 0; layer3Y < 64; layer3Y++)
+                {
+                    for (int layer3X = 0; layer3X < 64; layer3X++)
+                    {
+                        // Layer3 座標轉 Layer1 座標（取偶數 x）
+                        int x1 = layer3X * 2;
+
+                        // 與 DrawPassabilityOverlay 完全相同的座標計算
+                        int localBaseX = 0;
+                        int localBaseY = 63 * 12;
+                        localBaseX -= 24 * (x1 / 2);
+                        localBaseY -= 12 * (x1 / 2);
+
+                        int X = mx + localBaseX + x1 * 24 + layer3Y * 24;
+                        int Y = my + localBaseY + layer3Y * 12;
+
+                        // Layer3 菱形的四個頂點（48x24，與 DrawPassabilityOverlay 一致）
+                        float pLeftX = X + 0, pLeftY = Y + 12;       // 左
+                        float pTopX = X + 24, pTopY = Y + 0;         // 上
+                        float pRightX = X + 48, pRightY = Y + 12;    // 右
+
+                        // 計算左上邊的中點
+                        float leftTopMidX = (pLeftX + pTopX) / 2;
+                        float leftTopMidY = (pLeftY + pTopY) / 2;
+
+                        // 計算右上邊的中點
+                        float rightTopMidX = (pTopX + pRightX) / 2;
+                        float rightTopMidY = (pTopY + pRightY) / 2;
+
+                        // 檢查左上邊中點是否在多邊形內
+                        if (IsPointInPolygon(leftTopMidX, leftTopMidY, scaledPolygon))
+                        {
+                            includedEdges.Add((s32Data, layer3X, layer3Y, true));  // Attribute1
+                        }
+
+                        // 檢查右上邊中點是否在多邊形內
+                        if (IsPointInPolygon(rightTopMidX, rightTopMidY, scaledPolygon))
+                        {
+                            includedEdges.Add((s32Data, layer3X, layer3Y, false)); // Attribute2
+                        }
+                    }
+                }
+            }
+
+            // 去除重複
+            var uniqueEdges = includedEdges.Distinct().ToList();
+
+            if (uniqueEdges.Count == 0)
+            {
+                this.toolStripStatusLabel1.Text = "多邊形內沒有任何格子邊界";
+                return;
+            }
+
+            // 設定通行性
+            int modifiedCount = 0;
+            HashSet<S32Data> modifiedS32Files = new HashSet<S32Data>();
+
+            foreach (var (s32Data, layer3X, layer3Y, isAttribute1) in uniqueEdges)
+            {
+                if (s32Data.Layer3[layer3Y, layer3X] == null)
+                {
+                    s32Data.Layer3[layer3Y, layer3X] = new MapAttribute { Attribute1 = 0, Attribute2 = 0 };
+                }
+
+                if (isAttribute1)
+                {
+                    if (passable)
+                        s32Data.Layer3[layer3Y, layer3X].Attribute1 = (short)(s32Data.Layer3[layer3Y, layer3X].Attribute1 & ~0x01);
+                    else
+                        s32Data.Layer3[layer3Y, layer3X].Attribute1 = (short)(s32Data.Layer3[layer3Y, layer3X].Attribute1 | 0x01);
+                }
+                else
+                {
+                    if (passable)
+                        s32Data.Layer3[layer3Y, layer3X].Attribute2 = (short)(s32Data.Layer3[layer3Y, layer3X].Attribute2 & ~0x01);
+                    else
+                        s32Data.Layer3[layer3Y, layer3X].Attribute2 = (short)(s32Data.Layer3[layer3Y, layer3X].Attribute2 | 0x01);
+                }
+
+                modifiedCount++;
+                modifiedS32Files.Add(s32Data);
+            }
+
+            // 標記所有修改過的 S32 檔案
+            foreach (var s32Data in modifiedS32Files)
+            {
+                s32Data.IsModified = true;
+            }
+
+            RenderS32Map();
+            this.toolStripStatusLabel1.Text = $"已設定 {modifiedCount} 個邊界為{(passable ? "可通行" : "不可通行")} (影響 {modifiedS32Files.Count} 個 S32 檔案)";
+        }
+
+        // 檢查點是否在多邊形內（射線法）
+        private bool IsPointInPolygon(float px, float py, PointF[] polygon)
+        {
+            bool inside = false;
+            int j = polygon.Length - 1;
+
+            for (int i = 0; i < polygon.Length; i++)
+            {
+                if ((polygon[i].Y < py && polygon[j].Y >= py || polygon[j].Y < py && polygon[i].Y >= py)
+                    && (polygon[i].X <= px || polygon[j].X <= px))
+                {
+                    if (polygon[i].X + (py - polygon[i].Y) / (polygon[j].Y - polygon[i].Y) * (polygon[j].X - polygon[i].X) < px)
+                    {
+                        inside = !inside;
+                    }
+                }
+                j = i;
+            }
+
+            return inside;
+        }
+
         // S32 地圖鼠標按下事件 - 開始區域選擇或拖拽移動
         private void s32PictureBox_MouseDown(object sender, MouseEventArgs e)
         {
@@ -5149,15 +5345,32 @@ namespace L1FlyMapViewer
             if (currentS32Data == null || currentS32FileItem == null)
                 return;
 
-            // Ctrl + 左鍵 + 通行性編輯模式：開始批次設定通行性
+            // Ctrl + 左鍵 + 通行性編輯模式：繪製多邊形頂點
             if (e.Button == MouseButtons.Left && Control.ModifierKeys == Keys.Control && currentPassableEditMode != PassableEditMode.None)
             {
-                isSelectingRegion = true;
-                isLayer4CopyMode = false;
-                regionStartPoint = e.Location;
-                regionEndPoint = e.Location;
-                selectedRegion = new Rectangle();
-                this.toolStripStatusLabel1.Text = "拖拽選擇區域...";
+                isDrawingPassabilityPolygon = true;
+                passabilityPolygonPoints.Add(e.Location);
+                s32PictureBox.Invalidate();
+                this.toolStripStatusLabel1.Text = $"多邊形頂點: {passabilityPolygonPoints.Count} 個 (Ctrl+左鍵繼續新增，右鍵完成)";
+                return;
+            }
+            // 右鍵完成多邊形繪製
+            if (e.Button == MouseButtons.Right && isDrawingPassabilityPolygon && passabilityPolygonPoints.Count >= 3)
+            {
+                SetPolygonPassable(passabilityPolygonPoints, currentPassableEditMode == PassableEditMode.SetPassable);
+                passabilityPolygonPoints.Clear();
+                isDrawingPassabilityPolygon = false;
+                s32PictureBox.Invalidate();
+                return;
+            }
+            // 右鍵取消多邊形繪製（頂點不足）
+            if (e.Button == MouseButtons.Right && isDrawingPassabilityPolygon)
+            {
+                passabilityPolygonPoints.Clear();
+                isDrawingPassabilityPolygon = false;
+                s32PictureBox.Invalidate();
+                this.toolStripStatusLabel1.Text = "已取消多邊形繪製";
+                return;
             }
             // 左鍵：開始區域選擇
             else if (e.Button == MouseButtons.Left && Control.ModifierKeys == Keys.None)
@@ -5286,16 +5499,8 @@ namespace L1FlyMapViewer
 
                 if (selectedCells.Count > 0)
                 {
-                    // 通行性編輯模式：批次設定通行性
-                    if (currentPassableEditMode != PassableEditMode.None)
-                    {
-                        SetRegionPassable(selectedCells, currentPassableEditMode == PassableEditMode.SetPassable);
-                    }
                     // 刪除模式：批次刪除物件
-                    else
-                    {
-                        DeleteAllLayer4ObjectsInRegion(selectedCells);
-                    }
+                    DeleteAllLayer4ObjectsInRegion(selectedCells);
                 }
 
                 // 清除選擇框
@@ -5304,9 +5509,51 @@ namespace L1FlyMapViewer
             }
         }
 
-        // S32 PictureBox 繪製事件 - 繪製選擇框
+        // S32 PictureBox 繪製事件 - 繪製選擇框或多邊形
         private void s32PictureBox_Paint(object sender, PaintEventArgs e)
         {
+            // 通行性編輯模式：繪製多邊形
+            if (isDrawingPassabilityPolygon && passabilityPolygonPoints.Count > 0)
+            {
+                Color polygonColor = currentPassableEditMode == PassableEditMode.SetPassable ? Color.LimeGreen : Color.Red;
+
+                // 繪製已有的多邊形邊
+                using (Pen pen = new Pen(polygonColor, 3))
+                {
+                    for (int i = 0; i < passabilityPolygonPoints.Count - 1; i++)
+                    {
+                        e.Graphics.DrawLine(pen, passabilityPolygonPoints[i], passabilityPolygonPoints[i + 1]);
+                    }
+                    // 如果有3個以上頂點，繪製封閉線（虛線預覽）
+                    if (passabilityPolygonPoints.Count >= 3)
+                    {
+                        using (Pen dashPen = new Pen(polygonColor, 2) { DashStyle = System.Drawing.Drawing2D.DashStyle.Dash })
+                        {
+                            e.Graphics.DrawLine(dashPen, passabilityPolygonPoints[passabilityPolygonPoints.Count - 1], passabilityPolygonPoints[0]);
+                        }
+                    }
+                }
+
+                // 繪製頂點標記
+                using (SolidBrush brush = new SolidBrush(polygonColor))
+                {
+                    foreach (var pt in passabilityPolygonPoints)
+                    {
+                        e.Graphics.FillEllipse(brush, pt.X - 5, pt.Y - 5, 10, 10);
+                    }
+                }
+
+                // 繪製半透明填充預覽（如果有3個以上頂點）
+                if (passabilityPolygonPoints.Count >= 3)
+                {
+                    using (SolidBrush fillBrush = new SolidBrush(Color.FromArgb(50, polygonColor)))
+                    {
+                        e.Graphics.FillPolygon(fillBrush, passabilityPolygonPoints.ToArray());
+                    }
+                }
+                return;
+            }
+
             // 有選中的格子時，繪製對齊格線的菱形選取框
             if (currentSelectedCells.Count > 0)
             {
@@ -5330,6 +5577,7 @@ namespace L1FlyMapViewer
                     }
                 }
             }
+
         }
 
         // 繪製選中的格子（每個格子繪製獨立的菱形）
@@ -6292,9 +6540,8 @@ namespace L1FlyMapViewer
                 listView.Columns.Add("索引", 40);
                 listView.Columns.Add("X", 40);
                 listView.Columns.Add("Y", 40);
-                listView.Columns.Add("R", 40);
-                listView.Columns.Add("G", 40);
-                listView.Columns.Add("B", 40);
+                listView.Columns.Add("ObjIdx", 60);
+                listView.Columns.Add("Type", 50);
 
                 for (int i = 0; i < currentS32Data.Layer5.Count; i++)
                 {
@@ -6302,9 +6549,8 @@ namespace L1FlyMapViewer
                     var lvItem = new ListViewItem(i.ToString());
                     lvItem.SubItems.Add(item5.X.ToString());
                     lvItem.SubItems.Add(item5.Y.ToString());
-                    lvItem.SubItems.Add(item5.R.ToString());
-                    lvItem.SubItems.Add(item5.G.ToString());
-                    lvItem.SubItems.Add(item5.B.ToString());
+                    lvItem.SubItems.Add(item5.ObjectIndex.ToString());
+                    lvItem.SubItems.Add(item5.Type.ToString());
                     listView.Items.Add(lvItem);
                 }
 
@@ -6483,7 +6729,7 @@ namespace L1FlyMapViewer
                     var lvItem = new ListViewItem(item8.SprId.ToString());
                     lvItem.SubItems.Add(item8.X.ToString());
                     lvItem.SubItems.Add(item8.Y.ToString());
-                    lvItem.SubItems.Add($"0x{item8.Unknown:X8}");
+                    lvItem.SubItems.Add($"0x{item8.ExtendedData:X8}");
                     listView.Items.Add(lvItem);
                 }
 
@@ -7706,15 +7952,14 @@ namespace L1FlyMapViewer
                 }
 
                 // 第六步：寫入第5-8層數據（從解析後的資料重新生成）
-                // 第五層 - 可透明化的圖塊
+                // 第五層 - 事件
                 bw.Write(s32Data.Layer5.Count);
                 foreach (var item in s32Data.Layer5)
                 {
                     bw.Write(item.X);
                     bw.Write(item.Y);
-                    bw.Write(item.R);
-                    bw.Write(item.G);
-                    bw.Write(item.B);
+                    bw.Write(item.ObjectIndex);
+                    bw.Write(item.Type);
                 }
 
                 // 第六層 - 使用的 til（重新計算並排序）
@@ -7769,14 +8014,21 @@ namespace L1FlyMapViewer
                 }
 
                 // 第八層 - 特效、裝飾品
-                bw.Write((byte)s32Data.Layer8.Count);
-                bw.Write((byte)0); // 跳過一個 byte
+                ushort lv8Count = (ushort)s32Data.Layer8.Count;
+                if (s32Data.Layer8HasExtendedData)
+                {
+                    lv8Count |= 0x8000;  // 設置高位表示有擴展資料
+                }
+                bw.Write(lv8Count);
                 foreach (var item in s32Data.Layer8)
                 {
                     bw.Write(item.SprId);
                     bw.Write(item.X);
                     bw.Write(item.Y);
-                    bw.Write(item.Unknown);
+                    if (s32Data.Layer8HasExtendedData)
+                    {
+                        bw.Write(item.ExtendedData);
+                    }
                 }
 
                 // 第七步：將完整數據寫入文件
@@ -9824,7 +10076,7 @@ namespace L1FlyMapViewer
                         lvi.SubItems.Add(item.SprId.ToString());
                         lvi.SubItems.Add(item.X.ToString());
                         lvi.SubItems.Add(item.Y.ToString());
-                        lvi.SubItems.Add(item.Unknown.ToString());
+                        lvi.SubItems.Add(item.ExtendedData.ToString());
                         lvi.Tag = (filePath, item);
                         lvItems.Items.Add(lvi);
                         itemInfoList.Add((filePath, item));
@@ -9876,13 +10128,13 @@ namespace L1FlyMapViewer
                 item.SprId = newSprId;
                 item.X = newX;
                 item.Y = newY;
-                item.Unknown = newUnknown;
+                item.ExtendedData = newUnknown;
 
                 // 更新 ListView 顯示
                 lvi.SubItems[1].Text = item.SprId.ToString();
                 lvi.SubItems[2].Text = item.X.ToString();
                 lvi.SubItems[3].Text = item.Y.ToString();
-                lvi.SubItems[4].Text = item.Unknown.ToString();
+                lvi.SubItems[4].Text = item.ExtendedData.ToString();
 
                 // 標記已修改
                 if (allS32DataDict.TryGetValue(filePath, out S32Data s32Data))
@@ -9944,7 +10196,7 @@ namespace L1FlyMapViewer
                             SprId = newSprId,
                             X = newX,
                             Y = newY,
-                            Unknown = newUnknown
+                            ExtendedData = newUnknown
                         };
                         s32Data.Layer8.Add(newItem);
                         s32Data.IsModified = true;
@@ -9954,7 +10206,7 @@ namespace L1FlyMapViewer
                         lvi.SubItems.Add(newItem.SprId.ToString());
                         lvi.SubItems.Add(newItem.X.ToString());
                         lvi.SubItems.Add(newItem.Y.ToString());
-                        lvi.SubItems.Add(newItem.Unknown.ToString());
+                        lvi.SubItems.Add(newItem.ExtendedData.ToString());
                         lvi.Tag = (selectedFilePath, newItem);
                         lvItems.Items.Add(lvi);
                         itemInfoList.Add((selectedFilePath, newItem));
@@ -9978,7 +10230,7 @@ namespace L1FlyMapViewer
                     txtSprId.Text = item.SprId.ToString();
                     txtX.Text = item.X.ToString();
                     txtY.Text = item.Y.ToString();
-                    txtUnknown.Text = item.Unknown.ToString();
+                    txtUnknown.Text = item.ExtendedData.ToString();
                 }
             };
 
@@ -10957,7 +11209,7 @@ namespace L1FlyMapViewer
                     for (int i = 0; i < items.Count; i++)
                     {
                         var item = items[i];
-                        string displayText = $"[{fileName}] X={item.X}, Y={item.Y}, RGB=({item.R},{item.G},{item.B})";
+                        string displayText = $"[{fileName}] X={item.X}, Y={item.Y}, ObjIdx={item.ObjectIndex}, Type={item.Type}";
                         clbItems.Items.Add(displayText);
                         itemInfoList.Add((filePath, i, item));
                     }

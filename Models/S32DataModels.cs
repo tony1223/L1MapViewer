@@ -62,6 +62,9 @@ namespace L1MapViewer.Models
         // 第8層 - 特效、裝飾品
         public List<Layer8Item> Layer8 { get; set; } = new List<Layer8Item>();
 
+        // 第8層擴展資訊
+        public bool Layer8HasExtendedData { get; set; } = false;
+
         // 檔案路徑和 SegInfo
         public string FilePath { get; set; } = string.Empty;
         public Struct.L1MapSeg SegInfo { get; set; }
@@ -105,15 +108,14 @@ namespace L1MapViewer.Models
     }
 
     /// <summary>
-    /// 第五層項目 - 可透明化的圖塊
+    /// 第五層項目 - 事件
     /// </summary>
     public class Layer5Item
     {
         public byte X { get; set; }
         public byte Y { get; set; }
-        public byte R { get; set; }
-        public byte G { get; set; }
-        public byte B { get; set; }
+        public ushort ObjectIndex { get; set; }
+        public byte Type { get; set; }
     }
 
     /// <summary>
@@ -136,7 +138,16 @@ namespace L1MapViewer.Models
         public ushort SprId { get; set; }
         public ushort X { get; set; }
         public ushort Y { get; set; }
-        public int Unknown { get; set; }
+        public int ExtendedData { get; set; }  // 僅當 HasExtendedData 為 true 時使用
+    }
+
+    /// <summary>
+    /// S32Data 的 Layer8 擴展資訊
+    /// </summary>
+    public class Layer8Info
+    {
+        public bool HasExtendedData { get; set; }  // 數量高位為 1 時為 true
+        public List<Layer8Item> Items { get; set; } = new List<Layer8Item>();
     }
 
     /// <summary>

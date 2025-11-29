@@ -204,7 +204,7 @@ namespace L1MapViewer.Helper
                         {
                             if (!Layer5Clipboard.Any(l => l.X == item.X && l.Y == item.Y))
                             {
-                                Layer5Clipboard.Add(new Layer5Item { X = item.X, Y = item.Y, R = item.R, G = item.G, B = item.B });
+                                Layer5Clipboard.Add(new Layer5Item { X = item.X, Y = item.Y, ObjectIndex = item.ObjectIndex, Type = item.Type });
                             }
                         }
                         foreach (var tilId in cell.S32Data.Layer6)
@@ -225,7 +225,7 @@ namespace L1MapViewer.Helper
                         {
                             if (!Layer8Clipboard.Any(l => l.SprId == item.SprId && l.X == item.X && l.Y == item.Y))
                             {
-                                Layer8Clipboard.Add(new Layer8Item { SprId = item.SprId, X = item.X, Y = item.Y, Unknown = item.Unknown });
+                                Layer8Clipboard.Add(new Layer8Item { SprId = item.SprId, X = item.X, Y = item.Y, ExtendedData = item.ExtendedData });
                             }
                         }
                     }
@@ -404,7 +404,7 @@ namespace L1MapViewer.Helper
                     {
                         if (!targetS32.Layer5.Any(l => l.X == item.X && l.Y == item.Y))
                         {
-                            targetS32.Layer5.Add(new Layer5Item { X = item.X, Y = item.Y, R = item.R, G = item.G, B = item.B });
+                            targetS32.Layer5.Add(new Layer5Item { X = item.X, Y = item.Y, ObjectIndex = item.ObjectIndex, Type = item.Type });
                             targetS32.IsModified = true;
                         }
                     }
@@ -431,7 +431,7 @@ namespace L1MapViewer.Helper
                     {
                         if (!targetS32.Layer8.Any(l => l.SprId == item.SprId && l.X == item.X && l.Y == item.Y))
                         {
-                            targetS32.Layer8.Add(new Layer8Item { SprId = item.SprId, X = item.X, Y = item.Y, Unknown = item.Unknown });
+                            targetS32.Layer8.Add(new Layer8Item { SprId = item.SprId, X = item.X, Y = item.Y, ExtendedData = item.ExtendedData });
                             targetS32.IsModified = true;
                         }
                     }

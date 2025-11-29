@@ -67,3 +67,4 @@ Desktop.ini
 *.tmp
 *.temp
 ~$*
+/build_test/
