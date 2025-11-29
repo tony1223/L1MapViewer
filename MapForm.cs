@@ -3373,6 +3373,12 @@ namespace L1FlyMapViewer
                 currentPassableEditMode = PassableEditMode.SetPassable;
                 btnSetPassable.BackColor = Color.LightGreen;
                 btnSetImpassable.BackColor = SystemColors.Control;
+                // 自動顯示通行性覆蓋層
+                if (!chkShowPassable.Checked)
+                {
+                    chkShowPassable.Checked = true;
+                    RenderS32Map();
+                }
                 this.toolStripStatusLabel1.Text = "允許通行模式：點擊格子設定 | Ctrl+左鍵繪製多邊形，右鍵完成";
                 UpdatePassabilityHelpLabel();
             }
@@ -3395,6 +3401,12 @@ namespace L1FlyMapViewer
                 currentPassableEditMode = PassableEditMode.SetImpassable;
                 btnSetImpassable.BackColor = Color.LightCoral;
                 btnSetPassable.BackColor = SystemColors.Control;
+                // 自動顯示通行性覆蓋層
+                if (!chkShowPassable.Checked)
+                {
+                    chkShowPassable.Checked = true;
+                    RenderS32Map();
+                }
                 this.toolStripStatusLabel1.Text = "禁止通行模式：點擊格子設定 | Ctrl+左鍵繪製多邊形，右鍵完成";
                 UpdatePassabilityHelpLabel();
             }
@@ -5357,6 +5369,11 @@ namespace L1FlyMapViewer
             // 右鍵完成多邊形繪製
             if (e.Button == MouseButtons.Right && isDrawingPassabilityPolygon && passabilityPolygonPoints.Count >= 3)
             {
+                // 確保顯示通行性覆蓋層，以便看到修改結果
+                if (!chkShowPassable.Checked)
+                {
+                    chkShowPassable.Checked = true;
+                }
                 SetPolygonPassable(passabilityPolygonPoints, currentPassableEditMode == PassableEditMode.SetPassable);
                 passabilityPolygonPoints.Clear();
                 isDrawingPassabilityPolygon = false;
