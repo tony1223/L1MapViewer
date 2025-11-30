@@ -93,6 +93,9 @@ namespace L1FlyMapViewer
         private Point mainMapDragStartPoint;
         private Point mainMapDragStartScroll;
 
+        // Viewport 渲染相關
+        private Bitmap _viewportBitmap;  // 當前渲染的 Viewport Bitmap
+
         // Tile 資料快取 - key: "tileId_indexId"
         private Dictionary<string, byte[]> tileDataCache = new Dictionary<string, byte[]>();
 
@@ -153,18 +156,8 @@ namespace L1FlyMapViewer
                 System.Reflection.BindingFlags.SetProperty | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic,
                 null, this.s32PictureBox, new object[] { true });
 
-            // 當 s32MapPanel 捲動時更新小地圖（使用防抖避免過度更新）
-            System.Windows.Forms.Timer scrollUpdateTimer = new System.Windows.Forms.Timer();
-            scrollUpdateTimer.Interval = 50;
-            scrollUpdateTimer.Tick += (s, e) => {
-                scrollUpdateTimer.Stop();
-                if (this.s32PictureBox.Image != null)
-                    UpdateMiniMap();
-            };
-            this.s32MapPanel.Scroll += (s, e) => {
-                scrollUpdateTimer.Stop();
-                scrollUpdateTimer.Start();
-            };
+            // 拖曳移動視圖時更新小地圖（使用防抖避免過度更新）
+            // 注意：現在使用中鍵拖曳移動視圖，不再使用 Panel AutoScroll
 
             // 建立通行性編輯操作說明標籤
             lblPassabilityHelp = new Label
@@ -1797,13 +1790,19 @@ namespace L1FlyMapViewer
         {
             try
             {
-                if (this.s32PictureBox.Image == null)
+                // 使用 ViewState 的地圖大小或 PictureBox 大小
+                int pictureWidth = _viewState.MapWidth > 0 ? _viewState.MapWidth : this.s32PictureBox.Width;
+                int pictureHeight = _viewState.MapHeight > 0 ? _viewState.MapHeight : this.s32PictureBox.Height;
+
+                if (pictureWidth <= 0 || pictureHeight <= 0)
+                    return;
+
+                // 需要有 Viewport Bitmap 或傳統的 PictureBox Image
+                if (_viewportBitmap == null && this.s32PictureBox.Image == null)
                     return;
 
                 int miniWidth = 260;
                 int miniHeight = 260;
-                int pictureWidth = this.s32PictureBox.Width;
-                int pictureHeight = this.s32PictureBox.Height;
 
                 // 計算縮放比例和偏移
                 float scaleX = (float)miniWidth / pictureWidth;
@@ -1826,7 +1825,21 @@ namespace L1FlyMapViewer
                     g.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.HighQuality;
 
                     g.FillRectangle(Brushes.Black, 0, 0, miniWidth, miniHeight);
-                    g.DrawImage(this.s32PictureBox.Image, offsetX, offsetY, scaledWidth, scaledHeight);
+
+                    // 使用 Viewport Bitmap 或傳統方式
+                    if (_viewportBitmap != null && _viewState.RenderWidth > 0)
+                    {
+                        // 計算 Viewport Bitmap 在小地圖上的位置
+                        int vpX = (int)(_viewState.RenderOriginX * scale) + offsetX;
+                        int vpY = (int)(_viewState.RenderOriginY * scale) + offsetY;
+                        int vpW = (int)(_viewState.RenderWidth * scale);
+                        int vpH = (int)(_viewState.RenderHeight * scale);
+                        g.DrawImage(_viewportBitmap, vpX, vpY, vpW, vpH);
+                    }
+                    else if (this.s32PictureBox.Image != null)
+                    {
+                        g.DrawImage(this.s32PictureBox.Image, offsetX, offsetY, scaledWidth, scaledHeight);
+                    }
                 }
 
                 // 建立顯示圖（含紅框）
@@ -1839,9 +1852,9 @@ namespace L1FlyMapViewer
                         float viewPortScaleX = (float)scaledWidth / pictureWidth;
                         float viewPortScaleY = (float)scaledHeight / pictureHeight;
 
-                        // 取得目前捲動位置（AutoScrollPosition 返回負值）
-                        int scrollX = -this.s32MapPanel.AutoScrollPosition.X;
-                        int scrollY = -this.s32MapPanel.AutoScrollPosition.Y;
+                        // 使用 ViewState 的捲動位置（世界座標，需要乘以縮放轉為螢幕座標）
+                        int scrollX = (int)(_viewState.ScrollX * s32ZoomLevel);
+                        int scrollY = (int)(_viewState.ScrollY * s32ZoomLevel);
 
                         int viewX = (int)(scrollX * viewPortScaleX) + offsetX;
                         int viewY = (int)(scrollY * viewPortScaleY) + offsetY;
@@ -2036,7 +2049,8 @@ namespace L1FlyMapViewer
             // Ctrl+滾輪 = 縮放
             if (Control.ModifierKeys == Keys.Control)
             {
-                if (this.s32PictureBox.Image == null)
+                // 檢查是否有載入地圖
+                if (_viewState.MapWidth <= 0 || _viewState.MapHeight <= 0)
                     return;
 
                 double oldZoom = pendingS32ZoomLevel;
@@ -2065,24 +2079,31 @@ namespace L1FlyMapViewer
             }
 
             // Shift+滾輪 = 左右捲動，普通滾輪 = 上下捲動
-            int scrollAmount = 120;  // 捲動量（像素）
-            int currentX = -this.s32MapPanel.AutoScrollPosition.X;
-            int currentY = -this.s32MapPanel.AutoScrollPosition.Y;
+            int scrollAmount = (int)(100 / s32ZoomLevel);  // 捲動量（世界座標像素）
+            int currentX = _viewState.ScrollX;
+            int currentY = _viewState.ScrollY;
+
+            // 計算最大捲動值（世界座標）
+            int maxScrollX = Math.Max(0, _viewState.MapWidth - (int)(s32MapPanel.Width / s32ZoomLevel));
+            int maxScrollY = Math.Max(0, _viewState.MapHeight - (int)(s32MapPanel.Height / s32ZoomLevel));
 
             if (Control.ModifierKeys == Keys.Shift)
             {
                 // 左右捲動
                 int newX = currentX - (e.Delta > 0 ? scrollAmount : -scrollAmount);
-                newX = Math.Max(0, Math.Min(newX, this.s32PictureBox.Width - this.s32MapPanel.Width));
-                this.s32MapPanel.AutoScrollPosition = new Point(newX, currentY);
+                newX = Math.Max(0, Math.Min(newX, maxScrollX));
+                _viewState.SetScrollSilent(newX, currentY);
             }
             else
             {
                 // 上下捲動
                 int newY = currentY - (e.Delta > 0 ? scrollAmount : -scrollAmount);
-                newY = Math.Max(0, Math.Min(newY, this.s32PictureBox.Height - this.s32MapPanel.Height));
-                this.s32MapPanel.AutoScrollPosition = new Point(currentX, newY);
+                newY = Math.Max(0, Math.Min(newY, maxScrollY));
+                _viewState.SetScrollSilent(currentX, newY);
             }
+
+            // 檢查是否需要重新渲染
+            CheckAndRerenderIfNeeded();
 
             // 更新小地圖
             UpdateMiniMap();
@@ -2091,39 +2112,24 @@ namespace L1FlyMapViewer
             ((HandledMouseEventArgs)e).Handled = true;
         }
 
-        // 執行實際的縮放操作
+        // 執行實際的縮放操作（使用 Viewport 渲染）
         private void ApplyS32Zoom(double targetZoomLevel)
         {
             try
             {
-                if (this.s32PictureBox.Image == null)
+                // 檢查是否有載入地圖
+                if (_viewState.MapWidth <= 0 || _viewState.MapHeight <= 0)
                     return;
 
-                if (originalS32Image == null)
-                {
-                    originalS32Image = (Image)this.s32PictureBox.Image.Clone();
-                }
-
-                // 計算新的圖片大小
-                int newWidth = (int)(originalS32Image.Width * targetZoomLevel);
-                int newHeight = (int)(originalS32Image.Height * targetZoomLevel);
-
-                // 創建縮放後的圖片
-                Bitmap scaledImage = new Bitmap(newWidth, newHeight);
-                using (Graphics g = Graphics.FromImage(scaledImage))
-                {
-                    g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.NearestNeighbor;
-                    g.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.Half;
-                    g.DrawImage(originalS32Image, 0, 0, newWidth, newHeight);
-                }
-
-                // 更新 PictureBox
-                if (this.s32PictureBox.Image != null && this.s32PictureBox.Image != originalS32Image)
-                    this.s32PictureBox.Image.Dispose();
-
-                this.s32PictureBox.Image = scaledImage;
-                this.s32PictureBox.Size = new Size(newWidth, newHeight);
+                // 更新縮放級別
                 s32ZoomLevel = targetZoomLevel;
+                _viewState.ZoomLevel = targetZoomLevel;
+
+                // 重新渲染（縮放改變會觸發重新渲染）
+                RenderS32Map();
+
+                // 更新小地圖
+                UpdateMiniMap();
 
                 // 更新狀態欄顯示縮放級別
                 this.lblS32Info.Text = $"縮放: {s32ZoomLevel:P0}";
@@ -2187,15 +2193,15 @@ namespace L1FlyMapViewer
         {
             try
             {
-                if (this.s32PictureBox.Image == null)
+                // 使用 ViewState 的地圖大小
+                int pictureWidth = _viewState.MapWidth > 0 ? _viewState.MapWidth : this.s32PictureBox.Width;
+                int pictureHeight = _viewState.MapHeight > 0 ? _viewState.MapHeight : this.s32PictureBox.Height;
+
+                if (pictureWidth <= 0 || pictureHeight <= 0)
                     return;
 
                 int miniWidth = 260;
                 int miniHeight = 260;
-
-                // 使用 s32PictureBox 的實際控件大小
-                int pictureWidth = this.s32PictureBox.Width;
-                int pictureHeight = this.s32PictureBox.Height;
 
                 // 計算小地圖中圖片的縮放和偏移（與 UpdateMiniMap 一致）
                 float scaleX = (float)miniWidth / pictureWidth;
@@ -2215,32 +2221,36 @@ namespace L1FlyMapViewer
                 clickX = Math.Max(0, Math.Min(clickX, scaledWidth));
                 clickY = Math.Max(0, Math.Min(clickY, scaledHeight));
 
-                // 計算點擊位置對應的主地圖座標
+                // 計算點擊位置對應的主地圖世界座標
                 int mapPosX = (int)((float)clickX / scaledWidth * pictureWidth);
                 int mapPosY = (int)((float)clickY / scaledHeight * pictureHeight);
 
-                // 計算捲動位置，讓點擊位置成為視窗中央
-                int newScrollX = mapPosX - this.s32MapPanel.Width / 2;
-                int newScrollY = mapPosY - this.s32MapPanel.Height / 2;
+                // 計算捲動位置（世界座標），讓點擊位置成為視窗中央
+                int viewportWidthWorld = (int)(s32MapPanel.Width / s32ZoomLevel);
+                int viewportHeightWorld = (int)(s32MapPanel.Height / s32ZoomLevel);
+                int newScrollX = mapPosX - viewportWidthWorld / 2;
+                int newScrollY = mapPosY - viewportHeightWorld / 2;
 
-                // 限制在有效範圍內
-                int maxScrollX = Math.Max(0, pictureWidth - this.s32MapPanel.Width);
-                int maxScrollY = Math.Max(0, pictureHeight - this.s32MapPanel.Height);
+                // 限制在有效範圍內（世界座標）
+                int maxScrollX = Math.Max(0, pictureWidth - viewportWidthWorld);
+                int maxScrollY = Math.Max(0, pictureHeight - viewportHeightWorld);
                 newScrollX = Math.Max(0, Math.Min(newScrollX, maxScrollX));
                 newScrollY = Math.Max(0, Math.Min(newScrollY, maxScrollY));
 
-                // 設定 AutoScrollPosition
-                this.s32MapPanel.AutoScrollPosition = new Point(newScrollX, newScrollY);
+                // 設定 ViewState 的捲動位置
+                _viewState.SetScrollSilent(newScrollX, newScrollY);
 
-                // 根據參數決定是否更新小地圖
+                // 根據參數決定是否更新小地圖和重新渲染
                 if (updateMiniMapFlag)
                 {
+                    CheckAndRerenderIfNeeded();
                     UpdateMiniMap();
                 }
                 else
                 {
-                    // 拖拽時只更新小地圖紅框位置（快速繪製）
-                    UpdateMiniMapRedBox(newScrollX, newScrollY);
+                    // 拖拽時只更新小地圖紅框位置和重繪（快速繪製）
+                    s32PictureBox.Invalidate();
+                    UpdateMiniMapRedBox((int)(newScrollX * s32ZoomLevel), (int)(newScrollY * s32ZoomLevel));
                 }
             }
             catch
@@ -2255,7 +2265,11 @@ namespace L1FlyMapViewer
         {
             try
             {
-                if (this.s32PictureBox.Image == null)
+                // 使用 ViewState 的地圖大小或 PictureBox 大小
+                int pictureWidth = _viewState.MapWidth > 0 ? _viewState.MapWidth : this.s32PictureBox.Width;
+                int pictureHeight = _viewState.MapHeight > 0 ? _viewState.MapHeight : this.s32PictureBox.Height;
+
+                if (pictureWidth <= 0 || pictureHeight <= 0)
                     return;
 
                 // 如果沒有基底圖，先建立一張
@@ -2267,8 +2281,6 @@ namespace L1FlyMapViewer
 
                 int miniWidth = 260;
                 int miniHeight = 260;
-                int pictureWidth = this.s32PictureBox.Width;
-                int pictureHeight = this.s32PictureBox.Height;
 
                 float scaleX = (float)miniWidth / pictureWidth;
                 float scaleY = (float)miniHeight / pictureHeight;
@@ -2312,18 +2324,22 @@ namespace L1FlyMapViewer
             {
                 try
                 {
-                    if (this.s32PictureBox.Image == null)
+                    // 使用 ViewState 的地圖大小
+                    int pictureWidth = _viewState.MapWidth > 0 ? _viewState.MapWidth : this.s32PictureBox.Width;
+                    int pictureHeight = _viewState.MapHeight > 0 ? _viewState.MapHeight : this.s32PictureBox.Height;
+
+                    if (pictureWidth <= 0 || pictureHeight <= 0)
                         return;
 
                     int miniWidth = 260;
                     int miniHeight = 260;
 
-                    float scaleX = (float)miniWidth / this.s32PictureBox.Image.Width;
-                    float scaleY = (float)miniHeight / this.s32PictureBox.Image.Height;
+                    float scaleX = (float)miniWidth / pictureWidth;
+                    float scaleY = (float)miniHeight / pictureHeight;
                     float scale = Math.Min(scaleX, scaleY);
 
-                    int scaledWidth = (int)(this.s32PictureBox.Image.Width * scale);
-                    int scaledHeight = (int)(this.s32PictureBox.Image.Height * scale);
+                    int scaledWidth = (int)(pictureWidth * scale);
+                    int scaledHeight = (int)(pictureHeight * scale);
                     int offsetX = (miniWidth - scaledWidth) / 2;
                     int offsetY = (miniHeight - scaledHeight) / 2;
 
@@ -2336,8 +2352,8 @@ namespace L1FlyMapViewer
                     float clickRatioX = (float)clickX / scaledWidth;
                     float clickRatioY = (float)clickY / scaledHeight;
 
-                    int mapX = (int)(clickRatioX * this.s32PictureBox.Image.Width);
-                    int mapY = (int)(clickRatioY * this.s32PictureBox.Image.Height);
+                    int mapX = (int)(clickRatioX * pictureWidth);
+                    int mapY = (int)(clickRatioY * pictureHeight);
 
                     var linLoc = L1MapHelper.GetLinLocation(mapX, mapY);
                     if (linLoc != null)
@@ -2425,9 +2441,10 @@ namespace L1FlyMapViewer
             if (string.IsNullOrEmpty(_document.MapId) || !Share.MapDataList.ContainsKey(_document.MapId))
                 return (-1, -1, null, -1, -1);
 
-            // 將螢幕座標轉換為原始座標（考慮縮放）
-            int origX = (int)(screenX / s32ZoomLevel);
-            int origY = (int)(screenY / s32ZoomLevel);
+            // 使用 ViewState 的捲動位置（世界座標）
+            // 將螢幕座標轉換為世界座標（考慮縮放和捲動）
+            int worldX = (int)(screenX / s32ZoomLevel) + _viewState.ScrollX;
+            int worldY = (int)(screenY / s32ZoomLevel) + _viewState.ScrollY;
 
             Struct.L1Map currentMap = Share.MapDataList[_document.MapId];
 
@@ -2458,7 +2475,7 @@ namespace L1FlyMapViewer
                         Point p3 = new Point(X + 48, Y + 12);  // 右
                         Point p4 = new Point(X + 24, Y + 24);  // 下
 
-                        if (IsPointInDiamond(new Point(origX, origY), p1, p2, p3, p4))
+                        if (IsPointInDiamond(new Point(worldX, worldY), p1, p2, p3, p4))
                         {
                             // 返回 Layer3 座標作為遊戲座標
                             int gameX = s32Data.SegInfo.nLinBeginX + x3;
@@ -2471,8 +2488,8 @@ namespace L1FlyMapViewer
             return (-1, -1, null, -1, -1);
         }
 
-        // 遊戲座標轉換為螢幕座標中心點
-        private (int screenX, int screenY) GameToScreenCoords(int gameX, int gameY)
+        // 遊戲座標轉換為世界座標中心點
+        private (int worldX, int worldY) GameToWorldCoords(int gameX, int gameY)
         {
             if (string.IsNullOrEmpty(_document.MapId) || !Share.MapDataList.ContainsKey(_document.MapId))
                 return (-1, -1);
@@ -2501,12 +2518,26 @@ namespace L1FlyMapViewer
                     int X = mx + localBaseX + localX * 24 + localY * 24;
                     int Y = my + localBaseY + localY * 12;
 
-                    // 返回菱形中心點
+                    // 返回菱形中心點（世界座標）
                     return (X + 12, Y + 12);
                 }
             }
 
             return (-1, -1);
+        }
+
+        // 遊戲座標轉換為螢幕座標中心點（考慮捲動位置）
+        private (int screenX, int screenY) GameToScreenCoords(int gameX, int gameY)
+        {
+            var (worldX, worldY) = GameToWorldCoords(gameX, gameY);
+            if (worldX < 0) return (-1, -1);
+
+            // 使用 ViewState 的捲動位置（世界座標）
+            // 世界座標轉螢幕座標（考慮縮放和捲動）
+            int screenX = (int)((worldX - _viewState.ScrollX) * s32ZoomLevel);
+            int screenY = (int)((worldY - _viewState.ScrollY) * s32ZoomLevel);
+
+            return (screenX, screenY);
         }
 
         // 載入當前地圖的 s32 檔案清單並載入所有 S32 資料
@@ -3221,7 +3252,7 @@ namespace L1FlyMapViewer
             ReloadCurrentMap();
         }
 
-        // 渲染整張 S32 地圖（所有 S32 檔案拼接）
+        // 渲染 S32 地圖（Viewport 渲染 - 只渲染可見區域）
         private void RenderS32Map()
         {
             try
@@ -3249,17 +3280,18 @@ namespace L1FlyMapViewer
                 int mapWidth = currentMap.nBlockCountX * blockWidth;
                 int mapHeight = currentMap.nBlockCountX * blockHeight / 2 + currentMap.nBlockCountY * blockHeight / 2;
 
-                // 格子數量（Layer1 是 128 寬，64 高）
-                int mapWidthInCells = currentMap.nBlockCountX * 128;
-                int mapHeightInCells = currentMap.nBlockCountY * 64;
+                // 更新 ViewState 的地圖大小
+                _viewState.MapWidth = mapWidth;
+                _viewState.MapHeight = mapHeight;
+                _viewState.ViewportWidth = s32MapPanel.Width;
+                _viewState.ViewportHeight = s32MapPanel.Height;
+                _viewState.ZoomLevel = s32ZoomLevel;
 
-                Bitmap s32Bitmap = new Bitmap(mapWidth, mapHeight, PixelFormat.Format16bppRgb555);
+                // 更新捲動限制（保留現有的捲動位置，ViewState.ScrollX/ScrollY 會在限制範圍內調整）
+                _viewState.UpdateScrollLimits(mapWidth, mapHeight);
 
-                // 使用與原始 L1MapHelper.LoadMap 完全相同的方式：
-                // 1. 為每個 S32 生成獨立的 bitmap
-                // 2. 用 DrawImage 合併到大地圖
-                ImageAttributes vAttr = new ImageAttributes();
-                vAttr.SetColorKey(Color.FromArgb(0), Color.FromArgb(0)); // 透明色
+                // 取得需要渲染的世界座標範圍（含緩衝區）
+                Rectangle renderRect = _viewState.GetRenderWorldRect();
 
                 // 建立勾選的 S32 檔案清單
                 HashSet<string> checkedFilePaths = new HashSet<string>();
@@ -3271,75 +3303,8 @@ namespace L1FlyMapViewer
                     }
                 }
 
-                using (Graphics g = Graphics.FromImage(s32Bitmap))
-                {
-                    // 使用與原始 L1MapHelper.LoadMap 完全相同的排序方式（Utils.SortDesc）
-                    var sortedFilePaths = Utils.SortDesc(_document.S32Files.Keys);
-
-                    // 遍歷所有 S32 檔案
-                    foreach (object filePathObj in sortedFilePaths)
-                    {
-                        string filePath = filePathObj as string;
-                        if (filePath == null || !_document.S32Files.ContainsKey(filePath)) continue;
-
-                        // 只渲染有勾選的 S32
-                        if (!checkedFilePaths.Contains(filePath)) continue;
-
-                        var s32Data = _document.S32Files[filePath];
-                        // 使用 GetLoc 計算區塊位置
-                        int[] loc = s32Data.SegInfo.GetLoc(1.0);
-                        int mx = loc[0];
-                        int my = loc[1];
-
-                        // 為這個 S32 生成獨立的 bitmap
-                        Bitmap blockBmp = RenderS32Block(s32Data, chkLayer1.Checked, chkLayer4.Checked);
-
-                        // 合併到大地圖（與原始方法一致）
-                        g.DrawImage(blockBmp, new Rectangle(mx, my, blockBmp.Width, blockBmp.Height),
-                            0, 0, blockBmp.Width, blockBmp.Height, GraphicsUnit.Pixel, vAttr);
-
-                        blockBmp.Dispose();
-                    }
-                }
-
-                // 第三層（地圖屬性）- 用半透明顏色疊加顯示
-                if (chkLayer3.Checked)
-                {
-                    DrawLayer3Attributes(s32Bitmap, currentMap);
-                }
-
-                // 顯示通行性覆蓋層
-                if (chkShowPassable.Checked)
-                {
-                    DrawPassableOverlay(s32Bitmap, currentMap);
-                }
-
-                // 顯示格線和邊界框
-                if (chkShowGrid.Checked)
-                {
-                    // 繪製格子網格線
-                    DrawS32Grid(s32Bitmap, currentMap);
-
-                    // 繪製座標標籤（每 10 格顯示一次）
-                    DrawCoordinateLabels(s32Bitmap, currentMap);
-                }
-
-                // 只顯示 S32 邊界框（用於除錯對齊）
-                if (chkShowS32Boundary.Checked)
-                {
-                    DrawS32BoundaryOnly(s32Bitmap, currentMap);
-                }
-
-                // 繪製選中格子的高亮
-                if (_editState.HighlightedS32Data != null && _editState.HighlightedCellX >= 0 && _editState.HighlightedCellY >= 0)
-                {
-                    DrawHighlightedCell(s32Bitmap, currentMap);
-                }
-
-                // 顯示在 PictureBox
-                if (s32PictureBox.Image != null)
-                    s32PictureBox.Image.Dispose();
-                s32PictureBox.Image = s32Bitmap;
+                // 渲染 Viewport
+                RenderViewport(renderRect, currentMap, checkedFilePaths);
 
                 // 統計勾選的 S32 數量和物件數量
                 int checkedCount = checkedFilePaths.Count;
@@ -3347,11 +3312,138 @@ namespace L1FlyMapViewer
                     .Where(s => checkedFilePaths.Contains(s.FilePath))
                     .Sum(s => s.Layer4.Count);
 
-                lblS32Info.Text = $"已渲染 {checkedCount}/{_document.S32Files.Count} 個S32檔案 | 大小: {mapWidth}x{mapHeight} | 第1層:{(chkLayer1.Checked ? "顯示" : "隱藏")} 第3層:{(chkLayer3.Checked ? "顯示" : "隱藏")} 第4層:{(chkLayer4.Checked ? "顯示" : "隱藏")} ({totalObjects}個物件)";
+                lblS32Info.Text = $"已渲染 {checkedCount}/{_document.S32Files.Count} 個S32檔案 | 地圖: {mapWidth}x{mapHeight} | Viewport: {renderRect.Width}x{renderRect.Height} | 第1層:{(chkLayer1.Checked ? "顯示" : "隱藏")} 第3層:{(chkLayer3.Checked ? "顯示" : "隱藏")} 第4層:{(chkLayer4.Checked ? "顯示" : "隱藏")} ({totalObjects}個物件)";
             }
             catch (Exception ex)
             {
                 lblS32Info.Text = $"渲染失敗: {ex.Message}";
+            }
+        }
+
+        // 渲染指定範圍的 Viewport
+        private void RenderViewport(Rectangle worldRect, Struct.L1Map currentMap, HashSet<string> checkedFilePaths)
+        {
+            int blockWidth = 64 * 24 * 2;  // 3072
+            int blockHeight = 64 * 12 * 2; // 1536
+
+            // 創建 Viewport Bitmap
+            Bitmap viewportBitmap = new Bitmap(worldRect.Width, worldRect.Height, PixelFormat.Format16bppRgb555);
+
+            ImageAttributes vAttr = new ImageAttributes();
+            vAttr.SetColorKey(Color.FromArgb(0), Color.FromArgb(0)); // 透明色
+
+            using (Graphics g = Graphics.FromImage(viewportBitmap))
+            {
+                // 使用與原始 L1MapHelper.LoadMap 完全相同的排序方式（Utils.SortDesc）
+                var sortedFilePaths = Utils.SortDesc(_document.S32Files.Keys);
+
+                // 遍歷所有 S32 檔案
+                foreach (object filePathObj in sortedFilePaths)
+                {
+                    string filePath = filePathObj as string;
+                    if (filePath == null || !_document.S32Files.ContainsKey(filePath)) continue;
+
+                    // 只渲染有勾選的 S32
+                    if (!checkedFilePaths.Contains(filePath)) continue;
+
+                    var s32Data = _document.S32Files[filePath];
+                    // 使用 GetLoc 計算區塊位置（世界座標）
+                    int[] loc = s32Data.SegInfo.GetLoc(1.0);
+                    int mx = loc[0];
+                    int my = loc[1];
+
+                    // 檢查是否與渲染範圍相交
+                    Rectangle blockRect = new Rectangle(mx, my, blockWidth, blockHeight);
+                    if (!blockRect.IntersectsWith(worldRect))
+                        continue;
+
+                    // 為這個 S32 生成獨立的 bitmap
+                    Bitmap blockBmp = RenderS32Block(s32Data, chkLayer1.Checked, chkLayer4.Checked);
+
+                    // 計算繪製位置（減去 worldRect 原點偏移）
+                    int drawX = mx - worldRect.X;
+                    int drawY = my - worldRect.Y;
+
+                    // 合併到 Viewport Bitmap
+                    g.DrawImage(blockBmp, new Rectangle(drawX, drawY, blockBmp.Width, blockBmp.Height),
+                        0, 0, blockBmp.Width, blockBmp.Height, GraphicsUnit.Pixel, vAttr);
+
+                    blockBmp.Dispose();
+                }
+            }
+
+            // 繪製覆蓋層（需要傳入世界座標偏移）
+            if (chkLayer3.Checked)
+            {
+                DrawLayer3AttributesViewport(viewportBitmap, currentMap, worldRect);
+            }
+
+            if (chkShowPassable.Checked)
+            {
+                DrawPassableOverlayViewport(viewportBitmap, currentMap, worldRect);
+            }
+
+            if (chkShowGrid.Checked)
+            {
+                DrawS32GridViewport(viewportBitmap, currentMap, worldRect);
+                DrawCoordinateLabelsViewport(viewportBitmap, currentMap, worldRect);
+            }
+
+            if (chkShowS32Boundary.Checked)
+            {
+                DrawS32BoundaryOnlyViewport(viewportBitmap, currentMap, worldRect);
+            }
+
+            if (_editState.HighlightedS32Data != null && _editState.HighlightedCellX >= 0 && _editState.HighlightedCellY >= 0)
+            {
+                DrawHighlightedCellViewport(viewportBitmap, currentMap, worldRect);
+            }
+
+            // 保存渲染結果元數據
+            _viewState.SetRenderResult(worldRect.X, worldRect.Y, worldRect.Width, worldRect.Height, _viewState.ZoomLevel);
+
+            // 釋放舊的 Viewport Bitmap
+            if (_viewportBitmap != null)
+                _viewportBitmap.Dispose();
+            _viewportBitmap = viewportBitmap;
+
+            // 更新 PictureBox - 設定為 Panel 大小（不使用 AutoScroll）
+            if (s32PictureBox.Image != null)
+                s32PictureBox.Image.Dispose();
+
+            s32PictureBox.Image = null;
+            // PictureBox 大小等於 Panel 的可見區域
+            s32PictureBox.Size = new Size(s32MapPanel.Width, s32MapPanel.Height);
+            s32PictureBox.Location = new Point(0, 0);
+
+            // 禁用 Panel 的 AutoScroll（我們用拖曳來移動）
+            s32MapPanel.AutoScroll = false;
+
+            // 強制重繪
+            s32PictureBox.Invalidate();
+        }
+
+        // 檢查是否需要重新渲染並執行
+        private void CheckAndRerenderIfNeeded()
+        {
+            if (_document.S32Files.Count == 0 || string.IsNullOrEmpty(_document.MapId))
+                return;
+
+            // 更新縮放和 Viewport 大小到 ViewState
+            _viewState.ZoomLevel = s32ZoomLevel;
+            _viewState.ViewportWidth = s32MapPanel.Width;
+            _viewState.ViewportHeight = s32MapPanel.Height;
+            // ScrollX/ScrollY 已經在拖曳時更新了，這裡不需要再設定
+
+            // 檢查是否需要重新渲染
+            if (_viewState.NeedsRerender())
+            {
+                RenderS32Map();
+            }
+            else
+            {
+                // 只需要重繪（不需要重新渲染）
+                s32PictureBox.Invalidate();
             }
         }
 
@@ -3429,23 +3521,29 @@ namespace L1FlyMapViewer
         // 捲動到地圖中央
         private void ScrollToMapCenter()
         {
-            if (this.s32PictureBox.Image == null)
+            int mapWidth = _viewState.MapWidth;
+            int mapHeight = _viewState.MapHeight;
+
+            if (mapWidth <= 0 || mapHeight <= 0)
                 return;
 
-            // 計算中央位置
-            int centerX = this.s32PictureBox.Image.Width / 2 - this.s32MapPanel.Width / 2;
-            int centerY = this.s32PictureBox.Image.Height / 2 - this.s32MapPanel.Height / 2;
+            // 計算中央位置（世界座標）
+            int viewportWidthWorld = (int)(s32MapPanel.Width / s32ZoomLevel);
+            int viewportHeightWorld = (int)(s32MapPanel.Height / s32ZoomLevel);
+            int centerX = mapWidth / 2 - viewportWidthWorld / 2;
+            int centerY = mapHeight / 2 - viewportHeightWorld / 2;
 
             // 限制在有效範圍內
-            int maxScrollX = Math.Max(0, this.s32PictureBox.Width - this.s32MapPanel.Width);
-            int maxScrollY = Math.Max(0, this.s32PictureBox.Height - this.s32MapPanel.Height);
+            int maxScrollX = Math.Max(0, mapWidth - viewportWidthWorld);
+            int maxScrollY = Math.Max(0, mapHeight - viewportHeightWorld);
             centerX = Math.Max(0, Math.Min(centerX, maxScrollX));
             centerY = Math.Max(0, Math.Min(centerY, maxScrollY));
 
-            // 設定捲動位置
-            this.s32MapPanel.AutoScrollPosition = new Point(centerX, centerY);
+            // 設定 ViewState 的捲動位置
+            _viewState.SetScrollSilent(centerX, centerY);
 
-            // 更新小地圖
+            // 重新渲染並更新小地圖
+            CheckAndRerenderIfNeeded();
             UpdateMiniMap();
         }
 
@@ -3885,6 +3983,318 @@ namespace L1FlyMapViewer
                 font.Dispose();
             }
         }
+
+        #region Viewport 版本的繪圖方法
+
+        // 繪製第三層屬性（Viewport 版本）
+        private void DrawLayer3AttributesViewport(Bitmap bitmap, Struct.L1Map currentMap, Rectangle worldRect)
+        {
+            using (Graphics g = Graphics.FromImage(bitmap))
+            {
+                g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+
+                foreach (var s32Data in _document.S32Files.Values)
+                {
+                    int[] loc = s32Data.SegInfo.GetLoc(1.0);
+                    int mx = loc[0];
+                    int my = loc[1];
+
+                    for (int y = 0; y < 64; y++)
+                    {
+                        for (int x = 0; x < 64; x++)
+                        {
+                            var attr = s32Data.Layer3[y, x];
+                            if (attr == null) continue;
+                            if (attr.Attribute1 == 0 && attr.Attribute2 == 0) continue;
+
+                            int x1 = x * 2;
+                            int localBaseX = 0 - 24 * (x1 / 2);
+                            int localBaseY = 63 * 12 - 12 * (x1 / 2);
+
+                            int X = mx + localBaseX + x1 * 24 + y * 24 - worldRect.X;
+                            int Y = my + localBaseY + y * 12 - worldRect.Y;
+
+                            // 跳過不在 Viewport 內的格子
+                            if (X + 48 < 0 || X > worldRect.Width || Y + 24 < 0 || Y > worldRect.Height)
+                                continue;
+
+                            Point pLeft = new Point(X + 0, Y + 12);
+                            Point pTop = new Point(X + 24, Y + 0);
+                            Point pRight = new Point(X + 48, Y + 12);
+
+                            if (attr.Attribute1 != 0)
+                            {
+                                Color color = GetAttributeColor(attr.Attribute1);
+                                using (Pen pen = new Pen(color, 3))
+                                {
+                                    g.DrawLine(pen, pLeft, pTop);
+                                }
+                            }
+
+                            if (attr.Attribute2 != 0)
+                            {
+                                Color color = GetAttributeColor(attr.Attribute2);
+                                using (Pen pen = new Pen(color, 3))
+                                {
+                                    g.DrawLine(pen, pTop, pRight);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 繪製通行性覆蓋層（Viewport 版本）
+        private void DrawPassableOverlayViewport(Bitmap bitmap, Struct.L1Map currentMap, Rectangle worldRect)
+        {
+            using (Graphics g = Graphics.FromImage(bitmap))
+            {
+                g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+
+                using (Pen penImpassable = new Pen(Color.FromArgb(255, 128, 0, 128), 3))
+                using (Pen penPassable = new Pen(Color.FromArgb(255, 50, 200, 255), 2))
+                {
+                    foreach (var s32Data in _document.S32Files.Values)
+                    {
+                        int[] loc = s32Data.SegInfo.GetLoc(1.0);
+                        int mx = loc[0];
+                        int my = loc[1];
+
+                        for (int y = 0; y < 64; y++)
+                        {
+                            for (int x = 0; x < 64; x++)
+                            {
+                                var attr = s32Data.Layer3[y, x];
+                                if (attr == null) continue;
+
+                                int x1 = x * 2;
+                                int localBaseX = 0 - 24 * (x1 / 2);
+                                int localBaseY = 63 * 12 - 12 * (x1 / 2);
+
+                                int X = mx + localBaseX + x1 * 24 + y * 24 - worldRect.X;
+                                int Y = my + localBaseY + y * 12 - worldRect.Y;
+
+                                // 跳過不在 Viewport 內的格子
+                                if (X + 48 < 0 || X > worldRect.Width || Y + 24 < 0 || Y > worldRect.Height)
+                                    continue;
+
+                                Point pLeft = new Point(X + 0, Y + 12);
+                                Point pTop = new Point(X + 24, Y + 0);
+                                Point pRight = new Point(X + 48, Y + 12);
+
+                                Pen penLeft = (attr.Attribute1 & 0x01) != 0 ? penImpassable : penPassable;
+                                g.DrawLine(penLeft, pLeft, pTop);
+
+                                Pen penRight = (attr.Attribute2 & 0x01) != 0 ? penImpassable : penPassable;
+                                g.DrawLine(penRight, pTop, pRight);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 繪製選中格子的高亮（Viewport 版本）
+        private void DrawHighlightedCellViewport(Bitmap bitmap, Struct.L1Map currentMap, Rectangle worldRect)
+        {
+            if (_editState.HighlightedS32Data == null) return;
+
+            using (Graphics g = Graphics.FromImage(bitmap))
+            {
+                g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+
+                int[] loc = _editState.HighlightedS32Data.SegInfo.GetLoc(1.0);
+                int mx = loc[0];
+                int my = loc[1];
+
+                int localBaseX = 0 - 24 * (_editState.HighlightedCellX / 2);
+                int localBaseY = 63 * 12 - 12 * (_editState.HighlightedCellX / 2);
+
+                int X = mx + localBaseX + _editState.HighlightedCellX * 24 + _editState.HighlightedCellY * 24 - worldRect.X;
+                int Y = my + localBaseY + _editState.HighlightedCellY * 12 - worldRect.Y;
+
+                Point p1 = new Point(X + 0, Y + 12);
+                Point p2 = new Point(X + 12, Y + 0);
+                Point p3 = new Point(X + 24, Y + 12);
+                Point p4 = new Point(X + 12, Y + 24);
+
+                using (SolidBrush brush = new SolidBrush(Color.FromArgb(120, 255, 255, 0)))
+                {
+                    g.FillPolygon(brush, new Point[] { p1, p2, p3, p4 });
+                }
+
+                using (Pen pen = new Pen(Color.FromArgb(255, 255, 200, 0), 3))
+                {
+                    g.DrawPolygon(pen, new Point[] { p1, p2, p3, p4 });
+                }
+            }
+        }
+
+        // 繪製 S32 邊界框（Viewport 版本）
+        private void DrawS32BoundaryOnlyViewport(Bitmap bitmap, Struct.L1Map currentMap, Rectangle worldRect)
+        {
+            using (Graphics g = Graphics.FromImage(bitmap))
+            {
+                g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+                g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
+
+                Font font = new Font("Arial", 9, FontStyle.Bold);
+                Pen boundaryPen = new Pen(Color.Cyan, 2);
+
+                foreach (var s32Data in _document.S32Files.Values)
+                {
+                    int[] loc = s32Data.SegInfo.GetLoc(1.0);
+                    int mx = loc[0];
+                    int my = loc[1];
+
+                    Point[] corners = new Point[4];
+                    int[][] cornerCoords = new int[][] {
+                        new int[] { 0, 0 },
+                        new int[] { 64, 0 },
+                        new int[] { 64, 64 },
+                        new int[] { 0, 64 }
+                    };
+
+                    for (int i = 0; i < 4; i++)
+                    {
+                        int x3 = cornerCoords[i][0];
+                        int y = cornerCoords[i][1];
+                        int x = x3 * 2;
+
+                        int localBaseX = 0 - 24 * (x / 2);
+                        int localBaseY = 63 * 12 - 12 * (x / 2);
+                        int X = mx + localBaseX + x * 24 + y * 24 - worldRect.X;
+                        int Y = my + localBaseY + y * 12 - worldRect.Y;
+
+                        corners[i] = new Point(X, Y + 12);
+                    }
+
+                    g.DrawLine(boundaryPen, corners[0], corners[1]);
+                    g.DrawLine(boundaryPen, corners[1], corners[2]);
+                    g.DrawLine(boundaryPen, corners[2], corners[3]);
+                    g.DrawLine(boundaryPen, corners[3], corners[0]);
+
+                    int centerX = (corners[0].X + corners[2].X) / 2;
+                    int centerY = (corners[0].Y + corners[2].Y) / 2;
+                    string centerText = $"GetLoc({mx},{my})\n{s32Data.SegInfo.nLinBeginX},{s32Data.SegInfo.nLinBeginY}~{s32Data.SegInfo.nLinEndX},{s32Data.SegInfo.nLinEndY}";
+                    using (SolidBrush cb = new SolidBrush(Color.FromArgb(200, Color.Black)))
+                    using (SolidBrush ct = new SolidBrush(Color.Lime))
+                    {
+                        SizeF cs = g.MeasureString(centerText, font);
+                        g.FillRectangle(cb, centerX - cs.Width/2 - 2, centerY - cs.Height/2 - 1, cs.Width + 4, cs.Height + 2);
+                        g.DrawString(centerText, font, ct, centerX - cs.Width/2, centerY - cs.Height/2);
+                    }
+                }
+
+                font.Dispose();
+                boundaryPen.Dispose();
+            }
+        }
+
+        // 繪製格線（Viewport 版本）
+        private void DrawS32GridViewport(Bitmap bitmap, Struct.L1Map currentMap, Rectangle worldRect)
+        {
+            using (Graphics g = Graphics.FromImage(bitmap))
+            {
+                using (Pen gridPen = new Pen(Color.FromArgb(100, Color.Red), 1))
+                {
+                    foreach (var s32Data in _document.S32Files.Values)
+                    {
+                        int[] loc = s32Data.SegInfo.GetLoc(1.0);
+                        int mx = loc[0];
+                        int my = loc[1];
+
+                        for (int y = 0; y < 64; y++)
+                        {
+                            for (int x3 = 0; x3 < 64; x3++)
+                            {
+                                int x = x3 * 2;
+
+                                int localBaseX = 0 - 24 * (x / 2);
+                                int localBaseY = 63 * 12 - 12 * (x / 2);
+
+                                int X = mx + localBaseX + x * 24 + y * 24 - worldRect.X;
+                                int Y = my + localBaseY + y * 12 - worldRect.Y;
+
+                                // 跳過不在 Viewport 內的格子
+                                if (X + 48 < 0 || X > worldRect.Width || Y + 24 < 0 || Y > worldRect.Height)
+                                    continue;
+
+                                Point p1 = new Point(X, Y + 12);
+                                Point p2 = new Point(X + 24, Y);
+                                Point p3 = new Point(X + 48, Y + 12);
+                                Point p4 = new Point(X + 24, Y + 24);
+
+                                g.DrawLine(gridPen, p1, p2);
+                                g.DrawLine(gridPen, p2, p3);
+                                g.DrawLine(gridPen, p3, p4);
+                                g.DrawLine(gridPen, p4, p1);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 繪製座標標籤（Viewport 版本）
+        private void DrawCoordinateLabelsViewport(Bitmap bitmap, Struct.L1Map currentMap, Rectangle worldRect)
+        {
+            using (Graphics g = Graphics.FromImage(bitmap))
+            {
+                g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+                g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
+
+                Font font = new Font("Arial", 8, FontStyle.Bold);
+                int interval = 10;
+
+                foreach (var s32Data in _document.S32Files.Values)
+                {
+                    int[] loc = s32Data.SegInfo.GetLoc(1.0);
+                    int mx = loc[0];
+                    int my = loc[1];
+
+                    for (int y = 0; y < 64; y += interval)
+                    {
+                        for (int x = 0; x < 128; x += interval)
+                        {
+                            int localBaseX = 0 - 24 * (x / 2);
+                            int localBaseY = 63 * 12 - 12 * (x / 2);
+
+                            int X = mx + localBaseX + x * 24 + y * 24 - worldRect.X;
+                            int Y = my + localBaseY + y * 12 - worldRect.Y;
+
+                            // 跳過不在 Viewport 內的格子
+                            if (X + 24 < 0 || X > worldRect.Width || Y + 24 < 0 || Y > worldRect.Height)
+                                continue;
+
+                            int gameX = s32Data.SegInfo.nLinBeginX + x;
+                            int gameY = s32Data.SegInfo.nLinBeginY + y;
+
+                            string coordText = $"{gameX},{gameY}";
+                            SizeF textSize = g.MeasureString(coordText, font);
+
+                            int textX = X + 12 - (int)textSize.Width / 2;
+                            int textY = Y + 12 - (int)textSize.Height / 2;
+
+                            using (SolidBrush bgBrush = new SolidBrush(Color.FromArgb(180, Color.White)))
+                            {
+                                g.FillRectangle(bgBrush, textX - 2, textY - 1, textSize.Width + 4, textSize.Height + 2);
+                            }
+
+                            using (SolidBrush textBrush = new SolidBrush(Color.Blue))
+                            {
+                                g.DrawString(coordText, font, textBrush, textX, textY);
+                            }
+                        }
+                    }
+                }
+
+                font.Dispose();
+            }
+        }
+
+        #endregion
 
         // 繪製 Tile 到緩衝區（簡化版）
         private unsafe void DrawTilToBuffer(int x, int y, int tileId, int indexId, int rowpix, byte* ptr, int maxWidth, int maxHeight, int mapHeightInCells)
@@ -5128,9 +5538,8 @@ namespace L1FlyMapViewer
             {
                 isMainMapDragging = true;
                 mainMapDragStartPoint = e.Location;
-                mainMapDragStartScroll = new Point(
-                    -this.s32MapPanel.AutoScrollPosition.X,
-                    -this.s32MapPanel.AutoScrollPosition.Y);
+                // 使用 ViewState 的捲動位置
+                mainMapDragStartScroll = new Point(_viewState.ScrollX, _viewState.ScrollY);
                 this.s32PictureBox.Cursor = Cursors.SizeAll;
                 return;
             }
@@ -5191,16 +5600,21 @@ namespace L1FlyMapViewer
                 int deltaX = e.X - mainMapDragStartPoint.X;
                 int deltaY = e.Y - mainMapDragStartPoint.Y;
 
-                int newScrollX = mainMapDragStartScroll.X - deltaX;
-                int newScrollY = mainMapDragStartScroll.Y - deltaY;
+                // 計算新的捲動位置（世界座標，需要除以縮放）
+                int newScrollX = mainMapDragStartScroll.X - (int)(deltaX / s32ZoomLevel);
+                int newScrollY = mainMapDragStartScroll.Y - (int)(deltaY / s32ZoomLevel);
 
-                // 限制在有效範圍內
-                int maxScrollX = Math.Max(0, this.s32PictureBox.Width - this.s32MapPanel.Width);
-                int maxScrollY = Math.Max(0, this.s32PictureBox.Height - this.s32MapPanel.Height);
+                // 限制在有效範圍內（使用世界座標）
+                int maxScrollX = Math.Max(0, _viewState.MapWidth - (int)(s32MapPanel.Width / s32ZoomLevel));
+                int maxScrollY = Math.Max(0, _viewState.MapHeight - (int)(s32MapPanel.Height / s32ZoomLevel));
                 newScrollX = Math.Max(0, Math.Min(newScrollX, maxScrollX));
                 newScrollY = Math.Max(0, Math.Min(newScrollY, maxScrollY));
 
-                this.s32MapPanel.AutoScrollPosition = new Point(newScrollX, newScrollY);
+                // 更新 ViewState 的捲動位置
+                _viewState.SetScrollSilent(newScrollX, newScrollY);
+
+                // 重繪
+                s32PictureBox.Invalidate();
                 return;
             }
 
@@ -5243,6 +5657,9 @@ namespace L1FlyMapViewer
                 isMainMapDragging = false;
                 this.s32PictureBox.Cursor = Cursors.Default;
                 UpdateMiniMap();
+
+                // 拖曳結束後檢查是否需要重新渲染
+                CheckAndRerenderIfNeeded();
                 return;
             }
 
@@ -5321,9 +5738,26 @@ namespace L1FlyMapViewer
             }
         }
 
-        // S32 PictureBox 繪製事件 - 繪製選擇框或多邊形
+        // S32 PictureBox 繪製事件 - 繪製 Viewport 和選擇框或多邊形
         private void s32PictureBox_Paint(object sender, PaintEventArgs e)
         {
+            // 繪製 Viewport Bitmap
+            if (_viewportBitmap != null && _viewState.RenderWidth > 0)
+            {
+                // 計算 Viewport Bitmap 在 PictureBox 上的繪製位置
+                // _viewState.RenderOriginX/Y 是已渲染區域的世界座標原點
+                // _viewState.ScrollX/Y 是當前視圖的世界座標位置
+                // 繪製位置 = (RenderOrigin - Scroll) * ZoomLevel
+                int drawX = (int)((_viewState.RenderOriginX - _viewState.ScrollX) * s32ZoomLevel);
+                int drawY = (int)((_viewState.RenderOriginY - _viewState.ScrollY) * s32ZoomLevel);
+
+                // Viewport Bitmap 是未縮放的，需要縮放繪製
+                int drawWidth = (int)(_viewState.RenderWidth * s32ZoomLevel);
+                int drawHeight = (int)(_viewState.RenderHeight * s32ZoomLevel);
+
+                e.Graphics.DrawImage(_viewportBitmap, drawX, drawY, drawWidth, drawHeight);
+            }
+
             // 通行性編輯模式：繪製多邊形
             if (_editState.IsDrawingPassabilityPolygon && _editState.PassabilityPolygonPoints.Count > 0)
             {
@@ -5398,6 +5832,10 @@ namespace L1FlyMapViewer
             if (cells.Count == 0 || string.IsNullOrEmpty(_document.MapId) || !Share.MapDataList.ContainsKey(_document.MapId))
                 return;
 
+            // 使用 ViewState 的捲動位置（世界座標）
+            int scrollX = _viewState.ScrollX;
+            int scrollY = _viewState.ScrollY;
+
             using (SolidBrush brush = new SolidBrush(Color.FromArgb(50, color)))
             using (Pen pen = new Pen(color, 2))
             {
@@ -5416,16 +5854,24 @@ namespace L1FlyMapViewer
                     localBaseX -= 24 * (x / 2);
                     localBaseY -= 12 * (x / 2);
 
-                    int X = mx + localBaseX + x * 24 + y * 24;
-                    int Y = my + localBaseY + y * 12;
+                    // 計算世界座標
+                    int worldX = mx + localBaseX + x * 24 + y * 24;
+                    int worldY = my + localBaseY + y * 12;
+
+                    // 轉換為螢幕座標（考慮捲動位置和縮放）
+                    // 螢幕座標 = (世界座標 - 捲動位置) * 縮放
+                    int screenX = (int)((worldX - scrollX) * s32ZoomLevel);
+                    int screenY = (int)((worldY - scrollY) * s32ZoomLevel);
+                    int scaledWidth = (int)(48 * s32ZoomLevel);
+                    int scaledHeight = (int)(24 * s32ZoomLevel);
 
                     // Layer3 菱形四個頂點（48x24，與 DrawS32Grid 一致）
                     Point[] diamondPoints = new Point[]
                     {
-                        new Point(X, Y + 12),       // 左
-                        new Point(X + 24, Y),       // 上
-                        new Point(X + 48, Y + 12),  // 右
-                        new Point(X + 24, Y + 24)   // 下
+                        new Point(screenX, screenY + scaledHeight / 2),       // 左
+                        new Point(screenX + scaledWidth / 2, screenY),        // 上
+                        new Point(screenX + scaledWidth, screenY + scaledHeight / 2),  // 右
+                        new Point(screenX + scaledWidth / 2, screenY + scaledHeight)   // 下
                     };
 
                     g.FillPolygon(brush, diamondPoints);
@@ -7295,24 +7741,29 @@ namespace L1FlyMapViewer
                     localBaseX -= 24 * (localX / 2);
                     localBaseY -= 12 * (localX / 2);
 
-                    int screenX = mx + localBaseX + localX * 24 + localY * 24;
-                    int screenY = my + localBaseY + localY * 12;
+                    // 計算世界座標（這是格子的螢幕座標，但在這裡是世界座標）
+                    int worldX = mx + localBaseX + localX * 24 + localY * 24;
+                    int worldY = my + localBaseY + localY * 12;
 
-                    // 捲動到該位置
-                    int scrollX = screenX - s32MapPanel.Width / 2;
-                    int scrollY = screenY - s32MapPanel.Height / 2;
+                    // 捲動到該位置（世界座標）
+                    int viewportWidthWorld = (int)(s32MapPanel.Width / s32ZoomLevel);
+                    int viewportHeightWorld = (int)(s32MapPanel.Height / s32ZoomLevel);
+                    int scrollX = worldX - viewportWidthWorld / 2;
+                    int scrollY = worldY - viewportHeightWorld / 2;
 
-                    scrollX = Math.Max(0, Math.Min(scrollX, s32PictureBox.Width - s32MapPanel.Width));
-                    scrollY = Math.Max(0, Math.Min(scrollY, s32PictureBox.Height - s32MapPanel.Height));
+                    int maxScrollX = Math.Max(0, _viewState.MapWidth - viewportWidthWorld);
+                    int maxScrollY = Math.Max(0, _viewState.MapHeight - viewportHeightWorld);
+                    scrollX = Math.Max(0, Math.Min(scrollX, maxScrollX));
+                    scrollY = Math.Max(0, Math.Min(scrollY, maxScrollY));
 
-                    s32MapPanel.AutoScrollPosition = new Point(scrollX, scrollY);
+                    _viewState.SetScrollSilent(scrollX, scrollY);
 
                     // 設定高亮 (使用 Layer1 座標)
                     _editState.HighlightedS32Data = s32Data;
                     _editState.HighlightedCellX = localX;
                     _editState.HighlightedCellY = localY;
 
-                    s32PictureBox.Invalidate();
+                    CheckAndRerenderIfNeeded();
                     UpdateMiniMap();
                     return;
                 }
@@ -8653,19 +9104,22 @@ namespace L1FlyMapViewer
             localBaseX -= 24 * (obj.X / 2);
             localBaseY -= 12 * (obj.X / 2);
 
-            int screenX = mx + localBaseX + obj.X * 24 + obj.Y * 24;
-            int screenY = my + localBaseY + obj.Y * 12;
+            // 計算世界座標
+            int worldX = mx + localBaseX + obj.X * 24 + obj.Y * 24;
+            int worldY = my + localBaseY + obj.Y * 12;
 
-            // 捲動到該位置
-            int scrollX = screenX - s32MapPanel.Width / 2;
-            int scrollY = screenY - s32MapPanel.Height / 2;
+            // 捲動到該位置（世界座標）
+            int viewportWidthWorld = (int)(s32MapPanel.Width / s32ZoomLevel);
+            int viewportHeightWorld = (int)(s32MapPanel.Height / s32ZoomLevel);
+            int scrollX = worldX - viewportWidthWorld / 2;
+            int scrollY = worldY - viewportHeightWorld / 2;
 
-            if (scrollX < 0) scrollX = 0;
-            if (scrollY < 0) scrollY = 0;
-            if (scrollX > s32MapPanel.HorizontalScroll.Maximum) scrollX = s32MapPanel.HorizontalScroll.Maximum;
-            if (scrollY > s32MapPanel.VerticalScroll.Maximum) scrollY = s32MapPanel.VerticalScroll.Maximum;
+            int maxScrollX = Math.Max(0, _viewState.MapWidth - viewportWidthWorld);
+            int maxScrollY = Math.Max(0, _viewState.MapHeight - viewportHeightWorld);
+            scrollX = Math.Max(0, Math.Min(scrollX, maxScrollX));
+            scrollY = Math.Max(0, Math.Min(scrollY, maxScrollY));
 
-            s32MapPanel.AutoScrollPosition = new Point(scrollX, scrollY);
+            _viewState.SetScrollSilent(scrollX, scrollY);
 
             // 高亮顯示該格子
             _editState.HighlightedS32Data = s32Data;
