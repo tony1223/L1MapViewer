@@ -18,6 +18,22 @@ namespace L1FlyMapViewer
 {
     public partial class MapForm : Form, IMapViewer
     {
+        // ===== Model 層 =====
+        /// <summary>
+        /// 地圖文件 Model - 管理所有 S32 資料
+        /// </summary>
+        private readonly MapDocument _document = new MapDocument();
+
+        /// <summary>
+        /// 編輯狀態 Model - 管理選取、剪貼簿、Undo
+        /// </summary>
+        private readonly EditState _editState = new EditState();
+
+        /// <summary>
+        /// 檢視狀態 Model - 管理縮放、捲動、顯示選項
+        /// </summary>
+        private readonly ViewState _viewState = new ViewState();
+
         // IMapViewer 介面實作 - 明確公開控制項屬性
         ComboBox IMapViewer.comboBox1 => this.comboBox1;
         PictureBox IMapViewer.pictureBox1 => this.pictureBox1;
@@ -64,22 +80,10 @@ namespace L1FlyMapViewer
             SetImpassable   // 設定為不可通行
         }
         private PassableEditMode currentPassableEditMode = PassableEditMode.None;
-        private List<Point> passabilityPolygonPoints = new List<Point>(); // 通行性編輯的多邊形頂點
-        private bool isDrawingPassabilityPolygon = false; // 是否正在繪製多邊形
         private Label lblPassabilityHelp; // 通行性編輯操作說明標籤
 
-        // 當前選中的格子（用於高亮顯示）
-        private S32Data highlightedS32Data = null;
-        private int highlightedCellX = -1;
-        private int highlightedCellY = -1;
-
-        // 當前選中格子的遊戲座標（用於複製移動指令）
-        private int selectedGameX = -1;
-        private int selectedGameY = -1;
-
-        // Layer4 群組篩選（勾選的 GroupId 才會渲染）
-        private HashSet<int> selectedLayer4Groups = new HashSet<int>();
-        private bool isFilteringLayer4Groups = false;
+        // Undo 相關常數
+        private const int MAX_UNDO_HISTORY = 5;
 
         // 小地圖拖拽
         private bool isMiniMapDragging = false;
@@ -106,7 +110,7 @@ namespace L1FlyMapViewer
             renderDebounceTimer.Tick += (s, e) =>
             {
                 renderDebounceTimer.Stop();
-                if (allS32DataDict.Count > 0)
+                if (_document.S32Files.Count > 0)
                 {
                     RenderS32Map();
                 }
@@ -232,20 +236,20 @@ namespace L1FlyMapViewer
         // 刪除選取區域內的 Layer4 物件
         private void DeleteSelectedLayer4Objects()
         {
-            if (!isLayer4CopyMode || currentSelectedCells.Count == 0)
+            if (!isLayer4CopyMode || _editState.SelectedCells.Count == 0)
             {
                 this.toolStripStatusLabel1.Text = "請先使用 Shift+左鍵 選取要刪除的區域";
                 return;
             }
 
             // 呼叫現有的批次刪除功能
-            DeleteAllLayer4ObjectsInRegion(currentSelectedCells);
+            DeleteAllLayer4ObjectsInRegion(_editState.SelectedCells);
 
             // 清除選取狀態
             isLayer4CopyMode = false;
             selectedRegion = new Rectangle();
             copyRegionBounds = new Rectangle();
-            currentSelectedCells.Clear();
+            _editState.SelectedCells.Clear();
             s32PictureBox.Invalidate();
         }
 
@@ -269,10 +273,10 @@ namespace L1FlyMapViewer
                 return;
             }
 
-            cellClipboard.Clear();
+            _editState.CellClipboard.Clear();
 
-            // 使用已經在 MouseMove/MouseUp 中計算好的 currentSelectedCells
-            List<SelectedCell> selectedCells = currentSelectedCells;
+            // 使用已經在 MouseMove/MouseUp 中計算好的 _editState.SelectedCells
+            List<SelectedCell> selectedCells = _editState.SelectedCells;
 
             if (selectedCells.Count == 0)
             {
@@ -345,7 +349,7 @@ namespace L1FlyMapViewer
 
                 // Layer4 資料已移至跨區塊搜索統一處理
 
-                cellClipboard.Add(cellData);
+                _editState.CellClipboard.Add(cellData);
             }
 
             // Layer4 物件搜索：遍歷所有 S32，找出座標精確落在選取範圍內的物件
@@ -362,7 +366,7 @@ namespace L1FlyMapViewer
                 }
 
                 // 遍歷所有 S32 檔案搜索物件（精確匹配選取格子）
-                foreach (var s32Data in allS32DataDict.Values)
+                foreach (var s32Data in _document.S32Files.Values)
                 {
                     int segStartX = s32Data.SegInfo.nLinBeginX;
                     int segStartY = s32Data.SegInfo.nLinBeginY;
@@ -380,8 +384,8 @@ namespace L1FlyMapViewer
                         if (selectedGlobalCells.Contains((objGlobalL1X, objGlobalL3Y)))
                         {
                             // 檢查群組篩選
-                            if (isFilteringLayer4Groups && selectedLayer4Groups.Count > 0 &&
-                                !selectedLayer4Groups.Contains(obj.GroupId))
+                            if (_editState.IsFilteringLayer4Groups && _editState.SelectedLayer4Groups.Count > 0 &&
+                                !_editState.SelectedLayer4Groups.Contains(obj.GroupId))
                                 continue;
 
                             // obj.X 本身就是 Layer1 局部座標 (0-127)
@@ -390,7 +394,7 @@ namespace L1FlyMapViewer
                             int relX = objGlobalLayer1X - minGlobalX;
                             int relY = objGlobalY - minGlobalY;
 
-                            bool alreadyCopied = cellClipboard.Any(cd =>
+                            bool alreadyCopied = _editState.CellClipboard.Any(cd =>
                                 cd.Layer4Objects.Any(o =>
                                     o.RelativeX == relX && o.RelativeY == relY && o.GroupId == obj.GroupId && o.TileId == obj.TileId));
 
@@ -415,7 +419,7 @@ namespace L1FlyMapViewer
                                     OriginalLocalLayer1X = obj.X,
                                     OriginalLocalY = obj.Y
                                 });
-                                cellClipboard.Add(objCellData);
+                                _editState.CellClipboard.Add(objCellData);
                                 layer4Count++;
                             }
                         }
@@ -423,15 +427,15 @@ namespace L1FlyMapViewer
                 }
             }
 
-            hasLayer4Clipboard = cellClipboard.Count > 0;
-            clipboardSourceMapId = currentMapId;
+            hasLayer4Clipboard = _editState.CellClipboard.Count > 0;
+            _editState.SourceMapId = _document.MapId;
 
             // 複製 Layer2 和 Layer5-8 資料（從所有涉及的 S32 收集，根據設定）
-            layer2Clipboard.Clear();
-            layer5Clipboard.Clear();
-            layer6Clipboard.Clear();
-            layer7Clipboard.Clear();
-            layer8Clipboard.Clear();
+            _editState.Layer2Clipboard.Clear();
+            _editState.Layer5Clipboard.Clear();
+            _editState.Layer6Clipboard.Clear();
+            _editState.Layer7Clipboard.Clear();
+            _editState.Layer8Clipboard.Clear();
             bool copyLayer2 = copySettingLayer2;
             bool copyLayer5to8 = copySettingLayer5to8;
 
@@ -447,9 +451,9 @@ namespace L1FlyMapViewer
                         foreach (var item in cell.S32Data.Layer2)
                         {
                             // 避免重複加入
-                            if (!layer2Clipboard.Any(l => l.X == item.X && l.Y == item.Y && l.TileId == item.TileId))
+                            if (!_editState.Layer2Clipboard.Any(l => l.X == item.X && l.Y == item.Y && l.TileId == item.TileId))
                             {
-                                layer2Clipboard.Add(new Layer2Item
+                                _editState.Layer2Clipboard.Add(new Layer2Item
                                 {
                                     X = item.X,
                                     Y = item.Y,
@@ -488,9 +492,9 @@ namespace L1FlyMapViewer
                         // Layer5 的 X, Y 是 64x64 座標系
                         if (localCells.Contains((item.X, item.Y)))
                         {
-                            if (!layer5Clipboard.Any(l => l.X == item.X && l.Y == item.Y))
+                            if (!_editState.Layer5Clipboard.Any(l => l.X == item.X && l.Y == item.Y))
                             {
-                                layer5Clipboard.Add(new Layer5Item { X = item.X, Y = item.Y, ObjectIndex = item.ObjectIndex, Type = item.Type });
+                                _editState.Layer5Clipboard.Add(new Layer5Item { X = item.X, Y = item.Y, ObjectIndex = item.ObjectIndex, Type = item.Type });
                             }
                         }
                     }
@@ -498,9 +502,9 @@ namespace L1FlyMapViewer
                     // Layer6 - 使用的 TilId（合併不重複的，這個是整個 S32 的）
                     foreach (var tilId in s32Data.Layer6)
                     {
-                        if (!layer6Clipboard.Contains(tilId))
+                        if (!_editState.Layer6Clipboard.Contains(tilId))
                         {
-                            layer6Clipboard.Add(tilId);
+                            _editState.Layer6Clipboard.Add(tilId);
                         }
                     }
 
@@ -510,9 +514,9 @@ namespace L1FlyMapViewer
                         // Layer7 的 X, Y 是 64x64 座標系
                         if (localCells.Contains((item.X, item.Y)))
                         {
-                            if (!layer7Clipboard.Any(l => l.Name == item.Name && l.X == item.X && l.Y == item.Y))
+                            if (!_editState.Layer7Clipboard.Any(l => l.Name == item.Name && l.X == item.X && l.Y == item.Y))
                             {
-                                layer7Clipboard.Add(new Layer7Item { Name = item.Name, X = item.X, Y = item.Y, TargetMapId = item.TargetMapId, PortalId = item.PortalId });
+                                _editState.Layer7Clipboard.Add(new Layer7Item { Name = item.Name, X = item.X, Y = item.Y, TargetMapId = item.TargetMapId, PortalId = item.PortalId });
                             }
                         }
                     }
@@ -533,9 +537,9 @@ namespace L1FlyMapViewer
                         }
                         if (localCells.Contains((cellX, cellY)))
                         {
-                            if (!layer8Clipboard.Any(l => l.SprId == item.SprId && l.X == item.X && l.Y == item.Y))
+                            if (!_editState.Layer8Clipboard.Any(l => l.SprId == item.SprId && l.X == item.X && l.Y == item.Y))
                             {
-                                layer8Clipboard.Add(new Layer8Item { SprId = item.SprId, X = item.X, Y = item.Y, ExtendedData = item.ExtendedData });
+                                _editState.Layer8Clipboard.Add(new Layer8Item { SprId = item.SprId, X = item.X, Y = item.Y, ExtendedData = item.ExtendedData });
                             }
                         }
                     }
@@ -545,27 +549,27 @@ namespace L1FlyMapViewer
             // 組合提示訊息
             var parts = new List<string>();
             if (copyLayer1 && layer1Count > 0) parts.Add($"L1:{layer1Count}");
-            if (copyLayer2 && layer2Clipboard.Count > 0) parts.Add($"L2:{layer2Clipboard.Count}");
+            if (copyLayer2 && _editState.Layer2Clipboard.Count > 0) parts.Add($"L2:{_editState.Layer2Clipboard.Count}");
             if (copyLayer3 && layer3Count > 0) parts.Add($"L3:{layer3Count}");
             if (copyLayer4 && layer4Count > 0) parts.Add($"L4:{layer4Count}");
-            if (copyLayer5to8 && (layer5Clipboard.Count > 0 || layer6Clipboard.Count > 0 || layer7Clipboard.Count > 0 || layer8Clipboard.Count > 0))
-                parts.Add($"L5:{layer5Clipboard.Count} L6:{layer6Clipboard.Count} L7:{layer7Clipboard.Count} L8:{layer8Clipboard.Count}");
+            if (copyLayer5to8 && (_editState.Layer5Clipboard.Count > 0 || _editState.Layer6Clipboard.Count > 0 || _editState.Layer7Clipboard.Count > 0 || _editState.Layer8Clipboard.Count > 0))
+                parts.Add($"L5:{_editState.Layer5Clipboard.Count} L6:{_editState.Layer6Clipboard.Count} L7:{_editState.Layer7Clipboard.Count} L8:{_editState.Layer8Clipboard.Count}");
 
             string layerInfo = parts.Count > 0 ? string.Join(", ", parts) : "無資料";
-            this.toolStripStatusLabel1.Text = $"已複製 {selectedCells.Count} 格 ({layerInfo}) 來源: {currentMapId}，Shift+左鍵選取貼上位置後按 Ctrl+V";
+            this.toolStripStatusLabel1.Text = $"已複製 {selectedCells.Count} 格 ({layerInfo}) 來源: {_document.MapId}，Shift+左鍵選取貼上位置後按 Ctrl+V";
 
             // 清除選取框但保留複製資料
             isLayer4CopyMode = false;
             selectedRegion = new Rectangle();
             copyRegionBounds = new Rectangle();
-            currentSelectedCells.Clear();
+            _editState.SelectedCells.Clear();
             s32PictureBox.Invalidate();
         }
 
         // 貼上選取區域
         private void PasteSelectedCells()
         {
-            if (!hasLayer4Clipboard || cellClipboard.Count == 0)
+            if (!hasLayer4Clipboard || _editState.CellClipboard.Count == 0)
             {
                 this.toolStripStatusLabel1.Text = "剪貼簿沒有資料，請先使用 Shift+左鍵 選取區域後按 Ctrl+C 複製";
                 return;
@@ -579,8 +583,8 @@ namespace L1FlyMapViewer
             }
 
             // 取得貼上位置的全域 Layer1 座標
-            int pasteOriginX = copyRegionOrigin.X;
-            int pasteOriginY = copyRegionOrigin.Y;
+            int pasteOriginX = _editState.CopyRegionOrigin.X;
+            int pasteOriginY = _editState.CopyRegionOrigin.Y;
 
             int layer1Count = 0, layer3Count = 0, layer4Count = 0;
             int skippedCount = 0;
@@ -588,11 +592,11 @@ namespace L1FlyMapViewer
             // 建立 Undo 記錄
             var undoAction = new UndoAction
             {
-                Description = $"貼上 {cellClipboard.Count} 格資料"
+                Description = $"貼上 {_editState.CellClipboard.Count} 格資料"
             };
 
             // 貼上每個格子的資料
-            foreach (var cellData in cellClipboard)
+            foreach (var cellData in _editState.CellClipboard)
             {
                 // 計算目標全域 Layer1 座標
                 int targetGlobalX = pasteOriginX + cellData.RelativeX;
@@ -718,7 +722,7 @@ namespace L1FlyMapViewer
             int layer2AddedCount = 0;
             int layer5to8CopiedCount = 0;
             var affectedS32Set = new HashSet<S32Data>();
-            foreach (var cellData in cellClipboard)
+            foreach (var cellData in _editState.CellClipboard)
             {
                 int targetGlobalX = pasteOriginX + cellData.RelativeX;
                 int targetGlobalY = pasteOriginY + cellData.RelativeY;
@@ -732,9 +736,9 @@ namespace L1FlyMapViewer
             foreach (var targetS32 in affectedS32Set)
             {
                 // 合併 Layer2（加入不存在的項目）- 根據設定
-                if (copySettingLayer2 && layer2Clipboard.Count > 0)
+                if (copySettingLayer2 && _editState.Layer2Clipboard.Count > 0)
                 {
-                    foreach (var item in layer2Clipboard)
+                    foreach (var item in _editState.Layer2Clipboard)
                     {
                         if (!targetS32.Layer2.Any(l => l.X == item.X && l.Y == item.Y && l.TileId == item.TileId))
                         {
@@ -756,7 +760,7 @@ namespace L1FlyMapViewer
                 if (copySettingLayer5to8)
                 {
                     // Layer5 - 透明圖塊（合併不重複的）
-                    foreach (var item in layer5Clipboard)
+                    foreach (var item in _editState.Layer5Clipboard)
                     {
                         if (!targetS32.Layer5.Any(l => l.X == item.X && l.Y == item.Y))
                         {
@@ -766,7 +770,7 @@ namespace L1FlyMapViewer
                     }
                     // Layer6 - 使用的 TilId（合併不重複的）
                     int layer6Added = 0;
-                    foreach (var tilId in layer6Clipboard)
+                    foreach (var tilId in _editState.Layer6Clipboard)
                     {
                         if (!targetS32.Layer6.Contains(tilId))
                         {
@@ -777,7 +781,7 @@ namespace L1FlyMapViewer
                     }
                     if (layer6Added > 0) layer5to8CopiedCount++;
                     // Layer7 - 傳送點（合併不重複的）
-                    foreach (var item in layer7Clipboard)
+                    foreach (var item in _editState.Layer7Clipboard)
                     {
                         if (!targetS32.Layer7.Any(l => l.Name == item.Name && l.X == item.X && l.Y == item.Y))
                         {
@@ -786,7 +790,7 @@ namespace L1FlyMapViewer
                         }
                     }
                     // Layer8 - 特效（合併不重複的）
-                    foreach (var item in layer8Clipboard)
+                    foreach (var item in _editState.Layer8Clipboard)
                     {
                         if (!targetS32.Layer8.Any(l => l.SprId == item.SprId && l.X == item.X && l.Y == item.Y))
                         {
@@ -801,13 +805,13 @@ namespace L1FlyMapViewer
             isLayer4CopyMode = false;
             selectedRegion = new Rectangle();
             copyRegionBounds = new Rectangle();
-            currentSelectedCells.Clear();
+            _editState.SelectedCells.Clear();
 
             // 重新渲染地圖
             RenderS32Map();
 
             // 檢查是否跨地圖貼上
-            bool isCrossMap = !string.IsNullOrEmpty(clipboardSourceMapId) && clipboardSourceMapId != currentMapId;
+            bool isCrossMap = !string.IsNullOrEmpty(_editState.SourceMapId) && _editState.SourceMapId != _document.MapId;
 
             // 組合提示訊息
             var parts = new List<string>();
@@ -818,9 +822,9 @@ namespace L1FlyMapViewer
             if (layer5to8CopiedCount > 0) parts.Add($"L6:+{layer5to8CopiedCount}");
 
             string layerInfo = parts.Count > 0 ? string.Join(", ", parts) : "無資料";
-            string message = $"已貼上 {cellClipboard.Count} 格 ({layerInfo})";
+            string message = $"已貼上 {_editState.CellClipboard.Count} 格 ({layerInfo})";
             if (isCrossMap)
-                message += $" (從 {clipboardSourceMapId} 跨地圖貼上)";
+                message += $" (從 {_editState.SourceMapId} 跨地圖貼上)";
             if (skippedCount > 0)
                 message += $"，{skippedCount} 格超出範圍被跳過";
             this.toolStripStatusLabel1.Text = message;
@@ -834,7 +838,7 @@ namespace L1FlyMapViewer
             UpdateGroupThumbnailsList();
             selectedRegion = new Rectangle();
             copyRegionBounds = new Rectangle();
-            currentSelectedCells.Clear();
+            _editState.SelectedCells.Clear();
             s32PictureBox.Invalidate();
             this.toolStripStatusLabel1.Text = "已取消複製/貼上模式";
         }
@@ -842,21 +846,21 @@ namespace L1FlyMapViewer
         // 新增 Undo 記錄
         private void PushUndoAction(UndoAction action)
         {
-            undoHistory.Push(action);
+            _editState.UndoHistory.Push(action);
             // 新操作會清空 redo 歷史
-            redoHistory.Clear();
+            _editState.RedoHistory.Clear();
             // 限制歷史記錄數量
-            if (undoHistory.Count > MAX_UNDO_HISTORY)
+            if (_editState.UndoHistory.Count > MAX_UNDO_HISTORY)
             {
                 var tempStack = new Stack<UndoAction>();
                 for (int i = 0; i < MAX_UNDO_HISTORY; i++)
                 {
-                    tempStack.Push(undoHistory.Pop());
+                    tempStack.Push(_editState.UndoHistory.Pop());
                 }
-                undoHistory.Clear();
+                _editState.UndoHistory.Clear();
                 while (tempStack.Count > 0)
                 {
-                    undoHistory.Push(tempStack.Pop());
+                    _editState.UndoHistory.Push(tempStack.Pop());
                 }
             }
         }
@@ -864,19 +868,19 @@ namespace L1FlyMapViewer
         // 執行還原 (Ctrl+Z)
         private void UndoLastAction()
         {
-            if (undoHistory.Count == 0)
+            if (_editState.UndoHistory.Count == 0)
             {
                 this.toolStripStatusLabel1.Text = "沒有可還原的操作";
                 return;
             }
 
-            var action = undoHistory.Pop();
+            var action = _editState.UndoHistory.Pop();
 
             // 還原刪除的物件（重新新增）
             foreach (var objInfo in action.RemovedObjects)
             {
                 S32Data targetS32 = null;
-                if (allS32DataDict.TryGetValue(objInfo.S32FilePath, out targetS32))
+                if (_document.S32Files.TryGetValue(objInfo.S32FilePath, out targetS32))
                 {
                     var newObj = new ObjectTile
                     {
@@ -896,7 +900,7 @@ namespace L1FlyMapViewer
             foreach (var objInfo in action.AddedObjects)
             {
                 S32Data targetS32 = null;
-                if (allS32DataDict.TryGetValue(objInfo.S32FilePath, out targetS32))
+                if (_document.S32Files.TryGetValue(objInfo.S32FilePath, out targetS32))
                 {
                     var objToRemove = targetS32.Layer4.FirstOrDefault(o =>
                         o.X == objInfo.LocalX &&
@@ -918,7 +922,7 @@ namespace L1FlyMapViewer
             foreach (var layer7Info in action.RemovedLayer7Items)
             {
                 S32Data targetS32 = null;
-                if (allS32DataDict.TryGetValue(layer7Info.S32FilePath, out targetS32))
+                if (_document.S32Files.TryGetValue(layer7Info.S32FilePath, out targetS32))
                 {
                     targetS32.Layer7.Add(new Layer7Item
                     {
@@ -933,30 +937,30 @@ namespace L1FlyMapViewer
             }
 
             // 將此動作放入 redo 歷史
-            redoHistory.Push(action);
+            _editState.RedoHistory.Push(action);
 
             // 重新渲染地圖
             RenderS32Map();
 
-            this.toolStripStatusLabel1.Text = $"已還原: {action.Description} (Ctrl+Z: {undoHistory.Count} / Ctrl+Y: {redoHistory.Count})";
+            this.toolStripStatusLabel1.Text = $"已還原: {action.Description} (Ctrl+Z: {_editState.UndoHistory.Count} / Ctrl+Y: {_editState.RedoHistory.Count})";
         }
 
         // 執行重做 (Ctrl+Y)
         private void RedoLastAction()
         {
-            if (redoHistory.Count == 0)
+            if (_editState.RedoHistory.Count == 0)
             {
                 this.toolStripStatusLabel1.Text = "沒有可重做的操作";
                 return;
             }
 
-            var action = redoHistory.Pop();
+            var action = _editState.RedoHistory.Pop();
 
             // 重做新增的物件（重新新增）
             foreach (var objInfo in action.AddedObjects)
             {
                 S32Data targetS32 = null;
-                if (allS32DataDict.TryGetValue(objInfo.S32FilePath, out targetS32))
+                if (_document.S32Files.TryGetValue(objInfo.S32FilePath, out targetS32))
                 {
                     var newObj = new ObjectTile
                     {
@@ -976,7 +980,7 @@ namespace L1FlyMapViewer
             foreach (var objInfo in action.RemovedObjects)
             {
                 S32Data targetS32 = null;
-                if (allS32DataDict.TryGetValue(objInfo.S32FilePath, out targetS32))
+                if (_document.S32Files.TryGetValue(objInfo.S32FilePath, out targetS32))
                 {
                     var objToRemove = targetS32.Layer4.FirstOrDefault(o =>
                         o.X == objInfo.LocalX &&
@@ -998,7 +1002,7 @@ namespace L1FlyMapViewer
             foreach (var layer7Info in action.RemovedLayer7Items)
             {
                 S32Data targetS32 = null;
-                if (allS32DataDict.TryGetValue(layer7Info.S32FilePath, out targetS32))
+                if (_document.S32Files.TryGetValue(layer7Info.S32FilePath, out targetS32))
                 {
                     var itemToRemove = targetS32.Layer7.FirstOrDefault(l =>
                         l.Name == layer7Info.Name &&
@@ -1016,12 +1020,12 @@ namespace L1FlyMapViewer
             }
 
             // 將此動作放回 undo 歷史
-            undoHistory.Push(action);
+            _editState.UndoHistory.Push(action);
 
             // 重新渲染地圖
             RenderS32Map();
 
-            this.toolStripStatusLabel1.Text = $"已重做: {action.Description} (Ctrl+Z: {undoHistory.Count} / Ctrl+Y: {redoHistory.Count})";
+            this.toolStripStatusLabel1.Text = $"已重做: {action.Description} (Ctrl+Z: {_editState.UndoHistory.Count} / Ctrl+Y: {_editState.RedoHistory.Count})";
         }
 
         // 取得等距菱形區域內的所有格子（支援長方形）
@@ -1029,10 +1033,10 @@ namespace L1FlyMapViewer
         {
             List<SelectedCell> result = new List<SelectedCell>();
 
-            if (string.IsNullOrEmpty(currentMapId) || !Share.MapDataList.ContainsKey(currentMapId))
+            if (string.IsNullOrEmpty(_document.MapId) || !Share.MapDataList.ContainsKey(_document.MapId))
                 return result;
 
-            Struct.L1Map currentMap = Share.MapDataList[currentMapId];
+            Struct.L1Map currentMap = Share.MapDataList[_document.MapId];
 
             // 計算菱形的參數（使用實際寬高）
             float centerX = region.Left + region.Width / 2f;
@@ -1040,7 +1044,7 @@ namespace L1FlyMapViewer
             float halfWidth = region.Width / 2f;
             float halfHeight = region.Height / 2f;
 
-            foreach (var s32Data in allS32DataDict.Values)
+            foreach (var s32Data in _document.S32Files.Values)
             {
                 // 使用與 RenderS32Map 相同的座標計算方式
                 int[] loc = s32Data.SegInfo.GetLoc(1.0);
@@ -1093,10 +1097,10 @@ namespace L1FlyMapViewer
         // 根據選中的格子計算對齊格子的菱形邊界
         private Rectangle GetAlignedBoundsFromCells(List<SelectedCell> cells)
         {
-            if (cells.Count == 0 || string.IsNullOrEmpty(currentMapId) || !Share.MapDataList.ContainsKey(currentMapId))
+            if (cells.Count == 0 || string.IsNullOrEmpty(_document.MapId) || !Share.MapDataList.ContainsKey(_document.MapId))
                 return new Rectangle();
 
-            Struct.L1Map currentMap = Share.MapDataList[currentMapId];
+            Struct.L1Map currentMap = Share.MapDataList[_document.MapId];
 
             // 計算所有格子的螢幕座標範圍
             int minScreenX = int.MaxValue, maxScreenX = int.MinValue;
@@ -1145,12 +1149,12 @@ namespace L1FlyMapViewer
         {
             List<SelectedCell> result = new List<SelectedCell>();
 
-            if (string.IsNullOrEmpty(currentMapId) || !Share.MapDataList.ContainsKey(currentMapId))
+            if (string.IsNullOrEmpty(_document.MapId) || !Share.MapDataList.ContainsKey(_document.MapId))
                 return result;
 
-            Struct.L1Map currentMap = Share.MapDataList[currentMapId];
+            Struct.L1Map currentMap = Share.MapDataList[_document.MapId];
 
-            foreach (var s32Data in allS32DataDict.Values)
+            foreach (var s32Data in _document.S32Files.Values)
             {
                 // 使用與 RenderS32Map 相同的座標計算方式
                 int[] loc = s32Data.SegInfo.GetLoc(1.0);
@@ -1196,7 +1200,7 @@ namespace L1FlyMapViewer
         {
             List<SelectedCell> result = new List<SelectedCell>();
 
-            if (string.IsNullOrEmpty(currentMapId) || !Share.MapDataList.ContainsKey(currentMapId))
+            if (string.IsNullOrEmpty(_document.MapId) || !Share.MapDataList.ContainsKey(_document.MapId))
                 return result;
 
             // 找出起點和終點對應的遊戲座標
@@ -1221,7 +1225,7 @@ namespace L1FlyMapViewer
             int maxGameY = Math.Max(startGameY, endGameY);
 
             // 收集範圍內所有格子（使用 Layer3 座標）
-            foreach (var s32Data in allS32DataDict.Values)
+            foreach (var s32Data in _document.S32Files.Values)
             {
                 for (int y = 0; y < 64; y++)
                 {
@@ -1250,7 +1254,7 @@ namespace L1FlyMapViewer
         // 重新載入當前地圖
         private void ReloadCurrentMap()
         {
-            if (string.IsNullOrEmpty(currentMapId))
+            if (string.IsNullOrEmpty(_document.MapId))
             {
                 this.toolStripStatusLabel1.Text = "沒有選擇地圖";
                 return;
@@ -1258,13 +1262,13 @@ namespace L1FlyMapViewer
 
             // 清除快取
             tileDataCache.Clear();
-            highlightedS32Data = null;
-            highlightedCellX = -1;
-            highlightedCellY = -1;
+            _editState.HighlightedS32Data = null;
+            _editState.HighlightedCellX = -1;
+            _editState.HighlightedCellY = -1;
 
             // 重新載入 S32 檔案
             this.toolStripStatusLabel1.Text = "正在重新載入...";
-            LoadS32FileList(currentMapId);
+            LoadS32FileList(_document.MapId);
         }
 
         private void MapForm_Load(object sender, EventArgs e)
@@ -1375,13 +1379,13 @@ namespace L1FlyMapViewer
         // 匯出地圖通行資料給伺服器使用（L1J 格式）
         private void exportToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            if (string.IsNullOrEmpty(currentMapId) || !Share.MapDataList.ContainsKey(currentMapId))
+            if (string.IsNullOrEmpty(_document.MapId) || !Share.MapDataList.ContainsKey(_document.MapId))
             {
                 MessageBox.Show("請先載入地圖！", "提示", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
 
-            if (allS32DataDict.Count == 0)
+            if (_document.S32Files.Count == 0)
             {
                 MessageBox.Show("請先在 S32 編輯器中載入地圖資料！", "提示", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
@@ -1390,7 +1394,7 @@ namespace L1FlyMapViewer
             using (SaveFileDialog saveDialog = new SaveFileDialog())
             {
                 saveDialog.Filter = "文字檔 (*.txt)|*.txt";
-                saveDialog.FileName = $"{currentMapId}.txt";
+                saveDialog.FileName = $"{_document.MapId}.txt";
                 saveDialog.Title = "匯出地圖通行資料";
 
                 if (saveDialog.ShowDialog() == DialogResult.OK)
@@ -1416,7 +1420,7 @@ namespace L1FlyMapViewer
         // - xLength = S32數量 * 64（不是 128！）
         private void ExportMapData(string filePath)
         {
-            Struct.L1Map currentMap = Share.MapDataList[currentMapId];
+            Struct.L1Map currentMap = Share.MapDataList[_document.MapId];
 
             // MapTool 的維度計算：每個 S32 是 64x64
             // 但我們的 Layer3 也是 64x64，所以維度是一樣的
@@ -1442,7 +1446,7 @@ namespace L1FlyMapViewer
             }
 
             // 從 S32 資料填充 tileList
-            foreach (var s32Data in allS32DataDict.Values)
+            foreach (var s32Data in _document.S32Files.Values)
             {
                 // 計算這個 S32 在地圖陣列中的偏移（以 64 為單位）
                 int offsetX = (s32Data.SegInfo.nLinBeginX - xBegin) / 2;  // Layer3 座標
@@ -1530,7 +1534,7 @@ namespace L1FlyMapViewer
                 }
             }
 
-            this.toolStripStatusLabel1.Text = $"已匯出 {currentMapId}.txt ({xLength}x{yLength})";
+            this.toolStripStatusLabel1.Text = $"已匯出 {_document.MapId}.txt ({xLength}x{yLength})";
         }
 
         // 對角方向通行性判斷（完全按照 MapTool 的邏輯）
@@ -2349,152 +2353,7 @@ namespace L1FlyMapViewer
         }
 
         // ===== S32 編輯器功能 =====
-
-        // S32 檔案資訊類別
-        private class S32FileItem
-        {
-            public string FilePath { get; set; }
-            public string DisplayName { get; set; }
-            public Struct.L1MapSeg SegInfo { get; set; }
-            public bool IsChecked { get; set; } = true;  // 預設勾選
-
-            public override string ToString() => DisplayName;
-        }
-
-        // S32 資料結構
-        private class S32Data
-        {
-            // 第一層（地板）- 64x128
-            public TileCell[,] Layer1 { get; set; } = new TileCell[64, 128];
-
-            // 第二層資料
-            public List<Layer2Item> Layer2 { get; set; } = new List<Layer2Item>();
-
-            // 第三層（地圖屬性）- 64x64
-            public MapAttribute[,] Layer3 { get; set; } = new MapAttribute[64, 64];
-
-            // 第四層（物件）
-            public List<ObjectTile> Layer4 { get; set; } = new List<ObjectTile>();
-
-            // 使用的所有 tile（不重複）
-            public Dictionary<int, TileInfo> UsedTiles { get; set; } = new Dictionary<int, TileInfo>();
-
-            // 保存原始文件內容，用於安全保存
-            public byte[] OriginalFileData { get; set; }
-
-            // 記錄各層在文件中的位置
-            public int Layer1Offset { get; set; }
-            public int Layer2Offset { get; set; }
-            public int Layer3Offset { get; set; }
-            public int Layer4Offset { get; set; }
-            public int Layer4EndOffset { get; set; }  // 第四層結束位置
-
-            // 第5-8層的原始資料（未解析）
-            public byte[] Layer5to8Data { get; set; }
-
-            // 第5層 - 可透明化的圖塊 (X, Y, R, G, B)
-            public List<Layer5Item> Layer5 { get; set; } = new List<Layer5Item>();
-
-            // 第6層 - 使用的 til
-            public List<int> Layer6 { get; set; } = new List<int>();
-
-            // 第7層 - 傳送點、入口點
-            public List<Layer7Item> Layer7 { get; set; } = new List<Layer7Item>();
-
-            // 第8層 - 特效、裝飾品
-            public List<Layer8Item> Layer8 { get; set; } = new List<Layer8Item>();
-
-            // 第8層擴展資訊
-            public bool Layer8HasExtendedData { get; set; } = false;
-
-            // 檔案路徑和 SegInfo
-            public string FilePath { get; set; }
-            public Struct.L1MapSeg SegInfo { get; set; }
-
-            // 是否已修改
-            public bool IsModified { get; set; }
-        }
-
-        // 第二層項目 - X(BYTE), Y(BYTE), IndexId(BYTE), TileId(USHORT), UK(BYTE)
-        private class Layer2Item
-        {
-            public byte X { get; set; }
-            public byte Y { get; set; }
-            public byte IndexId { get; set; }
-            public ushort TileId { get; set; }
-            public byte UK { get; set; }
-        }
-
-        // 地圖屬性（第三層）
-        private class MapAttribute
-        {
-            public short Attribute1 { get; set; }
-            public short Attribute2 { get; set; }
-        }
-
-        // 物件 Tile（第四層）
-        private class ObjectTile
-        {
-            public int GroupId { get; set; }      // 物件組 ID
-            public int X { get; set; }            // X 座標
-            public int Y { get; set; }            // Y 座標
-            public int Layer { get; set; }        // 層次（用於排序）
-            public int IndexId { get; set; }      // 索引 ID
-            public int TileId { get; set; }       // Tile ID
-        }
-
-        // 第五層項目 - 事件
-        private class Layer5Item
-        {
-            public byte X { get; set; }
-            public byte Y { get; set; }
-            public ushort ObjectIndex { get; set; }
-            public byte Type { get; set; }
-        }
-
-        // 第七層項目 - 傳送點、入口點
-        private class Layer7Item
-        {
-            public string Name { get; set; }      // 傳送點、入口點名稱
-            public byte X { get; set; }           // X軸
-            public byte Y { get; set; }           // Y軸
-            public ushort TargetMapId { get; set; }  // 進入傳送點、入口點要傳送的地圖編號
-            public int PortalId { get; set; }     // 傳送點、入口點的編號
-        }
-
-        // 第八層項目 - 特效、裝飾品
-        private class Layer8Item
-        {
-            public ushort SprId { get; set; }     // 特效編號
-            public ushort X { get; set; }         // X軸
-            public ushort Y { get; set; }         // Y軸
-            public int ExtendedData { get; set; } // 擴展資料 (僅當 Layer8HasExtendedData 為 true 時使用)
-        }
-
-        // 格子資料
-        private class TileCell
-        {
-            public int X { get; set; }          // 格子座標 X (0-127)
-            public int Y { get; set; }          // 格子座標 Y (0-63)
-            public int TileId { get; set; }     // til ID
-            public int IndexId { get; set; }    // id (索引)
-            public bool IsModified { get; set; } // 是否已修改
-        }
-
-        // Tile 資訊
-        private class TileInfo
-        {
-            public int TileId { get; set; }
-            public int IndexId { get; set; }
-            public Bitmap Thumbnail { get; set; }  // 縮圖
-            public int UsageCount { get; set; }    // 使用次數
-        }
-
-        // 所有載入的 s32 資料（key: 檔案路徑）
-        private Dictionary<string, S32Data> allS32DataDict = new Dictionary<string, S32Data>();
-
-        // 當前選擇的地圖 ID
-        private string currentMapId;
+        // 類型定義已移至 Models/S32DataModels.cs
 
         // 當前選擇的 S32 檔案資訊（用於顯示）
         private S32FileItem currentS32FileItem;
@@ -2504,9 +2363,9 @@ namespace L1FlyMapViewer
         {
             get
             {
-                if (currentS32FileItem != null && allS32DataDict.ContainsKey(currentS32FileItem.FilePath))
+                if (currentS32FileItem != null && _document.S32Files.ContainsKey(currentS32FileItem.FilePath))
                 {
-                    return allS32DataDict[currentS32FileItem.FilePath];
+                    return _document.S32Files[currentS32FileItem.FilePath];
                 }
                 return null;
             }
@@ -2537,18 +2396,7 @@ namespace L1FlyMapViewer
         // Layer4 複製貼上相關變數
         private bool isLayer4CopyMode = false;           // 是否在複製選取模式
         private bool hasLayer4Clipboard = false;         // 剪貼簿是否有資料
-        private List<CopiedCellData> cellClipboard = new List<CopiedCellData>();  // 複製的格子資料（多層）
-        private List<Layer2Item> layer2Clipboard = new List<Layer2Item>();  // 複製的 Layer2 資料
-        private List<Layer5Item> layer5Clipboard = new List<Layer5Item>();  // 複製的 Layer5 資料
-        private List<int> layer6Clipboard = new List<int>();  // 複製的 Layer6 資料 (使用的 TilId)
-        private List<Layer7Item> layer7Clipboard = new List<Layer7Item>();  // 複製的 Layer7 資料
-        private List<Layer8Item> layer8Clipboard = new List<Layer8Item>();  // 複製的 Layer8 資料
-        private Point copyRegionOrigin;                   // 複製區域的原點（全域 Layer1 座標）
         private Rectangle copyRegionBounds;               // 複製區域的範圍（螢幕座標）
-        private Point pastePreviewLocation;               // 貼上預覽位置
-        private bool isPastePreviewMode = false;          // 是否在貼上預覽模式
-        private List<SelectedCell> currentSelectedCells = new List<SelectedCell>();  // 目前選中的格子（用於繪製）
-        private string clipboardSourceMapId;              // 剪貼簿來源地圖 ID
 
         // 複製/刪除設定（由 Dialog 設定）
         private bool copySettingLayer1 = true;
@@ -2557,81 +2405,10 @@ namespace L1FlyMapViewer
         private bool copySettingLayer4 = true;
         private bool copySettingLayer5to8 = true;
 
-        // 複製的格子資料（支援多層）
-        private class CopiedCellData
-        {
-            public int RelativeX { get; set; }    // 相對於原點的 X 偏移（Layer1 座標）
-            public int RelativeY { get; set; }    // 相對於原點的 Y 偏移
-
-            // Layer1 資料（地板）- 兩個 Layer1 格子對應一個 Layer3 格子
-            public TileCell Layer1Cell1 { get; set; }  // X 為偶數的格子
-            public TileCell Layer1Cell2 { get; set; }  // X 為奇數的格子
-
-            // Layer3 資料（屬性）
-            public MapAttribute Layer3Attr { get; set; }
-
-            // Layer4 資料（物件）- 一個格子可能有多個物件
-            public List<CopiedObjectTile> Layer4Objects { get; set; } = new List<CopiedObjectTile>();
-        }
-
-        // 複製的物件資料（含相對位置）
-        private class CopiedObjectTile
-        {
-            public int RelativeX { get; set; }    // 相對於原點的 X 偏移（Layer1 座標）
-            public int RelativeY { get; set; }    // 相對於原點的 Y 偏移
-            public int GroupId { get; set; }
-            public int Layer { get; set; }
-            public int IndexId { get; set; }
-            public int TileId { get; set; }
-            public int OriginalIndex { get; set; } // 原始 Layer4 列表中的索引（用於保持順序）
-            // Layer1 座標系統 (0-127) 的原始局部座標
-            public int OriginalLocalLayer1X { get; set; }
-            public int OriginalLocalY { get; set; }
-        }
-
-        // Undo 相關變數
-        private const int MAX_UNDO_HISTORY = 5;
-        private Stack<UndoAction> undoHistory = new Stack<UndoAction>();
-        private Stack<UndoAction> redoHistory = new Stack<UndoAction>();
-
-        // Undo 動作類別
-        private class UndoAction
-        {
-            public string Description { get; set; }
-            public List<UndoObjectInfo> AddedObjects { get; set; } = new List<UndoObjectInfo>();    // 新增的物件（還原時要刪除）
-            public List<UndoObjectInfo> RemovedObjects { get; set; } = new List<UndoObjectInfo>();  // 刪除的物件（還原時要新增回去）
-            public List<UndoLayer7Info> RemovedLayer7Items { get; set; } = new List<UndoLayer7Info>();  // 刪除的第七層資料
-        }
-
-        // 記錄物件資訊用於 Undo
-        private class UndoObjectInfo
-        {
-            public string S32FilePath { get; set; }  // S32 檔案路徑
-            public int GameX { get; set; }           // 遊戲座標 X
-            public int GameY { get; set; }           // 遊戲座標 Y
-            public int LocalX { get; set; }          // S32 內局部座標 X
-            public int LocalY { get; set; }          // S32 內局部座標 Y
-            public int GroupId { get; set; }
-            public int Layer { get; set; }
-            public int IndexId { get; set; }
-            public int TileId { get; set; }
-        }
-
-        // 記錄第七層資訊用於 Undo
-        private class UndoLayer7Info
-        {
-            public string S32FilePath { get; set; }
-            public string Name { get; set; }
-            public byte X { get; set; }
-            public byte Y { get; set; }
-            public ushort TargetMapId { get; set; }
-            public int PortalId { get; set; }
-        }
-
         // 根據遊戲座標找到對應的 S32Data
         private S32Data GetS32DataByGameCoords(int gameX, int gameY)
         {
-            foreach (var s32Data in allS32DataDict.Values)
+            foreach (var s32Data in _document.S32Files.Values)
             {
                 if (gameX >= s32Data.SegInfo.nLinBeginX && gameX <= s32Data.SegInfo.nLinEndX &&
                     gameY >= s32Data.SegInfo.nLinBeginY && gameY <= s32Data.SegInfo.nLinEndY)
@@ -2645,16 +2422,16 @@ namespace L1FlyMapViewer
         // 螢幕座標轉換為遊戲座標（使用 Layer3 格子，與格線一致）
         private (int gameX, int gameY, S32Data s32Data, int localX, int localY) ScreenToGameCoords(int screenX, int screenY)
         {
-            if (string.IsNullOrEmpty(currentMapId) || !Share.MapDataList.ContainsKey(currentMapId))
+            if (string.IsNullOrEmpty(_document.MapId) || !Share.MapDataList.ContainsKey(_document.MapId))
                 return (-1, -1, null, -1, -1);
 
             // 將螢幕座標轉換為原始座標（考慮縮放）
             int origX = (int)(screenX / s32ZoomLevel);
             int origY = (int)(screenY / s32ZoomLevel);
 
-            Struct.L1Map currentMap = Share.MapDataList[currentMapId];
+            Struct.L1Map currentMap = Share.MapDataList[_document.MapId];
 
-            foreach (var s32Data in allS32DataDict.Values)
+            foreach (var s32Data in _document.S32Files.Values)
             {
                 int[] loc = s32Data.SegInfo.GetLoc(1.0);
                 int mx = loc[0];
@@ -2697,13 +2474,13 @@ namespace L1FlyMapViewer
         // 遊戲座標轉換為螢幕座標中心點
         private (int screenX, int screenY) GameToScreenCoords(int gameX, int gameY)
         {
-            if (string.IsNullOrEmpty(currentMapId) || !Share.MapDataList.ContainsKey(currentMapId))
+            if (string.IsNullOrEmpty(_document.MapId) || !Share.MapDataList.ContainsKey(_document.MapId))
                 return (-1, -1);
 
-            Struct.L1Map currentMap = Share.MapDataList[currentMapId];
+            Struct.L1Map currentMap = Share.MapDataList[_document.MapId];
 
             // 找到包含這個遊戲座標的 S32
-            foreach (var s32Data in allS32DataDict.Values)
+            foreach (var s32Data in _document.S32Files.Values)
             {
                 int localX = gameX - s32Data.SegInfo.nLinBeginX;
                 int localY = gameY - s32Data.SegInfo.nLinBeginY;
@@ -2736,8 +2513,8 @@ namespace L1FlyMapViewer
         private void LoadS32FileList(string mapId)
         {
             lstS32Files.Items.Clear();
-            allS32DataDict.Clear();
-            currentMapId = mapId;
+            _document.S32Files.Clear();
+            _document.MapId = mapId;
 
             // 從 Share.MapDataList 取得地圖資料
             if (!Share.MapDataList.ContainsKey(mapId))
@@ -2794,7 +2571,7 @@ namespace L1FlyMapViewer
                         s32Data.FilePath = item.FilePath;
                         s32Data.SegInfo = item.SegInfo;
                         s32Data.IsModified = false;
-                        allS32DataDict[item.FilePath] = s32Data;
+                        _document.S32Files[item.FilePath] = s32Data;
 
                         loadedCount++;
 
@@ -2817,10 +2594,10 @@ namespace L1FlyMapViewer
                 // 載入完成後更新 UI
                 this.Invoke((MethodInvoker)delegate
                 {
-                    this.toolStripStatusLabel1.Text = $"已載入 {allS32DataDict.Count} 個 S32 檔案";
+                    this.toolStripStatusLabel1.Text = $"已載入 {_document.S32Files.Count} 個 S32 檔案";
 
                     // 自動渲染整張地圖和更新 Tile 清單
-                    if (allS32DataDict.Count > 0)
+                    if (_document.S32Files.Count > 0)
                     {
                         RenderS32Map();
                         UpdateTileList();
@@ -2842,7 +2619,7 @@ namespace L1FlyMapViewer
             Dictionary<short, int> attr1Values = new Dictionary<short, int>();
             Dictionary<short, int> attr2Values = new Dictionary<short, int>();
 
-            foreach (var s32Data in allS32DataDict.Values)
+            foreach (var s32Data in _document.S32Files.Values)
             {
                 for (int y = 0; y < 64; y++)
                 {
@@ -2866,7 +2643,7 @@ namespace L1FlyMapViewer
 
             // 建立分析結果
             StringBuilder sb = new StringBuilder();
-            sb.AppendLine($"地圖: {currentMapId}");
+            sb.AppendLine($"地圖: {_document.MapId}");
             sb.AppendLine();
 
             sb.AppendLine("【左上邊 (Attribute1) 統計】");
@@ -3188,13 +2965,13 @@ namespace L1FlyMapViewer
             try
             {
                 // S32 檔案已經在 LoadS32FileList() 中載入，這裡只更新UI顯示
-                if (!allS32DataDict.ContainsKey(filePath))
+                if (!_document.S32Files.ContainsKey(filePath))
                 {
                     this.toolStripStatusLabel1.Text = "選中的 S32 檔案不在記憶體中";
                     return;
                 }
 
-                S32Data s32Data = allS32DataDict[filePath];
+                S32Data s32Data = _document.S32Files[filePath];
 
                 this.toolStripStatusLabel1.Text = $"已選擇 {Path.GetFileName(filePath)} - 第1層:{64*128}格, 第2層:{s32Data.Layer2.Count}項, 第3層:{64*64}格, 第4層:{s32Data.Layer4.Count}物件, 此檔案使用{s32Data.UsedTiles.Count}種Tile";
 
@@ -3333,13 +3110,13 @@ namespace L1FlyMapViewer
         // 複製地圖座標按鈕點擊事件
         private void btnCopyMapCoords_Click(object sender, EventArgs e)
         {
-            if (string.IsNullOrEmpty(currentMapId) || !Share.MapDataList.ContainsKey(currentMapId))
+            if (string.IsNullOrEmpty(_document.MapId) || !Share.MapDataList.ContainsKey(_document.MapId))
             {
                 MessageBox.Show("請先載入地圖", "提示", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
 
-            Struct.L1Map currentMap = Share.MapDataList[currentMapId];
+            Struct.L1Map currentMap = Share.MapDataList[_document.MapId];
 
             // 取得地圖的遊戲座標範圍
             int startX = currentMap.nLinBeginX;
@@ -3374,11 +3151,7 @@ namespace L1FlyMapViewer
                 btnSetPassable.BackColor = Color.LightGreen;
                 btnSetImpassable.BackColor = SystemColors.Control;
                 // 自動顯示通行性覆蓋層
-                if (!chkShowPassable.Checked)
-                {
-                    chkShowPassable.Checked = true;
-                    RenderS32Map();
-                }
+                EnsurePassabilityLayerVisible();
                 this.toolStripStatusLabel1.Text = "允許通行模式：點擊格子設定 | Ctrl+左鍵繪製多邊形，右鍵完成";
                 UpdatePassabilityHelpLabel();
             }
@@ -3402,13 +3175,21 @@ namespace L1FlyMapViewer
                 btnSetImpassable.BackColor = Color.LightCoral;
                 btnSetPassable.BackColor = SystemColors.Control;
                 // 自動顯示通行性覆蓋層
-                if (!chkShowPassable.Checked)
-                {
-                    chkShowPassable.Checked = true;
-                    RenderS32Map();
-                }
+                EnsurePassabilityLayerVisible();
                 this.toolStripStatusLabel1.Text = "禁止通行模式：點擊格子設定 | Ctrl+左鍵繪製多邊形，右鍵完成";
                 UpdatePassabilityHelpLabel();
+            }
+        }
+
+        // 確保通行性圖層可見
+        private void EnsurePassabilityLayerVisible()
+        {
+            if (!chkShowPassable.Checked)
+            {
+                chkShowPassable.Checked = true;
+                chkFloatPassable.Checked = true;
+                UpdateLayerIconText();
+                RenderS32Map();
             }
         }
 
@@ -3445,19 +3226,19 @@ namespace L1FlyMapViewer
         {
             try
             {
-                if (allS32DataDict.Count == 0 || string.IsNullOrEmpty(currentMapId))
+                if (_document.S32Files.Count == 0 || string.IsNullOrEmpty(_document.MapId))
                 {
                     lblS32Info.Text = "請選擇一個地圖";
                     return;
                 }
 
-                if (!Share.MapDataList.ContainsKey(currentMapId))
+                if (!Share.MapDataList.ContainsKey(_document.MapId))
                 {
                     lblS32Info.Text = "地圖資料不存在";
                     return;
                 }
 
-                Struct.L1Map currentMap = Share.MapDataList[currentMapId];
+                Struct.L1Map currentMap = Share.MapDataList[_document.MapId];
 
                 // 計算整張地圖的大小（使用與 L1MapHelper 相同的公式）
                 // 每個 block 的像素大小: BMP_W = 64 * 24 * 2 = 3072, BMP_H = 64 * 12 * 2 = 1536
@@ -3493,18 +3274,18 @@ namespace L1FlyMapViewer
                 using (Graphics g = Graphics.FromImage(s32Bitmap))
                 {
                     // 使用與原始 L1MapHelper.LoadMap 完全相同的排序方式（Utils.SortDesc）
-                    var sortedFilePaths = Utils.SortDesc(allS32DataDict.Keys);
+                    var sortedFilePaths = Utils.SortDesc(_document.S32Files.Keys);
 
                     // 遍歷所有 S32 檔案
                     foreach (object filePathObj in sortedFilePaths)
                     {
                         string filePath = filePathObj as string;
-                        if (filePath == null || !allS32DataDict.ContainsKey(filePath)) continue;
+                        if (filePath == null || !_document.S32Files.ContainsKey(filePath)) continue;
 
                         // 只渲染有勾選的 S32
                         if (!checkedFilePaths.Contains(filePath)) continue;
 
-                        var s32Data = allS32DataDict[filePath];
+                        var s32Data = _document.S32Files[filePath];
                         // 使用 GetLoc 計算區塊位置
                         int[] loc = s32Data.SegInfo.GetLoc(1.0);
                         int mx = loc[0];
@@ -3550,7 +3331,7 @@ namespace L1FlyMapViewer
                 }
 
                 // 繪製選中格子的高亮
-                if (highlightedS32Data != null && highlightedCellX >= 0 && highlightedCellY >= 0)
+                if (_editState.HighlightedS32Data != null && _editState.HighlightedCellX >= 0 && _editState.HighlightedCellY >= 0)
                 {
                     DrawHighlightedCell(s32Bitmap, currentMap);
                 }
@@ -3562,11 +3343,11 @@ namespace L1FlyMapViewer
 
                 // 統計勾選的 S32 數量和物件數量
                 int checkedCount = checkedFilePaths.Count;
-                int totalObjects = allS32DataDict.Values
+                int totalObjects = _document.S32Files.Values
                     .Where(s => checkedFilePaths.Contains(s.FilePath))
                     .Sum(s => s.Layer4.Count);
 
-                lblS32Info.Text = $"已渲染 {checkedCount}/{allS32DataDict.Count} 個S32檔案 | 大小: {mapWidth}x{mapHeight} | 第1層:{(chkLayer1.Checked ? "顯示" : "隱藏")} 第3層:{(chkLayer3.Checked ? "顯示" : "隱藏")} 第4層:{(chkLayer4.Checked ? "顯示" : "隱藏")} ({totalObjects}個物件)";
+                lblS32Info.Text = $"已渲染 {checkedCount}/{_document.S32Files.Count} 個S32檔案 | 大小: {mapWidth}x{mapHeight} | 第1層:{(chkLayer1.Checked ? "顯示" : "隱藏")} 第3層:{(chkLayer3.Checked ? "顯示" : "隱藏")} 第4層:{(chkLayer4.Checked ? "顯示" : "隱藏")} ({totalObjects}個物件)";
             }
             catch (Exception ex)
             {
@@ -3621,9 +3402,9 @@ namespace L1FlyMapViewer
                     var sortedObjects = s32Data.Layer4.OrderBy(o => o.Layer).ToList();
 
                     // 如果有篩選條件，只渲染選中的群組
-                    if (isFilteringLayer4Groups && selectedLayer4Groups.Count > 0)
+                    if (_editState.IsFilteringLayer4Groups && _editState.SelectedLayer4Groups.Count > 0)
                     {
-                        sortedObjects = sortedObjects.Where(o => selectedLayer4Groups.Contains(o.GroupId)).ToList();
+                        sortedObjects = sortedObjects.Where(o => _editState.SelectedLayer4Groups.Contains(o.GroupId)).ToList();
                     }
 
                     foreach (var obj in sortedObjects)
@@ -3677,7 +3458,7 @@ namespace L1FlyMapViewer
                 g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
 
                 // 遍歷所有 S32 檔案
-                foreach (var s32Data in allS32DataDict.Values)
+                foreach (var s32Data in _document.S32Files.Values)
                 {
                     // 使用與 RenderS32Map 相同的座標計算方式
                     int[] loc = s32Data.SegInfo.GetLoc(1.0);
@@ -3766,7 +3547,7 @@ namespace L1FlyMapViewer
                 using (Pen penPassable = new Pen(Color.FromArgb(255, 50, 200, 255), 2))   // 可通行 - 天藍色
                 {
                     // 遍歷所有 S32 檔案
-                    foreach (var s32Data in allS32DataDict.Values)
+                    foreach (var s32Data in _document.S32Files.Values)
                     {
                         // 使用 GetLoc 計算區塊位置
                         int[] loc = s32Data.SegInfo.GetLoc(1.0);
@@ -3846,25 +3627,25 @@ namespace L1FlyMapViewer
         // 繪製選中格子的高亮
         private void DrawHighlightedCell(Bitmap bitmap, Struct.L1Map currentMap)
         {
-            if (highlightedS32Data == null) return;
+            if (_editState.HighlightedS32Data == null) return;
 
             using (Graphics g = Graphics.FromImage(bitmap))
             {
                 g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
 
                 // 使用 GetLoc 計算區塊位置
-                int[] loc = highlightedS32Data.SegInfo.GetLoc(1.0);
+                int[] loc = _editState.HighlightedS32Data.SegInfo.GetLoc(1.0);
                 int mx = loc[0];
                 int my = loc[1];
 
                 // 使用 GetLoc + drawTilBlock 公式計算像素位置
                 int localBaseX = 0;
                 int localBaseY = 63 * 12;
-                localBaseX -= 24 * (highlightedCellX / 2);
-                localBaseY -= 12 * (highlightedCellX / 2);
+                localBaseX -= 24 * (_editState.HighlightedCellX / 2);
+                localBaseY -= 12 * (_editState.HighlightedCellX / 2);
 
-                int X = mx + localBaseX + highlightedCellX * 24 + highlightedCellY * 24;
-                int Y = my + localBaseY + highlightedCellY * 12;
+                int X = mx + localBaseX + _editState.HighlightedCellX * 24 + _editState.HighlightedCellY * 24;
+                int Y = my + localBaseY + _editState.HighlightedCellY * 12;
 
                 // 菱形的四個頂點（24x24 的菱形）
                 Point p1 = new Point(X + 0, Y + 12);   // 左
@@ -3897,7 +3678,7 @@ namespace L1FlyMapViewer
                 Font font = new Font("Arial", 9, FontStyle.Bold);
                 Pen boundaryPen = new Pen(Color.Cyan, 2);
 
-                foreach (var s32Data in allS32DataDict.Values)
+                foreach (var s32Data in _document.S32Files.Values)
                 {
                     int[] loc = s32Data.SegInfo.GetLoc(1.0);
                     int mx = loc[0];
@@ -3998,7 +3779,7 @@ namespace L1FlyMapViewer
                 using (Pen gridPen = new Pen(Color.FromArgb(100, Color.Red), 1)) // 半透明紅色
                 {
                     // 遍歷所有 S32 檔案
-                    foreach (var s32Data in allS32DataDict.Values)
+                    foreach (var s32Data in _document.S32Files.Values)
                     {
                         // 使用與 RenderS32Map 相同的座標計算方式
                         int[] loc = s32Data.SegInfo.GetLoc(1.0);
@@ -4055,7 +3836,7 @@ namespace L1FlyMapViewer
                 int interval = 10;
 
                 // 遍歷所有 S32 檔案
-                foreach (var s32Data in allS32DataDict.Values)
+                foreach (var s32Data in _document.S32Files.Values)
                 {
                     // 使用 GetLoc 計算區塊位置
                     int[] loc = s32Data.SegInfo.GetLoc(1.0);
@@ -4423,7 +4204,7 @@ namespace L1FlyMapViewer
             imageList.ColorDepth = ColorDepth.Depth32Bit;
             lvTiles.LargeImageList = imageList;
 
-            if (allS32DataDict.Count == 0)
+            if (_document.S32Files.Count == 0)
             {
                 this.toolStripStatusLabel1.Text = "沒有 S32 檔案";
                 return;
@@ -4434,7 +4215,7 @@ namespace L1FlyMapViewer
             {
                 cachedAggregatedTiles.Clear();
 
-                foreach (var s32Data in allS32DataDict.Values)
+                foreach (var s32Data in _document.S32Files.Values)
                 {
                     foreach (var tileKvp in s32Data.UsedTiles)
                     {
@@ -4531,7 +4312,7 @@ namespace L1FlyMapViewer
             }
 
             string statusText = string.IsNullOrWhiteSpace(searchText)
-                ? $"顯示 {lvTiles.Items.Count} 個 Tile (來自 {allS32DataDict.Count} 個 S32 檔案)"
+                ? $"顯示 {lvTiles.Items.Count} 個 Tile (來自 {_document.S32Files.Count} 個 S32 檔案)"
                 : $"搜尋結果: {lvTiles.Items.Count}/{totalCount} 個 Tile";
             lblTileList.Text = statusText;
         }
@@ -4704,10 +4485,10 @@ namespace L1FlyMapViewer
                 return;
 
             // 獲取當前地圖資訊以計算正確的 baseY
-            if (string.IsNullOrEmpty(currentMapId) || !Share.MapDataList.ContainsKey(currentMapId))
+            if (string.IsNullOrEmpty(_document.MapId) || !Share.MapDataList.ContainsKey(_document.MapId))
                 return;
 
-            Struct.L1Map currentMap = Share.MapDataList[currentMapId];
+            Struct.L1Map currentMap = Share.MapDataList[_document.MapId];
 
             // 將點擊位置轉換為原始座標（考慮縮放）
             Point adjustedLocation = new Point(
@@ -4716,7 +4497,7 @@ namespace L1FlyMapViewer
             );
 
             // 遍歷所有 S32 檔案
-            foreach (var s32Data in allS32DataDict.Values)
+            foreach (var s32Data in _document.S32Files.Values)
             {
                 // 使用 GetLoc 計算區塊位置
                 int[] loc = s32Data.SegInfo.GetLoc(1.0);
@@ -4754,9 +4535,9 @@ namespace L1FlyMapViewer
                             };
 
                             // 記錄選中的格子並更新狀態列顯示第三層屬性
-                            highlightedS32Data = s32Data;
-                            highlightedCellX = x;
-                            highlightedCellY = y;
+                            _editState.HighlightedS32Data = s32Data;
+                            _editState.HighlightedCellX = x;
+                            _editState.HighlightedCellY = y;
                             UpdateStatusBarWithLayer3Info(s32Data, x, y);
 
                             // 通行性編輯模式：單擊設定通行性
@@ -4789,10 +4570,10 @@ namespace L1FlyMapViewer
         private void s32PictureBox_MouseDoubleClick(object sender, MouseEventArgs e)
         {
             // 獲取當前地圖資訊
-            if (string.IsNullOrEmpty(currentMapId) || !Share.MapDataList.ContainsKey(currentMapId))
+            if (string.IsNullOrEmpty(_document.MapId) || !Share.MapDataList.ContainsKey(_document.MapId))
                 return;
 
-            Struct.L1Map currentMap = Share.MapDataList[currentMapId];
+            Struct.L1Map currentMap = Share.MapDataList[_document.MapId];
 
             // 將點擊位置轉換為原始座標（考慮縮放）
             Point adjustedLocation = new Point(
@@ -4801,7 +4582,7 @@ namespace L1FlyMapViewer
             );
 
             // 遍歷所有 S32 檔案
-            foreach (var s32Data in allS32DataDict.Values)
+            foreach (var s32Data in _document.S32Files.Values)
             {
                 // 使用 GetLoc 計算區塊位置
                 int[] loc = s32Data.SegInfo.GetLoc(1.0);
@@ -4839,9 +4620,9 @@ namespace L1FlyMapViewer
                             };
 
                             // 記錄選中的格子
-                            highlightedS32Data = s32Data;
-                            highlightedCellX = x;
-                            highlightedCellY = y;
+                            _editState.HighlightedS32Data = s32Data;
+                            _editState.HighlightedCellX = x;
+                            _editState.HighlightedCellY = y;
 
                             // 顯示格子詳細資料
                             ShowCellLayersDialog(x, y);
@@ -4871,7 +4652,7 @@ namespace L1FlyMapViewer
             // 簡化：對於菱形地圖，使用一個參考點來計算
             // 取得一個已知 S32 的位置作為參考
 
-            if (allS32DataDict.Count == 0)
+            if (_document.S32Files.Count == 0)
             {
                 // 如果沒有任何 S32，使用地圖的 Min Block 作為基準
                 int defaultBlockX = currentMap.nMinBlockX != 0xFFFF ? currentMap.nMinBlockX : 0x7FFF;
@@ -4881,7 +4662,7 @@ namespace L1FlyMapViewer
             }
 
             // 取得第一個 S32 作為參考點
-            var refS32 = allS32DataDict.Values.First();
+            var refS32 = _document.S32Files.Values.First();
             int[] refLoc = refS32.SegInfo.GetLoc(1.0);
             int refMx = refLoc[0];
             int refMy = refLoc[1];
@@ -4932,7 +4713,7 @@ namespace L1FlyMapViewer
             string fileName = $"{targetBlockX:X4}{targetBlockY:X4}.s32".ToLower();
             string filePath = Path.Combine(currentMap.szFullDirName, fileName);
 
-            if (File.Exists(filePath) || allS32DataDict.Keys.Any(k => k.EndsWith(fileName, StringComparison.OrdinalIgnoreCase)))
+            if (File.Exists(filePath) || _document.S32Files.Keys.Any(k => k.EndsWith(fileName, StringComparison.OrdinalIgnoreCase)))
             {
                 // 已存在，顯示提示
                 this.toolStripStatusLabel1.Text = $"S32 已存在: {fileName}";
@@ -4956,7 +4737,7 @@ namespace L1FlyMapViewer
                 return;
             }
 
-            if (allS32DataDict.Keys.Any(k => k.EndsWith(fileName, StringComparison.OrdinalIgnoreCase)))
+            if (_document.S32Files.Keys.Any(k => k.EndsWith(fileName, StringComparison.OrdinalIgnoreCase)))
             {
                 MessageBox.Show($"S32 檔案已載入: {fileName}", "錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 return;
@@ -4995,7 +4776,7 @@ namespace L1FlyMapViewer
             newS32Data.IsModified = true;
 
             // 加入到記憶體（先加入才能用 SaveS32File）
-            allS32DataDict[filePath] = newS32Data;
+            _document.S32Files[filePath] = newS32Data;
 
             // 寫入檔案
             try
@@ -5005,7 +4786,7 @@ namespace L1FlyMapViewer
             catch (Exception ex)
             {
                 // 移除失敗的 S32
-                allS32DataDict.Remove(filePath);
+                _document.S32Files.Remove(filePath);
                 MessageBox.Show($"寫入檔案失敗: {ex.Message}", "錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 return;
             }
@@ -5071,10 +4852,10 @@ namespace L1FlyMapViewer
             int gameY = s32Data.SegInfo.nLinBeginY + cellY;
 
             // 更新選中的遊戲座標（用於複製移動指令）
-            selectedGameX = gameX;
-            selectedGameY = gameY;
+            _editState.SelectedGameX = gameX;
+            _editState.SelectedGameY = gameY;
             toolStripCopyMoveCmd.Enabled = true;
-            toolStripCopyMoveCmd.Text = $"移動 {gameX} {gameY} {currentMapId}";
+            toolStripCopyMoveCmd.Text = $"移動 {gameX} {gameY} {_document.MapId}";
 
             // 取得 S32 檔名
             string s32FileName = Path.GetFileName(s32Data.FilePath);
@@ -5198,7 +4979,7 @@ namespace L1FlyMapViewer
         // 多邊形通行性設定：找出多邊形內的格子邊界，設定對應的通行屬性
         private void SetPolygonPassable(List<Point> polygonPoints, bool passable)
         {
-            if (string.IsNullOrEmpty(currentMapId) || !Share.MapDataList.ContainsKey(currentMapId))
+            if (string.IsNullOrEmpty(_document.MapId) || !Share.MapDataList.ContainsKey(_document.MapId))
                 return;
 
             if (polygonPoints.Count < 3)
@@ -5217,7 +4998,7 @@ namespace L1FlyMapViewer
             var includedEdges = new List<(S32Data s32, int layer3X, int layer3Y, bool isAttribute1)>();
 
             // 遍歷所有 S32 的所有格子，檢查邊界中點是否在多邊形內
-            foreach (var s32Data in allS32DataDict.Values)
+            foreach (var s32Data in _document.S32Files.Values)
             {
                 int[] loc = s32Data.SegInfo.GetLoc(1.0);
                 int mx = loc[0];
@@ -5360,31 +5141,28 @@ namespace L1FlyMapViewer
             // Ctrl + 左鍵 + 通行性編輯模式：繪製多邊形頂點
             if (e.Button == MouseButtons.Left && Control.ModifierKeys == Keys.Control && currentPassableEditMode != PassableEditMode.None)
             {
-                isDrawingPassabilityPolygon = true;
-                passabilityPolygonPoints.Add(e.Location);
+                _editState.IsDrawingPassabilityPolygon = true;
+                _editState.PassabilityPolygonPoints.Add(e.Location);
                 s32PictureBox.Invalidate();
-                this.toolStripStatusLabel1.Text = $"多邊形頂點: {passabilityPolygonPoints.Count} 個 (Ctrl+左鍵繼續新增，右鍵完成)";
+                this.toolStripStatusLabel1.Text = $"多邊形頂點: {_editState.PassabilityPolygonPoints.Count} 個 (Ctrl+左鍵繼續新增，右鍵完成)";
                 return;
             }
             // 右鍵完成多邊形繪製
-            if (e.Button == MouseButtons.Right && isDrawingPassabilityPolygon && passabilityPolygonPoints.Count >= 3)
+            if (e.Button == MouseButtons.Right && _editState.IsDrawingPassabilityPolygon && _editState.PassabilityPolygonPoints.Count >= 3)
             {
                 // 確保顯示通行性覆蓋層，以便看到修改結果
-                if (!chkShowPassable.Checked)
-                {
-                    chkShowPassable.Checked = true;
-                }
-                SetPolygonPassable(passabilityPolygonPoints, currentPassableEditMode == PassableEditMode.SetPassable);
-                passabilityPolygonPoints.Clear();
-                isDrawingPassabilityPolygon = false;
+                EnsurePassabilityLayerVisible();
+                SetPolygonPassable(_editState.PassabilityPolygonPoints, currentPassableEditMode == PassableEditMode.SetPassable);
+                _editState.PassabilityPolygonPoints.Clear();
+                _editState.IsDrawingPassabilityPolygon = false;
                 s32PictureBox.Invalidate();
                 return;
             }
             // 右鍵取消多邊形繪製（頂點不足）
-            if (e.Button == MouseButtons.Right && isDrawingPassabilityPolygon)
+            if (e.Button == MouseButtons.Right && _editState.IsDrawingPassabilityPolygon)
             {
-                passabilityPolygonPoints.Clear();
-                isDrawingPassabilityPolygon = false;
+                _editState.PassabilityPolygonPoints.Clear();
+                _editState.IsDrawingPassabilityPolygon = false;
                 s32PictureBox.Invalidate();
                 this.toolStripStatusLabel1.Text = "已取消多邊形繪製";
                 return;
@@ -5404,6 +5182,9 @@ namespace L1FlyMapViewer
         // S32 地圖鼠標移動事件 - 更新選擇區域或拖拽移動
         private void s32PictureBox_MouseMove(object sender, MouseEventArgs e)
         {
+            // 更新狀態列顯示遊戲座標
+            UpdateStatusBarWithGameCoords(e.X, e.Y);
+
             // 中鍵拖拽移動視圖
             if (isMainMapDragging)
             {
@@ -5428,14 +5209,28 @@ namespace L1FlyMapViewer
                 regionEndPoint = e.Location;
 
                 // 計算起點到終點之間的格子範圍（所有模式都對齊格線）
-                currentSelectedCells = GetCellsInIsometricRange(regionStartPoint, regionEndPoint);
-                if (currentSelectedCells.Count > 0)
+                _editState.SelectedCells = GetCellsInIsometricRange(regionStartPoint, regionEndPoint);
+                if (_editState.SelectedCells.Count > 0)
                 {
-                    selectedRegion = GetAlignedBoundsFromCells(currentSelectedCells);
+                    selectedRegion = GetAlignedBoundsFromCells(_editState.SelectedCells);
                 }
 
                 // 重繪以顯示選擇框
                 s32PictureBox.Invalidate();
+            }
+        }
+
+        // 更新狀態列顯示遊戲座標
+        private void UpdateStatusBarWithGameCoords(int screenX, int screenY)
+        {
+            var coords = ScreenToGameCoords(screenX, screenY);
+            if (coords.gameX >= 0 && coords.gameY >= 0)
+            {
+                this.toolStripStatusLabel2.Text = $"座標: ({coords.gameX}, {coords.gameY})";
+            }
+            else
+            {
+                this.toolStripStatusLabel2.Text = "";
             }
         }
 
@@ -5458,11 +5253,11 @@ namespace L1FlyMapViewer
                 // Layer4 複製模式：保留選取範圍，等待 Ctrl+C 或 Ctrl+V
                 if (isLayer4CopyMode)
                 {
-                    // currentSelectedCells 已在 MouseMove 中更新
-                    if (currentSelectedCells.Count > 0)
+                    // _editState.SelectedCells 已在 MouseMove 中更新
+                    if (_editState.SelectedCells.Count > 0)
                     {
                         // 計算所有選中格子的螢幕座標邊界
-                        copyRegionBounds = GetAlignedBoundsFromCells(currentSelectedCells);
+                        copyRegionBounds = GetAlignedBoundsFromCells(_editState.SelectedCells);
                         selectedRegion = copyRegionBounds;
                     }
                     else
@@ -5473,11 +5268,11 @@ namespace L1FlyMapViewer
                     // 計算選取區域的全域 Layer1 座標原點（使用選中格子中最小的 X, Y 作為原點）
                     int globalX = -1, globalY = -1;
                     int gameX = -1, gameY = -1;
-                    if (currentSelectedCells.Count > 0)
+                    if (_editState.SelectedCells.Count > 0)
                     {
                         // 找出所有選中格子的最小全域 Layer1 座標
                         int minGlobalX = int.MaxValue, minGlobalY = int.MaxValue;
-                        foreach (var cell in currentSelectedCells)
+                        foreach (var cell in _editState.SelectedCells)
                         {
                             // nLinBeginX 是 Layer3 座標，乘以 2 轉成 Layer1，再加上 cell.LocalX
                             int cellGlobalX = cell.S32Data.SegInfo.nLinBeginX * 2 + cell.LocalX;
@@ -5491,20 +5286,20 @@ namespace L1FlyMapViewer
                         gameX = globalX / 2;
                         gameY = globalY;
                     }
-                    copyRegionOrigin = new Point(globalX, globalY);
+                    _editState.CopyRegionOrigin = new Point(globalX, globalY);
 
                     // 根據是否有剪貼簿資料顯示不同提示（顯示遊戲座標）
-                    if (hasLayer4Clipboard && cellClipboard.Count > 0)
+                    if (hasLayer4Clipboard && _editState.CellClipboard.Count > 0)
                     {
-                        this.toolStripStatusLabel1.Text = $"已選取貼上位置 (遊戲座標: {gameX}, {gameY})，按 Ctrl+V 貼上 {cellClipboard.Count} 格資料，選中 {currentSelectedCells.Count} 格";
+                        this.toolStripStatusLabel1.Text = $"已選取貼上位置 (遊戲座標: {gameX}, {gameY})，按 Ctrl+V 貼上 {_editState.CellClipboard.Count} 格資料，選中 {_editState.SelectedCells.Count} 格";
                     }
                     else
                     {
-                        this.toolStripStatusLabel1.Text = $"已選取區域 (遊戲座標: {gameX}, {gameY})，選中 {currentSelectedCells.Count} 格，按 Ctrl+C 複製";
+                        this.toolStripStatusLabel1.Text = $"已選取區域 (遊戲座標: {gameX}, {gameY})，選中 {_editState.SelectedCells.Count} 格，按 Ctrl+C 複製";
                     }
 
                     // 更新群組縮圖列表，顯示選取區域內的群組
-                    UpdateGroupThumbnailsList(currentSelectedCells);
+                    UpdateGroupThumbnailsList(_editState.SelectedCells);
 
                     // 保留選取框顯示
                     s32PictureBox.Invalidate();
@@ -5530,23 +5325,23 @@ namespace L1FlyMapViewer
         private void s32PictureBox_Paint(object sender, PaintEventArgs e)
         {
             // 通行性編輯模式：繪製多邊形
-            if (isDrawingPassabilityPolygon && passabilityPolygonPoints.Count > 0)
+            if (_editState.IsDrawingPassabilityPolygon && _editState.PassabilityPolygonPoints.Count > 0)
             {
                 Color polygonColor = currentPassableEditMode == PassableEditMode.SetPassable ? Color.LimeGreen : Color.Red;
 
                 // 繪製已有的多邊形邊
                 using (Pen pen = new Pen(polygonColor, 3))
                 {
-                    for (int i = 0; i < passabilityPolygonPoints.Count - 1; i++)
+                    for (int i = 0; i < _editState.PassabilityPolygonPoints.Count - 1; i++)
                     {
-                        e.Graphics.DrawLine(pen, passabilityPolygonPoints[i], passabilityPolygonPoints[i + 1]);
+                        e.Graphics.DrawLine(pen, _editState.PassabilityPolygonPoints[i], _editState.PassabilityPolygonPoints[i + 1]);
                     }
                     // 如果有3個以上頂點，繪製封閉線（虛線預覽）
-                    if (passabilityPolygonPoints.Count >= 3)
+                    if (_editState.PassabilityPolygonPoints.Count >= 3)
                     {
                         using (Pen dashPen = new Pen(polygonColor, 2) { DashStyle = System.Drawing.Drawing2D.DashStyle.Dash })
                         {
-                            e.Graphics.DrawLine(dashPen, passabilityPolygonPoints[passabilityPolygonPoints.Count - 1], passabilityPolygonPoints[0]);
+                            e.Graphics.DrawLine(dashPen, _editState.PassabilityPolygonPoints[_editState.PassabilityPolygonPoints.Count - 1], _editState.PassabilityPolygonPoints[0]);
                         }
                     }
                 }
@@ -5554,33 +5349,33 @@ namespace L1FlyMapViewer
                 // 繪製頂點標記
                 using (SolidBrush brush = new SolidBrush(polygonColor))
                 {
-                    foreach (var pt in passabilityPolygonPoints)
+                    foreach (var pt in _editState.PassabilityPolygonPoints)
                     {
                         e.Graphics.FillEllipse(brush, pt.X - 5, pt.Y - 5, 10, 10);
                     }
                 }
 
                 // 繪製半透明填充預覽（如果有3個以上頂點）
-                if (passabilityPolygonPoints.Count >= 3)
+                if (_editState.PassabilityPolygonPoints.Count >= 3)
                 {
                     using (SolidBrush fillBrush = new SolidBrush(Color.FromArgb(50, polygonColor)))
                     {
-                        e.Graphics.FillPolygon(fillBrush, passabilityPolygonPoints.ToArray());
+                        e.Graphics.FillPolygon(fillBrush, _editState.PassabilityPolygonPoints.ToArray());
                     }
                 }
                 return;
             }
 
             // 有選中的格子時，繪製對齊格線的菱形選取框
-            if (currentSelectedCells.Count > 0)
+            if (_editState.SelectedCells.Count > 0)
             {
                 Color color = isSelectingRegion ? Color.Green : Color.Orange;
-                DrawSelectedCells(e.Graphics, currentSelectedCells, color);
+                DrawSelectedCells(e.Graphics, _editState.SelectedCells, color);
 
                 // 顯示選取的格子數量
                 if (isSelectingRegion)
                 {
-                    string info = $"選取 {currentSelectedCells.Count} 格";
+                    string info = $"選取 {_editState.SelectedCells.Count} 格";
                     using (Font font = new Font("Arial", 10, FontStyle.Bold))
                     using (SolidBrush bgBrush = new SolidBrush(Color.FromArgb(180, Color.Black)))
                     using (SolidBrush textBrush = new SolidBrush(Color.White))
@@ -5600,7 +5395,7 @@ namespace L1FlyMapViewer
         // 繪製選中的格子（每個格子繪製獨立的菱形）
         private void DrawSelectedCells(Graphics g, List<SelectedCell> cells, Color color)
         {
-            if (cells.Count == 0 || string.IsNullOrEmpty(currentMapId) || !Share.MapDataList.ContainsKey(currentMapId))
+            if (cells.Count == 0 || string.IsNullOrEmpty(_document.MapId) || !Share.MapDataList.ContainsKey(_document.MapId))
                 return;
 
             using (SolidBrush brush = new SolidBrush(Color.FromArgb(50, color)))
@@ -5673,22 +5468,17 @@ namespace L1FlyMapViewer
         }
 
         // 獲取矩形區域內的所有格子座標（返回格子所屬的 S32Data 和局部座標）
-        private class SelectedCell
-        {
-            public S32Data S32Data { get; set; }
-            public int LocalX { get; set; }
-            public int LocalY { get; set; }
-        }
+        // SelectedCell 已移至 Models/S32DataModels.cs
 
         private List<SelectedCell> GetCellsInRegion(Rectangle region)
         {
             List<SelectedCell> cells = new List<SelectedCell>();
 
             // 獲取當前地圖資訊以計算正確的 baseY
-            if (string.IsNullOrEmpty(currentMapId) || !Share.MapDataList.ContainsKey(currentMapId))
+            if (string.IsNullOrEmpty(_document.MapId) || !Share.MapDataList.ContainsKey(_document.MapId))
                 return cells;
 
-            Struct.L1Map currentMap = Share.MapDataList[currentMapId];
+            Struct.L1Map currentMap = Share.MapDataList[_document.MapId];
 
             // 將螢幕矩形的四個角轉換為遊戲座標，找出遊戲座標的範圍
             // 螢幕座標 -> 遊戲座標的反向轉換
@@ -5743,7 +5533,7 @@ namespace L1FlyMapViewer
             }
 
             // 遍歷所有 S32 檔案
-            foreach (var s32Data in allS32DataDict.Values)
+            foreach (var s32Data in _document.S32Files.Values)
             {
                 // 使用 GetLoc 計算區塊位置
                 int[] loc = s32Data.SegInfo.GetLoc(1.0);
@@ -5877,7 +5667,7 @@ namespace L1FlyMapViewer
                 }
 
                 // 遍歷所有 S32 檔案搜索物件（精確匹配選取格子）
-                foreach (var s32Data in allS32DataDict.Values)
+                foreach (var s32Data in _document.S32Files.Values)
                 {
                     int segStartX = s32Data.SegInfo.nLinBeginX;
                     int segStartY = s32Data.SegInfo.nLinBeginY;
@@ -5893,8 +5683,8 @@ namespace L1FlyMapViewer
                         if (selectedGlobalCells.Contains((objGlobalX, objGlobalY)))
                         {
                             // 檢查群組篩選
-                            if (isFilteringLayer4Groups && selectedLayer4Groups.Count > 0 &&
-                                !selectedLayer4Groups.Contains(obj.GroupId))
+                            if (_editState.IsFilteringLayer4Groups && _editState.SelectedLayer4Groups.Count > 0 &&
+                                !_editState.SelectedLayer4Groups.Contains(obj.GroupId))
                                 continue;
 
                             // 避免重複加入
@@ -6101,9 +5891,9 @@ namespace L1FlyMapViewer
             var objectsAtCell = currentS32Data.Layer4.Where(o => o.X == cellX && o.Y == cellY).ToList();
 
             // 如果有選擇群組，只刪除選中群組的物件
-            if (isFilteringLayer4Groups && selectedLayer4Groups.Count > 0)
+            if (_editState.IsFilteringLayer4Groups && _editState.SelectedLayer4Groups.Count > 0)
             {
-                objectsAtCell = objectsAtCell.Where(o => selectedLayer4Groups.Contains(o.GroupId)).ToList();
+                objectsAtCell = objectsAtCell.Where(o => _editState.SelectedLayer4Groups.Contains(o.GroupId)).ToList();
             }
 
             if (objectsAtCell.Count == 0)
@@ -6786,7 +6576,7 @@ namespace L1FlyMapViewer
             List<(int globalX, int globalY, string layer, int groupId, S32Data s32, int l4X, int l4Y)> locations =
                 new List<(int, int, string, int, S32Data, int, int)>();
 
-            foreach (var s32Data in allS32DataDict.Values)
+            foreach (var s32Data in _document.S32Files.Values)
             {
                 int segStartX = s32Data.SegInfo.nLinBeginX;
                 int segStartY = s32Data.SegInfo.nLinBeginY;
@@ -7053,7 +6843,7 @@ namespace L1FlyMapViewer
 
             // 計算使用此 TileId 的 Layer4 物件數量
             int layer4Count = 0;
-            foreach (var s32Data in allS32DataDict.Values)
+            foreach (var s32Data in _document.S32Files.Values)
             {
                 layer4Count += s32Data.Layer4.Count(o => o.TileId == tileInfo.TileId);
             }
@@ -7096,7 +6886,7 @@ namespace L1FlyMapViewer
         {
             // 計算要刪除的數量
             int totalCount = 0;
-            foreach (var s32Data in allS32DataDict.Values)
+            foreach (var s32Data in _document.S32Files.Values)
             {
                 totalCount += s32Data.Layer4.Count(o => o.TileId == tileId);
             }
@@ -7120,7 +6910,7 @@ namespace L1FlyMapViewer
 
             // 執行刪除
             int deletedCount = 0;
-            foreach (var s32Data in allS32DataDict.Values)
+            foreach (var s32Data in _document.S32Files.Values)
             {
                 int beforeCount = s32Data.Layer4.Count;
                 s32Data.Layer4.RemoveAll(o => o.TileId == tileId);
@@ -7147,7 +6937,7 @@ namespace L1FlyMapViewer
         private void HighlightTileOnMap(int tileId)
         {
             // 找到第一個使用此 TileId 的物件並跳轉
-            foreach (var s32Data in allS32DataDict.Values)
+            foreach (var s32Data in _document.S32Files.Values)
             {
                 var obj = s32Data.Layer4.FirstOrDefault(o => o.TileId == tileId);
                 if (obj != null)
@@ -7174,7 +6964,7 @@ namespace L1FlyMapViewer
             List<(int globalX, int globalY, string layer, int groupId, S32Data s32, int l4X, int l4Y)> locations =
                 new List<(int, int, string, int, S32Data, int, int)>();
 
-            foreach (var s32Data in allS32DataDict.Values)
+            foreach (var s32Data in _document.S32Files.Values)
             {
                 int segStartX = s32Data.SegInfo.nLinBeginX;
                 int segStartY = s32Data.SegInfo.nLinBeginY;
@@ -7440,9 +7230,9 @@ namespace L1FlyMapViewer
         // 複製移動指令按鈕點擊事件
         private void toolStripCopyMoveCmd_Click(object sender, EventArgs e)
         {
-            if (selectedGameX >= 0 && selectedGameY >= 0 && !string.IsNullOrEmpty(currentMapId))
+            if (_editState.SelectedGameX >= 0 && _editState.SelectedGameY >= 0 && !string.IsNullOrEmpty(_document.MapId))
             {
-                string moveCmd = $"移動 {selectedGameX} {selectedGameY} {currentMapId}";
+                string moveCmd = $"移動 {_editState.SelectedGameX} {_editState.SelectedGameY} {_document.MapId}";
                 Clipboard.SetText(moveCmd);
                 this.toolStripStatusLabel1.Text = $"已複製: {moveCmd}";
             }
@@ -7472,13 +7262,13 @@ namespace L1FlyMapViewer
         // 跳轉到指定的遊戲座標 (Layer3 座標系：64x64)
         private void JumpToGameCoordinate(int globalX, int globalY)
         {
-            if (!Share.MapDataList.ContainsKey(currentMapId))
+            if (!Share.MapDataList.ContainsKey(_document.MapId))
                 return;
 
-            Struct.L1Map currentMap = Share.MapDataList[currentMapId];
+            Struct.L1Map currentMap = Share.MapDataList[_document.MapId];
 
             // 找到包含此座標的 S32 (使用 Layer3 座標系：64x64)
-            foreach (var s32Data in allS32DataDict.Values)
+            foreach (var s32Data in _document.S32Files.Values)
             {
                 int segStartX = s32Data.SegInfo.nLinBeginX;
                 int segStartY = s32Data.SegInfo.nLinBeginY;
@@ -7518,9 +7308,9 @@ namespace L1FlyMapViewer
                     s32MapPanel.AutoScrollPosition = new Point(scrollX, scrollY);
 
                     // 設定高亮 (使用 Layer1 座標)
-                    highlightedS32Data = s32Data;
-                    highlightedCellX = localX;
-                    highlightedCellY = localY;
+                    _editState.HighlightedS32Data = s32Data;
+                    _editState.HighlightedCellX = localX;
+                    _editState.HighlightedCellY = localY;
 
                     s32PictureBox.Invalidate();
                     UpdateMiniMap();
@@ -7828,7 +7618,7 @@ namespace L1FlyMapViewer
         private void btnSaveS32_Click(object sender, EventArgs e)
         {
             // 找出所有被修改的 S32 檔案
-            var modifiedFiles = allS32DataDict.Where(kvp => kvp.Value.IsModified).ToList();
+            var modifiedFiles = _document.S32Files.Where(kvp => kvp.Value.IsModified).ToList();
 
             if (modifiedFiles.Count == 0)
             {
@@ -7876,12 +7666,12 @@ namespace L1FlyMapViewer
         private void SaveS32File(string filePath)
         {
             // 從字典中取得對應的 S32Data
-            if (!allS32DataDict.ContainsKey(filePath))
+            if (!_document.S32Files.ContainsKey(filePath))
             {
                 throw new InvalidOperationException($"S32 檔案不在記憶體中: {filePath}");
             }
 
-            S32Data s32Data = allS32DataDict[filePath];
+            S32Data s32Data = _document.S32Files[filePath];
 
             using (MemoryStream ms = new MemoryStream())
             using (BinaryWriter bw = new BinaryWriter(ms))
@@ -8208,8 +7998,8 @@ namespace L1FlyMapViewer
         private void UpdateLayer4GroupsList(S32Data s32Data, int cellX, int cellY)
         {
             lvLayer4Groups.Items.Clear();
-            selectedLayer4Groups.Clear();
-            isFilteringLayer4Groups = false;
+            _editState.SelectedLayer4Groups.Clear();
+            _editState.IsFilteringLayer4Groups = false;
 
             if (s32Data == null || s32Data.Layer4 == null)
                 return;
@@ -8271,15 +8061,15 @@ namespace L1FlyMapViewer
 
             if (e.Item.Checked)
             {
-                selectedLayer4Groups.Add(groupId);
+                _editState.SelectedLayer4Groups.Add(groupId);
             }
             else
             {
-                selectedLayer4Groups.Remove(groupId);
+                _editState.SelectedLayer4Groups.Remove(groupId);
             }
 
             // 只要有任何勾選就啟用篩選
-            isFilteringLayer4Groups = selectedLayer4Groups.Count > 0;
+            _editState.IsFilteringLayer4Groups = _editState.SelectedLayer4Groups.Count > 0;
 
             // 重新渲染地圖
             RenderS32Map();
@@ -8301,7 +8091,7 @@ namespace L1FlyMapViewer
                 lvGroupThumbnails.LargeImageList.Dispose();
             }
 
-            if (allS32DataDict.Count == 0)
+            if (_document.S32Files.Count == 0)
             {
                 lblGroupThumbnails.Text = "群組縮圖列表";
                 return;
@@ -8327,7 +8117,7 @@ namespace L1FlyMapViewer
 
                 // 遍歷所有 S32，找出全域座標落在選取格子內的 Layer4 物件
                 // 只收集選取區域內的物件（交集）
-                foreach (var s32Data in allS32DataDict.Values)
+                foreach (var s32Data in _document.S32Files.Values)
                 {
                     int segStartX = s32Data.SegInfo.nLinBeginX;
                     int segStartY = s32Data.SegInfo.nLinBeginY;
@@ -8356,7 +8146,7 @@ namespace L1FlyMapViewer
             else
             {
                 // 收集所有 S32 中的群組
-                foreach (var s32Data in allS32DataDict.Values)
+                foreach (var s32Data in _document.S32Files.Values)
                 {
                     foreach (var obj in s32Data.Layer4)
                     {
@@ -8578,7 +8368,7 @@ namespace L1FlyMapViewer
         // 複製群組到剪貼簿
         private void CopyGroupToClipboard(GroupThumbnailInfo info)
         {
-            cellClipboard.Clear();
+            _editState.CellClipboard.Clear();
 
             if (info.Objects.Count == 0)
             {
@@ -8626,12 +8416,12 @@ namespace L1FlyMapViewer
                     OriginalLocalY = obj.Y
                 });
 
-                cellClipboard.Add(cellData);
+                _editState.CellClipboard.Add(cellData);
             }
 
             // 設定剪貼簿狀態
             hasLayer4Clipboard = true;
-            clipboardSourceMapId = currentMapId;
+            _editState.SourceMapId = _document.MapId;
 
             // 顯示訊息
             this.toolStripStatusLabel1.Text = $"已複製群組 {info.GroupId}，共 {objectsToCopy.Count} 個物件 (選取位置後按 Ctrl+V 貼上)";
@@ -8878,9 +8668,9 @@ namespace L1FlyMapViewer
             s32MapPanel.AutoScrollPosition = new Point(scrollX, scrollY);
 
             // 高亮顯示該格子
-            highlightedS32Data = s32Data;
-            highlightedCellX = obj.X;
-            highlightedCellY = obj.Y;
+            _editState.HighlightedS32Data = s32Data;
+            _editState.HighlightedCellX = obj.X;
+            _editState.HighlightedCellY = obj.Y;
 
             s32PictureBox.Invalidate();
             UpdateMiniMap();
@@ -9050,9 +8840,9 @@ namespace L1FlyMapViewer
         private void btnToolCellInfo_Click(object sender, EventArgs e)
         {
             // 如果有選取區域，顯示第一個選取格子的詳細資訊
-            if (currentSelectedCells.Count > 0)
+            if (_editState.SelectedCells.Count > 0)
             {
-                var firstCell = currentSelectedCells[0];
+                var firstCell = _editState.SelectedCells[0];
                 ShowCellLayersDialog(firstCell.LocalX, firstCell.LocalY);
             }
             else
@@ -9064,7 +8854,7 @@ namespace L1FlyMapViewer
         private void btnToolReplaceTile_Click(object sender, EventArgs e)
         {
             // 檢查是否已載入地圖
-            if (allS32DataDict.Count == 0)
+            if (_document.S32Files.Count == 0)
             {
                 MessageBox.Show("請先載入地圖", "提示", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
@@ -9171,7 +8961,7 @@ namespace L1FlyMapViewer
                 int matchCount = 0;
                 int s32Count = 0;
 
-                foreach (var kvp in allS32DataDict)
+                foreach (var kvp in _document.S32Files)
                 {
                     S32Data s32Data = kvp.Value;
                     bool hasMatch = false;
@@ -9220,7 +9010,7 @@ namespace L1FlyMapViewer
                 int replacedCount = 0;
                 HashSet<string> modifiedS32Files = new HashSet<string>();
 
-                foreach (var kvp in allS32DataDict)
+                foreach (var kvp in _document.S32Files)
                 {
                     S32Data s32Data = kvp.Value;
                     bool hasModified = false;
@@ -9275,7 +9065,7 @@ namespace L1FlyMapViewer
         // 清除所有第七層（傳送點）資料
         private void btnToolClearLayer7_Click(object sender, EventArgs e)
         {
-            if (allS32DataDict.Count == 0)
+            if (_document.S32Files.Count == 0)
             {
                 MessageBox.Show("請先載入地圖", "提示", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
@@ -9284,7 +9074,7 @@ namespace L1FlyMapViewer
             // 計算總共有多少個第七層資料
             int totalLayer7Count = 0;
             int affectedS32Count = 0;
-            foreach (var s32Data in allS32DataDict.Values)
+            foreach (var s32Data in _document.S32Files.Values)
             {
                 if (s32Data.Layer7 != null && s32Data.Layer7.Count > 0)
                 {
@@ -9319,7 +9109,7 @@ namespace L1FlyMapViewer
 
             // 備份並清除所有第七層資料
             int clearedCount = 0;
-            foreach (var kvp in allS32DataDict)
+            foreach (var kvp in _document.S32Files)
             {
                 S32Data s32Data = kvp.Value;
                 if (s32Data.Layer7 != null && s32Data.Layer7.Count > 0)
@@ -9356,14 +9146,14 @@ namespace L1FlyMapViewer
         // 清除指定格子的各層資料
         private void btnToolClearCell_Click(object sender, EventArgs e)
         {
-            if (allS32DataDict.Count == 0)
+            if (_document.S32Files.Count == 0)
             {
                 MessageBox.Show("請先載入地圖", "提示", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
 
             // 如果有選取區域，直接批量清除
-            if (currentSelectedCells.Count > 0)
+            if (_editState.SelectedCells.Count > 0)
             {
                 ClearSelectedCellsWithDialog();
                 return;
@@ -9377,7 +9167,7 @@ namespace L1FlyMapViewer
         private void ClearSelectedCellsWithDialog()
         {
             Form clearForm = new Form();
-            clearForm.Text = $"批量清除格子資料 - 已選取 {currentSelectedCells.Count} 格";
+            clearForm.Text = $"批量清除格子資料 - 已選取 {_editState.SelectedCells.Count} 格";
             clearForm.Size = new Size(320, 320);
             clearForm.FormBorderStyle = FormBorderStyle.FixedDialog;
             clearForm.StartPosition = FormStartPosition.CenterParent;
@@ -9386,7 +9176,7 @@ namespace L1FlyMapViewer
 
             // 選擇要清除的層
             Label lblLayers = new Label();
-            lblLayers.Text = $"選擇要清除的層 (共 {currentSelectedCells.Count} 格):";
+            lblLayers.Text = $"選擇要清除的層 (共 {_editState.SelectedCells.Count} 格):";
             lblLayers.Location = new Point(20, 20);
             lblLayers.Size = new Size(250, 20);
             clearForm.Controls.Add(lblLayers);
@@ -9451,14 +9241,14 @@ namespace L1FlyMapViewer
 
                 // 建立選取格子的全域座標集合 (用於 Layer4 跨區塊物件)
                 var selectedGlobalCells = new HashSet<(int x, int y)>();
-                foreach (var cell in currentSelectedCells)
+                foreach (var cell in _editState.SelectedCells)
                 {
                     int globalX = cell.S32Data.SegInfo.nLinBeginX + cell.LocalX / 2;
                     int globalY = cell.S32Data.SegInfo.nLinBeginY + cell.LocalY;
                     selectedGlobalCells.Add((globalX, globalY));
                 }
 
-                foreach (var cell in currentSelectedCells)
+                foreach (var cell in _editState.SelectedCells)
                 {
                     S32Data s32Data = cell.S32Data;
                     int layer1X = cell.LocalX;
@@ -9506,7 +9296,7 @@ namespace L1FlyMapViewer
                 // 清除第4層 - 需要遍歷所有 S32 找跨區塊物件
                 if (chkL4.Checked)
                 {
-                    foreach (var s32Data in allS32DataDict.Values)
+                    foreach (var s32Data in _document.S32Files.Values)
                     {
                         int segStartX = s32Data.SegInfo.nLinBeginX;
                         int segStartY = s32Data.SegInfo.nLinBeginY;
@@ -9542,8 +9332,8 @@ namespace L1FlyMapViewer
                 if (totalL8 > 0) results.Add($"L8:{totalL8}");
 
                 // 保存數量後清除選取
-                int clearedCellCount = currentSelectedCells.Count;
-                currentSelectedCells.Clear();
+                int clearedCellCount = _editState.SelectedCells.Count;
+                _editState.SelectedCells.Clear();
                 selectedRegion = new Rectangle();
 
                 RenderS32Map();
@@ -9590,7 +9380,7 @@ namespace L1FlyMapViewer
             TextBox txtX = new TextBox();
             txtX.Location = new Point(50, 48);
             txtX.Size = new Size(80, 20);
-            if (selectedGameX >= 0) txtX.Text = selectedGameX.ToString();
+            if (_editState.SelectedGameX >= 0) txtX.Text = _editState.SelectedGameX.ToString();
             clearForm.Controls.Add(txtX);
 
             Label lblY = new Label();
@@ -9602,7 +9392,7 @@ namespace L1FlyMapViewer
             TextBox txtY = new TextBox();
             txtY.Location = new Point(180, 48);
             txtY.Size = new Size(80, 20);
-            if (selectedGameY >= 0) txtY.Text = selectedGameY.ToString();
+            if (_editState.SelectedGameY >= 0) txtY.Text = _editState.SelectedGameY.ToString();
             clearForm.Controls.Add(txtY);
 
             // 選擇要清除的層
@@ -9675,7 +9465,7 @@ namespace L1FlyMapViewer
 
                 // 找到對應的 S32
                 S32Data targetS32 = null;
-                foreach (var s32Data in allS32DataDict.Values)
+                foreach (var s32Data in _document.S32Files.Values)
                 {
                     if (gameX >= s32Data.SegInfo.nLinBeginX && gameX <= s32Data.SegInfo.nLinEndX &&
                         gameY >= s32Data.SegInfo.nLinBeginY && gameY <= s32Data.SegInfo.nLinEndY)
@@ -9767,7 +9557,7 @@ namespace L1FlyMapViewer
         // 查看與管理第六層（使用的TileId）資料
         private void btnToolCheckL6_Click(object sender, EventArgs e)
         {
-            if (allS32DataDict.Count == 0)
+            if (_document.S32Files.Count == 0)
             {
                 MessageBox.Show("請先載入地圖", "提示", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
@@ -9777,7 +9567,7 @@ namespace L1FlyMapViewer
             List<(string filePath, string fileName, List<int> items)> s32WithL6 =
                 new List<(string, string, List<int>)>();
 
-            foreach (var kvp in allS32DataDict)
+            foreach (var kvp in _document.S32Files)
             {
                 string filePath = kvp.Key;
                 string fileName = Path.GetFileName(kvp.Key);
@@ -9860,7 +9650,7 @@ namespace L1FlyMapViewer
             btnCheckMissing.Click += (s, args) =>
             {
                 int totalFixed = 0;
-                foreach (var kvp in allS32DataDict)
+                foreach (var kvp in _document.S32Files)
                 {
                     S32Data s32Data = kvp.Value;
                     HashSet<int> layer6Set = new HashSet<int>(s32Data.Layer6);
@@ -9948,7 +9738,7 @@ namespace L1FlyMapViewer
                 int removedCount = 0;
                 foreach (var kvp in toRemove)
                 {
-                    if (allS32DataDict.TryGetValue(kvp.Key, out S32Data s32Data))
+                    if (_document.S32Files.TryGetValue(kvp.Key, out S32Data s32Data))
                     {
                         foreach (var tileId in kvp.Value)
                         {
@@ -9986,7 +9776,7 @@ namespace L1FlyMapViewer
                 int removedCount = 0;
                 foreach (var (filePath, fileName, items) in s32WithL6)
                 {
-                    if (allS32DataDict.TryGetValue(filePath, out S32Data s32Data))
+                    if (_document.S32Files.TryGetValue(filePath, out S32Data s32Data))
                     {
                         removedCount += s32Data.Layer6.Count;
                         s32Data.Layer6.Clear();
@@ -10026,7 +9816,7 @@ namespace L1FlyMapViewer
         // 查看與編輯第八層（特效）資料
         private void btnToolCheckL8_Click(object sender, EventArgs e)
         {
-            if (allS32DataDict.Count == 0)
+            if (_document.S32Files.Count == 0)
             {
                 MessageBox.Show("請先載入地圖", "提示", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
@@ -10036,7 +9826,7 @@ namespace L1FlyMapViewer
             List<(string filePath, string fileName, int count, List<Layer8Item> items)> s32WithL8 =
                 new List<(string, string, int, List<Layer8Item>)>();
 
-            foreach (var kvp in allS32DataDict)
+            foreach (var kvp in _document.S32Files)
             {
                 string filePath = kvp.Key;
                 string fileName = Path.GetFileName(kvp.Key);
@@ -10154,7 +9944,7 @@ namespace L1FlyMapViewer
                 lvi.SubItems[4].Text = item.ExtendedData.ToString();
 
                 // 標記已修改
-                if (allS32DataDict.TryGetValue(filePath, out S32Data s32Data))
+                if (_document.S32Files.TryGetValue(filePath, out S32Data s32Data))
                 {
                     s32Data.IsModified = true;
                 }
@@ -10169,7 +9959,7 @@ namespace L1FlyMapViewer
             btnAddNew.Size = new Size(60, 28);
             btnAddNew.Click += (s, args) =>
             {
-                if (allS32DataDict.Count == 0)
+                if (_document.S32Files.Count == 0)
                 {
                     MessageBox.Show("請先載入地圖", "提示", MessageBoxButtons.OK, MessageBoxIcon.Information);
                     return;
@@ -10185,7 +9975,7 @@ namespace L1FlyMapViewer
                 }
 
                 // 選擇要加入的 S32 檔案
-                var s32Files = allS32DataDict.Keys.Select(k => Path.GetFileName(k)).ToArray();
+                var s32Files = _document.S32Files.Keys.Select(k => Path.GetFileName(k)).ToArray();
                 Form selectForm = new Form();
                 selectForm.Text = "選擇 S32 檔案";
                 selectForm.Size = new Size(300, 150);
@@ -10204,9 +9994,9 @@ namespace L1FlyMapViewer
                 if (selectForm.ShowDialog() == DialogResult.OK && cmbS32.SelectedIndex >= 0)
                 {
                     string selectedFileName = cmbS32.SelectedItem.ToString();
-                    string selectedFilePath = allS32DataDict.Keys.FirstOrDefault(k => Path.GetFileName(k) == selectedFileName);
+                    string selectedFilePath = _document.S32Files.Keys.FirstOrDefault(k => Path.GetFileName(k) == selectedFileName);
 
-                    if (selectedFilePath != null && allS32DataDict.TryGetValue(selectedFilePath, out S32Data s32Data))
+                    if (selectedFilePath != null && _document.S32Files.TryGetValue(selectedFilePath, out S32Data s32Data))
                     {
                         Layer8Item newItem = new Layer8Item
                         {
@@ -10308,7 +10098,7 @@ namespace L1FlyMapViewer
                 int removedCount = 0;
                 foreach (var kvp in toRemove)
                 {
-                    if (allS32DataDict.TryGetValue(kvp.Key, out S32Data s32Data))
+                    if (_document.S32Files.TryGetValue(kvp.Key, out S32Data s32Data))
                     {
                         foreach (var item in kvp.Value)
                         {
@@ -10346,7 +10136,7 @@ namespace L1FlyMapViewer
                 int removedCount = 0;
                 foreach (var (filePath, fileName, count, items) in s32WithL8)
                 {
-                    if (allS32DataDict.TryGetValue(filePath, out S32Data s32Data))
+                    if (_document.S32Files.TryGetValue(filePath, out S32Data s32Data))
                     {
                         removedCount += s32Data.Layer8.Count;
                         s32Data.Layer8.Clear();
@@ -10387,7 +10177,7 @@ namespace L1FlyMapViewer
         // 查看與編輯第一層（地板圖塊）資料
         private void btnToolCheckL1_Click(object sender, EventArgs e)
         {
-            if (allS32DataDict.Count == 0)
+            if (_document.S32Files.Count == 0)
             {
                 MessageBox.Show("請先載入地圖", "提示", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
@@ -10395,13 +10185,13 @@ namespace L1FlyMapViewer
 
             // 顯示結果
             Form resultForm = new Form();
-            resultForm.Text = $"L1 檢查與編輯 - {allS32DataDict.Count} 個 S32 檔案";
+            resultForm.Text = $"L1 檢查與編輯 - {_document.S32Files.Count} 個 S32 檔案";
             resultForm.Size = new Size(750, 550);
             resultForm.FormBorderStyle = FormBorderStyle.Sizable;
             resultForm.StartPosition = FormStartPosition.CenterParent;
 
             Label lblSummary = new Label();
-            lblSummary.Text = $"共 {allS32DataDict.Count} 個 S32 檔案。選擇 S32 檔案後可編輯指定座標的 Layer1 資料：";
+            lblSummary.Text = $"共 {_document.S32Files.Count} 個 S32 檔案。選擇 S32 檔案後可編輯指定座標的 Layer1 資料：";
             lblSummary.Location = new Point(10, 10);
             lblSummary.Size = new Size(710, 20);
             resultForm.Controls.Add(lblSummary);
@@ -10414,7 +10204,7 @@ namespace L1FlyMapViewer
             cmbS32Files.Location = new Point(85, 37);
             cmbS32Files.Size = new Size(200, 23);
             cmbS32Files.DropDownStyle = ComboBoxStyle.DropDownList;
-            foreach (var kvp in allS32DataDict)
+            foreach (var kvp in _document.S32Files)
             {
                 cmbS32Files.Items.Add(Path.GetFileName(kvp.Key));
             }
@@ -10522,8 +10312,8 @@ namespace L1FlyMapViewer
                 if (cmbS32Files.SelectedItem == null) return;
 
                 string selectedFileName = cmbS32Files.SelectedItem.ToString();
-                string selectedFilePath = allS32DataDict.Keys.FirstOrDefault(k => Path.GetFileName(k) == selectedFileName);
-                if (selectedFilePath == null || !allS32DataDict.TryGetValue(selectedFilePath, out S32Data s32Data)) return;
+                string selectedFilePath = _document.S32Files.Keys.FirstOrDefault(k => Path.GetFileName(k) == selectedFileName);
+                if (selectedFilePath == null || !_document.S32Files.TryGetValue(selectedFilePath, out S32Data s32Data)) return;
 
                 // 統計 TileId 使用次數
                 Dictionary<int, (int count, int indexId)> tileStats = new Dictionary<int, (int, int)>();
@@ -10574,8 +10364,8 @@ namespace L1FlyMapViewer
                 }
 
                 string selectedFileName = cmbS32Files.SelectedItem.ToString();
-                string selectedFilePath = allS32DataDict.Keys.FirstOrDefault(k => Path.GetFileName(k) == selectedFileName);
-                if (selectedFilePath == null || !allS32DataDict.TryGetValue(selectedFilePath, out S32Data s32Data))
+                string selectedFilePath = _document.S32Files.Keys.FirstOrDefault(k => Path.GetFileName(k) == selectedFileName);
+                if (selectedFilePath == null || !_document.S32Files.TryGetValue(selectedFilePath, out S32Data s32Data))
                 {
                     MessageBox.Show("無法載入 S32 資料", "錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error);
                     return;
@@ -10625,7 +10415,7 @@ namespace L1FlyMapViewer
                 currentCell.TileId = newTileId;
                 currentCell.IndexId = newIndexId;
 
-                if (allS32DataDict.TryGetValue(currentFilePath, out S32Data s32Data))
+                if (_document.S32Files.TryGetValue(currentFilePath, out S32Data s32Data))
                 {
                     s32Data.IsModified = true;
                 }
@@ -10657,7 +10447,7 @@ namespace L1FlyMapViewer
                         MessageBoxIcon.Warning);
                     if (confirmResult != DialogResult.Yes) return;
 
-                    foreach (var kvp in allS32DataDict)
+                    foreach (var kvp in _document.S32Files)
                     {
                         S32Data s32Data = kvp.Value;
                         for (int y = 0; y < 64; y++)
@@ -10685,8 +10475,8 @@ namespace L1FlyMapViewer
                     }
 
                     string selectedFileName = cmbS32Files.SelectedItem.ToString();
-                    string selectedFilePath = allS32DataDict.Keys.FirstOrDefault(k => Path.GetFileName(k) == selectedFileName);
-                    if (selectedFilePath == null || !allS32DataDict.TryGetValue(selectedFilePath, out S32Data s32Data))
+                    string selectedFilePath = _document.S32Files.Keys.FirstOrDefault(k => Path.GetFileName(k) == selectedFileName);
+                    if (selectedFilePath == null || !_document.S32Files.TryGetValue(selectedFilePath, out S32Data s32Data))
                     {
                         MessageBox.Show("無法載入 S32 資料", "錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error);
                         return;
@@ -10756,7 +10546,7 @@ namespace L1FlyMapViewer
         // 查看與編輯第四層（物件）資料
         private void btnToolCheckL4_Click(object sender, EventArgs e)
         {
-            if (allS32DataDict.Count == 0)
+            if (_document.S32Files.Count == 0)
             {
                 MessageBox.Show("請先載入地圖", "提示", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
@@ -10766,7 +10556,7 @@ namespace L1FlyMapViewer
             List<(string filePath, string fileName, List<ObjectTile> items)> s32WithL4 =
                 new List<(string, string, List<ObjectTile>)>();
 
-            foreach (var kvp in allS32DataDict)
+            foreach (var kvp in _document.S32Files)
             {
                 string filePath = kvp.Key;
                 string fileName = Path.GetFileName(kvp.Key);
@@ -10898,7 +10688,7 @@ namespace L1FlyMapViewer
                 lvi.SubItems[6].Text = item.TileId.ToString();
 
                 // 標記已修改
-                if (allS32DataDict.TryGetValue(filePath, out S32Data s32Data))
+                if (_document.S32Files.TryGetValue(filePath, out S32Data s32Data))
                 {
                     s32Data.IsModified = true;
                 }
@@ -10931,7 +10721,7 @@ namespace L1FlyMapViewer
                 ListBox lbS32Files = new ListBox();
                 lbS32Files.Location = new Point(10, 35);
                 lbS32Files.Size = new Size(360, 220);
-                foreach (var kvp in allS32DataDict)
+                foreach (var kvp in _document.S32Files)
                 {
                     lbS32Files.Items.Add(Path.GetFileName(kvp.Key));
                 }
@@ -10959,9 +10749,9 @@ namespace L1FlyMapViewer
                 if (selectForm.ShowDialog() == DialogResult.OK && lbS32Files.SelectedItem != null)
                 {
                     string selectedFileName = lbS32Files.SelectedItem.ToString();
-                    string selectedFilePath = allS32DataDict.Keys.FirstOrDefault(k => Path.GetFileName(k) == selectedFileName);
+                    string selectedFilePath = _document.S32Files.Keys.FirstOrDefault(k => Path.GetFileName(k) == selectedFileName);
 
-                    if (selectedFilePath != null && allS32DataDict.TryGetValue(selectedFilePath, out S32Data s32Data))
+                    if (selectedFilePath != null && _document.S32Files.TryGetValue(selectedFilePath, out S32Data s32Data))
                     {
                         // 驗證輸入
                         if (!int.TryParse(txtGroupId.Text, out int newGroupId))
@@ -11090,7 +10880,7 @@ namespace L1FlyMapViewer
                 int removedCount = 0;
                 foreach (var kvp in toRemove)
                 {
-                    if (allS32DataDict.TryGetValue(kvp.Key, out S32Data s32Data))
+                    if (_document.S32Files.TryGetValue(kvp.Key, out S32Data s32Data))
                     {
                         foreach (var item in kvp.Value)
                         {
@@ -11128,7 +10918,7 @@ namespace L1FlyMapViewer
                 int removedCount = 0;
                 foreach (var (filePath, fileName, items) in s32WithL4)
                 {
-                    if (allS32DataDict.TryGetValue(filePath, out S32Data s32Data))
+                    if (_document.S32Files.TryGetValue(filePath, out S32Data s32Data))
                     {
                         removedCount += s32Data.Layer4.Count;
                         s32Data.Layer4.Clear();
@@ -11169,7 +10959,7 @@ namespace L1FlyMapViewer
         // 查看與管理第五層（透明圖塊）資料
         private void btnToolCheckL5_Click(object sender, EventArgs e)
         {
-            if (allS32DataDict.Count == 0)
+            if (_document.S32Files.Count == 0)
             {
                 MessageBox.Show("請先載入地圖", "提示", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
@@ -11179,7 +10969,7 @@ namespace L1FlyMapViewer
             List<(string filePath, string fileName, int count, List<Layer5Item> items)> s32WithL5 =
                 new List<(string, string, int, List<Layer5Item>)>();
 
-            foreach (var kvp in allS32DataDict)
+            foreach (var kvp in _document.S32Files)
             {
                 string filePath = kvp.Key;
                 string fileName = Path.GetFileName(kvp.Key);
@@ -11290,7 +11080,7 @@ namespace L1FlyMapViewer
                 int removedCount = 0;
                 foreach (var kvp in toRemove)
                 {
-                    if (allS32DataDict.TryGetValue(kvp.Key, out S32Data s32Data))
+                    if (_document.S32Files.TryGetValue(kvp.Key, out S32Data s32Data))
                     {
                         foreach (var item in kvp.Value)
                         {
@@ -11328,7 +11118,7 @@ namespace L1FlyMapViewer
                 int removedCount = 0;
                 foreach (var (filePath, fileName, count, items) in s32WithL5)
                 {
-                    if (allS32DataDict.TryGetValue(filePath, out S32Data s32Data))
+                    if (_document.S32Files.TryGetValue(filePath, out S32Data s32Data))
                     {
                         removedCount += s32Data.Layer5.Count;
                         s32Data.Layer5.Clear();
@@ -11367,7 +11157,7 @@ namespace L1FlyMapViewer
         // 查看與管理第七層（傳送點）資料 - 支援編輯
         private void btnToolCheckL7_Click(object sender, EventArgs e)
         {
-            if (allS32DataDict.Count == 0)
+            if (_document.S32Files.Count == 0)
             {
                 MessageBox.Show("請先載入地圖", "提示", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
@@ -11377,7 +11167,7 @@ namespace L1FlyMapViewer
             List<(string filePath, string fileName, int count, List<Layer7Item> items)> s32WithL7 =
                 new List<(string, string, int, List<Layer7Item>)>();
 
-            foreach (var kvp in allS32DataDict)
+            foreach (var kvp in _document.S32Files)
             {
                 string filePath = kvp.Key;
                 string fileName = Path.GetFileName(kvp.Key);
@@ -11501,7 +11291,7 @@ namespace L1FlyMapViewer
                 lvi.SubItems[5].Text = item.PortalId.ToString();
 
                 // 標記已修改
-                if (allS32DataDict.TryGetValue(filePath, out S32Data s32Data))
+                if (_document.S32Files.TryGetValue(filePath, out S32Data s32Data))
                 {
                     s32Data.IsModified = true;
                 }
@@ -11534,7 +11324,7 @@ namespace L1FlyMapViewer
                 ListBox lbS32Files = new ListBox();
                 lbS32Files.Location = new Point(10, 35);
                 lbS32Files.Size = new Size(360, 220);
-                foreach (var kvp in allS32DataDict)
+                foreach (var kvp in _document.S32Files)
                 {
                     lbS32Files.Items.Add(Path.GetFileName(kvp.Key));
                 }
@@ -11562,9 +11352,9 @@ namespace L1FlyMapViewer
                 if (selectForm.ShowDialog() == DialogResult.OK && lbS32Files.SelectedItem != null)
                 {
                     string selectedFileName = lbS32Files.SelectedItem.ToString();
-                    string selectedFilePath = allS32DataDict.Keys.FirstOrDefault(k => Path.GetFileName(k) == selectedFileName);
+                    string selectedFilePath = _document.S32Files.Keys.FirstOrDefault(k => Path.GetFileName(k) == selectedFileName);
 
-                    if (selectedFilePath != null && allS32DataDict.TryGetValue(selectedFilePath, out S32Data s32Data))
+                    if (selectedFilePath != null && _document.S32Files.TryGetValue(selectedFilePath, out S32Data s32Data))
                     {
                         // 驗證輸入
                         if (!byte.TryParse(txtX.Text, out byte newX))
@@ -11686,7 +11476,7 @@ namespace L1FlyMapViewer
                 int removedCount = 0;
                 foreach (var kvp in toRemove)
                 {
-                    if (allS32DataDict.TryGetValue(kvp.Key, out S32Data s32Data))
+                    if (_document.S32Files.TryGetValue(kvp.Key, out S32Data s32Data))
                     {
                         foreach (var item in kvp.Value)
                         {
@@ -11724,7 +11514,7 @@ namespace L1FlyMapViewer
                 int removedCount = 0;
                 foreach (var (filePath, fileName, count, items) in s32WithL7)
                 {
-                    if (allS32DataDict.TryGetValue(filePath, out S32Data s32Data))
+                    if (_document.S32Files.TryGetValue(filePath, out S32Data s32Data))
                     {
                         removedCount += s32Data.Layer7.Count;
                         s32Data.Layer7.Clear();
@@ -11765,13 +11555,13 @@ namespace L1FlyMapViewer
         private void btnToolAddS32_Click(object sender, EventArgs e)
         {
             // 檢查是否已載入地圖
-            if (string.IsNullOrEmpty(currentMapId) || !Share.MapDataList.ContainsKey(currentMapId))
+            if (string.IsNullOrEmpty(_document.MapId) || !Share.MapDataList.ContainsKey(_document.MapId))
             {
                 MessageBox.Show("請先載入地圖", "提示", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
 
-            Struct.L1Map currentMap = Share.MapDataList[currentMapId];
+            Struct.L1Map currentMap = Share.MapDataList[_document.MapId];
 
             // 創建新增 S32 對話框
             Form addS32Form = new Form();
@@ -11917,7 +11707,7 @@ namespace L1FlyMapViewer
                 }
 
                 // 檢查是否已在記憶體中
-                if (allS32DataDict.Keys.Any(k => k.EndsWith(fileName, StringComparison.OrdinalIgnoreCase)))
+                if (_document.S32Files.Keys.Any(k => k.EndsWith(fileName, StringComparison.OrdinalIgnoreCase)))
                 {
                     MessageBox.Show($"S32 檔案已載入: {fileName}", "錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error);
                     return;
@@ -11946,7 +11736,7 @@ namespace L1FlyMapViewer
                 newS32Data.IsModified = true;
 
                 // 加入到記憶體（先加入才能用 SaveS32File）
-                allS32DataDict[filePath] = newS32Data;
+                _document.S32Files[filePath] = newS32Data;
 
                 // 寫入檔案
                 try
@@ -11956,7 +11746,7 @@ namespace L1FlyMapViewer
                 catch (Exception ex)
                 {
                     // 移除失敗的 S32
-                    allS32DataDict.Remove(filePath);
+                    _document.S32Files.Remove(filePath);
                     MessageBox.Show($"寫入檔案失敗: {ex.Message}", "錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error);
                     return;
                 }
