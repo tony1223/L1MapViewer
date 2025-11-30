@@ -2779,32 +2779,53 @@ namespace L1FlyMapViewer
                 long totalParseMs = 0;
                 int loadedCount = 0;
 
+                // 階段 1: 循序讀取所有檔案（避免磁碟競爭）
+                var fileDataList = new List<(S32FileItem item, byte[] data)>();
+                var readSw = Stopwatch.StartNew();
                 foreach (var item in s32FileItems)
                 {
                     try
                     {
-                        // 檔案讀取時間
-                        phaseStopwatch.Restart();
                         byte[] data = File.ReadAllBytes(item.FilePath);
-                        totalFileReadMs += phaseStopwatch.ElapsedMilliseconds;
-
-                        // S32 解析時間
-                        phaseStopwatch.Restart();
-                        S32Data s32Data = ParseS32File(data);
-                        totalParseMs += phaseStopwatch.ElapsedMilliseconds;
-
-                        s32Data.FilePath = item.FilePath;
-                        s32Data.SegInfo = item.SegInfo;
-                        s32Data.IsModified = false;
-                        _document.S32Files[item.FilePath] = s32Data;
-
-                        loadedCount++;
+                        fileDataList.Add((item, data));
                     }
                     catch (Exception ex)
                     {
-                        Console.WriteLine($"載入 S32 檔案失敗: {item.FilePath}, 錯誤: {ex.Message}");
+                        Console.WriteLine($"讀取 S32 檔案失敗: {item.FilePath}, 錯誤: {ex.Message}");
                     }
                 }
+                readSw.Stop();
+                totalFileReadMs = readSw.ElapsedMilliseconds;
+
+                // 階段 2: 平行解析所有檔案
+                var parsedResults = new System.Collections.Concurrent.ConcurrentDictionary<string, S32Data>();
+                var parseSw = Stopwatch.StartNew();
+                System.Threading.Tasks.Parallel.ForEach(fileDataList, fileData =>
+                {
+                    try
+                    {
+                        S32Data s32Data = ParseS32File(fileData.data);
+                        s32Data.FilePath = fileData.item.FilePath;
+                        s32Data.SegInfo = fileData.item.SegInfo;
+                        s32Data.IsModified = false;
+                        parsedResults[fileData.item.FilePath] = s32Data;
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"解析 S32 檔案失敗: {fileData.item.FilePath}, 錯誤: {ex.Message}");
+                    }
+                });
+                parseSw.Stop();
+                totalParseMs = parseSw.ElapsedMilliseconds;
+
+                // 將結果複製到 _document.S32Files
+                foreach (var kvp in parsedResults)
+                {
+                    _document.S32Files[kvp.Key] = kvp.Value;
+                }
+                loadedCount = parsedResults.Count;
+
+                LogPerf($"[S32-LOAD] {loadedCount} files, read={totalFileReadMs}ms (seq), parse={totalParseMs}ms (parallel)");
 
                 // 預載入所有 tile 檔案（背景執行，與 UI 更新並行）
                 PreloadTilesAsync(_document.S32Files.Values.ToList());
@@ -3641,7 +3662,7 @@ namespace L1FlyMapViewer
                 _isRendering = true;
                 var renderSw = Stopwatch.StartNew();
                 int threadId = System.Threading.Thread.CurrentThread.ManagedThreadId;
-                LogPerf($"[RENDER-START] ThreadId={threadId}, requestId={currentRequestId}");
+                LogPerf($"[RENDER-START] ThreadId={threadId}, requestId={currentRequestId}, worldRect=({worldRect.X},{worldRect.Y},{worldRect.Width},{worldRect.Height})");
 
                 int blockWidth = 64 * 24 * 2;  // 3072
                 int blockHeight = 64 * 12 * 2; // 1536
@@ -3713,6 +3734,8 @@ namespace L1FlyMapViewer
                         Rectangle blockRect = new Rectangle(mx, my, blockWidth, blockHeight);
                         if (!blockRect.IntersectsWith(worldRect))
                         {
+                            if (skippedCount == 0)  // 只 log 第一個跳過的
+                                LogPerf($"[RENDER-SKIP] first block={filePath}, blockRect=({mx},{my},{blockWidth},{blockHeight}), worldRect=({worldRect.X},{worldRect.Y},{worldRect.Width},{worldRect.Height})");
                             skippedCount++;
                             continue;
                         }
@@ -4019,17 +4042,44 @@ namespace L1FlyMapViewer
             _viewState.ViewportHeight = s32MapPanel.Height;
             _viewState.ZoomLevel = s32ZoomLevel;
 
-            // 計算中央位置（世界座標）
+            // 計算實際 S32 block 的範圍（而不是假設從 0,0 開始）
+            int minX = int.MaxValue, minY = int.MaxValue;
+            int maxX = int.MinValue, maxY = int.MinValue;
+            foreach (var s32Data in _document.S32Files.Values)
+            {
+                int[] loc = s32Data.SegInfo.GetLoc(1.0);
+                int bx = loc[0];
+                int by = loc[1];
+                minX = Math.Min(minX, bx);
+                minY = Math.Min(minY, by);
+                maxX = Math.Max(maxX, bx + blockWidth);
+                maxY = Math.Max(maxY, by + blockHeight);
+            }
+
+            // 如果沒有 S32 檔案，使用地圖中央
+            if (minX == int.MaxValue)
+            {
+                minX = 0; minY = 0;
+                maxX = mapWidth; maxY = mapHeight;
+            }
+
+            // 計算 S32 實際範圍的中央位置
+            int actualCenterX = (minX + maxX) / 2;
+            int actualCenterY = (minY + maxY) / 2;
+
+            // 計算中央位置（世界座標）- viewport 中央對準 S32 範圍中央
             int viewportWidthWorld = (int)(s32MapPanel.Width / s32ZoomLevel);
             int viewportHeightWorld = (int)(s32MapPanel.Height / s32ZoomLevel);
-            int centerX = mapWidth / 2 - viewportWidthWorld / 2;
-            int centerY = mapHeight / 2 - viewportHeightWorld / 2;
+            int centerX = actualCenterX - viewportWidthWorld / 2;
+            int centerY = actualCenterY - viewportHeightWorld / 2;
 
             // 限制在有效範圍內
             int maxScrollX = Math.Max(0, mapWidth - viewportWidthWorld);
             int maxScrollY = Math.Max(0, mapHeight - viewportHeightWorld);
             centerX = Math.Max(0, Math.Min(centerX, maxScrollX));
             centerY = Math.Max(0, Math.Min(centerY, maxScrollY));
+
+            LogPerf($"[SCROLL-CENTER] S32 range=({minX},{minY})-({maxX},{maxY}), center=({actualCenterX},{actualCenterY}), scroll=({centerX},{centerY})");
 
             // 只設定捲動位置，不觸發渲染
             _viewState.SetScrollSilent(centerX, centerY);
