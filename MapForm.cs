@@ -113,6 +113,59 @@ namespace L1FlyMapViewer
         // Tile 資料快取 - key: "tileId_indexId" (使用 ConcurrentDictionary 支援多執行緒)
         private System.Collections.Concurrent.ConcurrentDictionary<string, byte[]> tileDataCache = new System.Collections.Concurrent.ConcurrentDictionary<string, byte[]>();
 
+        // 整個 .til 檔案快取 - key: tileId, value: parsed tile array
+        private System.Collections.Concurrent.ConcurrentDictionary<int, List<byte[]>> _tilFileCache = new System.Collections.Concurrent.ConcurrentDictionary<int, List<byte[]>>();
+
+        /// <summary>
+        /// 預載入地圖用到的所有 tile 檔案（背景執行）
+        /// </summary>
+        private void PreloadTilesAsync(IEnumerable<S32Data> s32Files)
+        {
+            Task.Run(() =>
+            {
+                var sw = Stopwatch.StartNew();
+
+                // 收集所有用到的 tileId
+                var tileIds = new HashSet<int>();
+                foreach (var s32 in s32Files)
+                {
+                    // Layer1
+                    for (int y = 0; y < 64; y++)
+                    {
+                        for (int x = 0; x < 128; x++)
+                        {
+                            var cell = s32.Layer1[y, x];
+                            if (cell != null && cell.TileId > 0)
+                                tileIds.Add(cell.TileId);
+                        }
+                    }
+                    // Layer4
+                    foreach (var obj in s32.Layer4)
+                    {
+                        if (obj.TileId > 0)
+                            tileIds.Add(obj.TileId);
+                    }
+                }
+
+                // 並行載入所有 til 檔案
+                int loadedCount = 0;
+                System.Threading.Tasks.Parallel.ForEach(tileIds, tileId =>
+                {
+                    _tilFileCache.GetOrAdd(tileId, _ =>
+                    {
+                        string key = $"{tileId}.til";
+                        byte[] data = L1PakReader.UnPack("Tile", key);
+                        if (data == null) return null;
+                        return L1Til.Parse(data);
+                    });
+                    System.Threading.Interlocked.Increment(ref loadedCount);
+                });
+
+                sw.Stop();
+                LogPerf($"[PRELOAD] Loaded {loadedCount} til files in {sw.ElapsedMilliseconds}ms");
+            });
+        }
+
         // S32 Block 渲染快取 - key: filePath, value: rendered bitmap (Layer1+Layer4)
         private System.Collections.Concurrent.ConcurrentDictionary<string, Bitmap> _s32BlockCache = new System.Collections.Concurrent.ConcurrentDictionary<string, Bitmap>();
 
@@ -1921,6 +1974,7 @@ namespace L1FlyMapViewer
             // 背景執行緒渲染
             Task.Run(() =>
             {
+                var sw = Stopwatch.StartNew();
                 try
                 {
                     int blockWidth = 64 * 24 * 2;  // 3072
@@ -1953,22 +2007,26 @@ namespace L1FlyMapViewer
                             int blockX = loc[0];
                             int blockY = loc[1];
 
-                            // 渲染這個 S32 區塊（Layer1 + Layer4）
-                            using (Bitmap blockBmp = RenderS32Block(s32Data, true, true))
-                            {
-                                // 縮小繪製到小地圖
-                                int destX = (int)(blockX * scale);
-                                int destY = (int)(blockY * scale);
-                                int destW = (int)(blockWidth * scale);
-                                int destH = (int)(blockHeight * scale);
+                            // 渲染這個 S32 區塊（Layer1 + Layer4）- 使用快取
+                            Bitmap blockBmp = GetOrRenderS32Block(s32Data, true, true);
 
-                                g.DrawImage(blockBmp,
-                                    new Rectangle(destX, destY, destW, destH),
-                                    0, 0, blockBmp.Width, blockBmp.Height,
-                                    GraphicsUnit.Pixel, vAttr);
-                            }
+                            // 縮小繪製到小地圖
+                            int destX = (int)(blockX * scale);
+                            int destY = (int)(blockY * scale);
+                            int destW = (int)(blockWidth * scale);
+                            int destH = (int)(blockHeight * scale);
+
+                            g.DrawImage(blockBmp,
+                                new Rectangle(destX, destY, destW, destH),
+                                0, 0, blockBmp.Width, blockBmp.Height,
+                                GraphicsUnit.Pixel, vAttr);
+                            // 注意：不 Dispose，因為 blockBmp 可能來自快取
                         }
                     }
+
+                    sw.Stop();
+                    int s32Count = checkedFilePaths.Count;
+                    LogPerf($"[MINIMAP] Rendered {s32Count} S32 blocks in {sw.ElapsedMilliseconds}ms, size={scaledWidth}x{scaledHeight}");
 
                     // 回到 UI 執行緒更新
                     this.BeginInvoke((MethodInvoker)delegate
@@ -2748,6 +2806,9 @@ namespace L1FlyMapViewer
                     }
                 }
 
+                // 預載入所有 tile 檔案（背景執行，與 UI 更新並行）
+                PreloadTilesAsync(_document.S32Files.Values.ToList());
+
                 // 記錄背景載入完成時間
                 long bgLoadMs = totalStopwatch.ElapsedMilliseconds;
 
@@ -2781,13 +2842,13 @@ namespace L1FlyMapViewer
                     }
                     long miniMapMs = phaseStopwatch.ElapsedMilliseconds;
 
-                    // 階段 6: Tile 列表更新
+                    // 階段 6: Tile 列表更新（背景執行）
                     phaseStopwatch.Restart();
                     if (_document.S32Files.Count > 0)
                     {
-                        UpdateTileList();
+                        UpdateTileListAsync();
                     }
-                    long tileListMs = phaseStopwatch.ElapsedMilliseconds;
+                    long tileListMs = phaseStopwatch.ElapsedMilliseconds;  // 只計算啟動時間
 
                     // 階段 7: 群組縮圖更新（背景執行，不計入載入時間）
                     phaseStopwatch.Restart();
@@ -3520,11 +3581,14 @@ namespace L1FlyMapViewer
         // Viewport 渲染取消 token
         private System.Threading.CancellationTokenSource _viewportRenderCts = null;
         private readonly object _viewportRenderLock = new object();
+        private volatile bool _isRendering = false;
+        private volatile int _renderRequestId = 0;
 
         // 渲染指定範圍的 Viewport（非同步背景渲染）
         private void RenderViewport(Rectangle worldRect, Struct.L1Map currentMap, HashSet<string> checkedFilePaths)
         {
             // 取消之前的渲染任務
+            int currentRequestId;
             lock (_viewportRenderLock)
             {
                 if (_viewportRenderCts != null)
@@ -3533,6 +3597,7 @@ namespace L1FlyMapViewer
                     _viewportRenderCts.Dispose();
                 }
                 _viewportRenderCts = new System.Threading.CancellationTokenSource();
+                currentRequestId = ++_renderRequestId;
             }
             var cancellationToken = _viewportRenderCts.Token;
 
@@ -3568,13 +3633,24 @@ namespace L1FlyMapViewer
             // 背景執行渲染
             Task.Run(() =>
             {
-                if (cancellationToken.IsCancellationRequested) return;
+                // 檢查是否已經被更新的請求取代
+                if (cancellationToken.IsCancellationRequested || currentRequestId != _renderRequestId)
+                    return;
+
+                // 標記正在渲染
+                _isRendering = true;
+                var renderSw = Stopwatch.StartNew();
+                int threadId = System.Threading.Thread.CurrentThread.ManagedThreadId;
+                LogPerf($"[RENDER-START] ThreadId={threadId}, requestId={currentRequestId}");
 
                 int blockWidth = 64 * 24 * 2;  // 3072
                 int blockHeight = 64 * 12 * 2; // 1536
 
                 // 創建新的 Viewport Bitmap
+                var createBmpSw = Stopwatch.StartNew();
                 Bitmap viewportBitmap = new Bitmap(worldRect.Width, worldRect.Height, PixelFormat.Format16bppRgb555);
+                createBmpSw.Stop();
+                long createBmpMs = createBmpSw.ElapsedMilliseconds;
                 HashSet<string> newRenderedBlocks = new HashSet<string>();
 
                 ImageAttributes vAttr = new ImageAttributes();
@@ -3583,6 +3659,8 @@ namespace L1FlyMapViewer
                 int renderedCount = 0;
                 int reusedCount = 0;
                 int skippedCount = 0;
+                long totalGetBlockMs = 0;
+                long totalDrawImageMs = 0;
 
                 using (Graphics g = Graphics.FromImage(viewportBitmap))
                 {
@@ -3657,21 +3735,28 @@ namespace L1FlyMapViewer
                         renderedCount++;
 
                         // 為這個 S32 生成獨立的 bitmap（使用快取）
+                        var getBlockSw = Stopwatch.StartNew();
                         Bitmap blockBmp = GetOrRenderS32Block(s32Data, showLayer1, showLayer4);
+                        getBlockSw.Stop();
+                        totalGetBlockMs += getBlockSw.ElapsedMilliseconds;
 
                         // 計算繪製位置（減去 worldRect 原點偏移）
                         int drawX = mx - worldRect.X;
                         int drawY = my - worldRect.Y;
 
                         // 合併到 Viewport Bitmap
+                        var drawSw = Stopwatch.StartNew();
                         g.DrawImage(blockBmp, new Rectangle(drawX, drawY, blockBmp.Width, blockBmp.Height),
                             0, 0, blockBmp.Width, blockBmp.Height, GraphicsUnit.Pixel, vAttr);
+                        drawSw.Stop();
+                        totalDrawImageMs += drawSw.ElapsedMilliseconds;
 
                         // 注意：如果是快取的 bitmap 不要 Dispose
                         // 快取會在 ClearS32BlockCache 時統一釋放
                     }
                 }
-                LogPerf($"[RENDER] Rendered {renderedCount}, reused {reusedCount}, skipped {skippedCount}, cacheHit={_cacheHits}, cacheMiss={_cacheMisses}, viewport={panelWidth}x{panelHeight}, worldRect={worldRect}");
+                renderSw.Stop();
+                LogPerf($"[RENDER] total={renderSw.ElapsedMilliseconds}ms, createBmp={createBmpMs}ms, getBlock={totalGetBlockMs}ms, drawImage={totalDrawImageMs}ms, rendered={renderedCount}, reused={reusedCount}, skipped={skippedCount}, cacheHit={_cacheHits}, cacheMiss={_cacheMisses}");
                 _cacheHits = 0;
                 _cacheMisses = 0;
 
@@ -3722,6 +3807,8 @@ namespace L1FlyMapViewer
                 {
                     this.BeginInvoke((MethodInvoker)delegate
                     {
+                        _isRendering = false;  // 渲染完成
+
                         if (cancellationToken.IsCancellationRequested)
                         {
                             viewportBitmap.Dispose();
@@ -3748,6 +3835,7 @@ namespace L1FlyMapViewer
                 }
                 catch
                 {
+                    _isRendering = false;  // 發生錯誤也要重置
                     viewportBitmap.Dispose();
                 }
             });
@@ -4878,20 +4966,17 @@ namespace L1FlyMapViewer
         {
             try
             {
-                // 使用快取減少重複讀取（ConcurrentDictionary.GetOrAdd 是執行緒安全的）
-                string cacheKey = $"{tileId}_{indexId}";
-                byte[] tilData = tileDataCache.GetOrAdd(cacheKey, _ =>
+                // 先從 til 檔案快取取得整個 til array
+                List<byte[]> tilArray = _tilFileCache.GetOrAdd(tileId, _ =>
                 {
                     string key = $"{tileId}.til";
                     byte[] data = L1PakReader.UnPack("Tile", key);
                     if (data == null) return null;
-
-                    var tilArray = L1Til.Parse(data);
-                    if (indexId >= tilArray.Count) return null;
-
-                    return tilArray[indexId];
+                    return L1Til.Parse(data);
                 });
 
+                if (tilArray == null || indexId >= tilArray.Count) return;
+                byte[] tilData = tilArray[indexId];
                 if (tilData == null) return;
 
                 fixed (byte* til_ptr_fixed = tilData)
@@ -5022,6 +5107,89 @@ namespace L1FlyMapViewer
         private void UpdateTileList()
         {
             UpdateTileList(null);  // 不帶搜尋條件
+        }
+
+        /// <summary>
+        /// 背景載入 Tile 列表
+        /// </summary>
+        private void UpdateTileListAsync()
+        {
+            Task.Run(() =>
+            {
+                var sw = Stopwatch.StartNew();
+
+                // 聚合所有 S32 檔案的 UsedTiles（在背景執行緒）
+                var aggregatedTiles = new Dictionary<int, TileInfo>();
+                foreach (var s32Data in _document.S32Files.Values)
+                {
+                    foreach (var tileKvp in s32Data.UsedTiles)
+                    {
+                        int tileId = tileKvp.Key;
+                        var tileInfo = tileKvp.Value;
+
+                        if (aggregatedTiles.ContainsKey(tileId))
+                        {
+                            aggregatedTiles[tileId].UsageCount += tileInfo.UsageCount;
+                        }
+                        else
+                        {
+                            aggregatedTiles[tileId] = new TileInfo
+                            {
+                                TileId = tileInfo.TileId,
+                                IndexId = tileInfo.IndexId,
+                                UsageCount = tileInfo.UsageCount,
+                                Thumbnail = null
+                            };
+                        }
+                    }
+                }
+
+                // 預先載入所有縮圖（在背景執行緒）
+                foreach (var tile in aggregatedTiles.Values)
+                {
+                    if (tile.Thumbnail == null)
+                    {
+                        tile.Thumbnail = LoadTileThumbnail(tile.TileId, tile.IndexId);
+                    }
+                }
+
+                sw.Stop();
+                LogPerf($"[TILELIST] Loaded {aggregatedTiles.Count} tiles in {sw.ElapsedMilliseconds}ms");
+
+                // 回到 UI 執行緒更新列表
+                this.BeginInvoke((MethodInvoker)delegate
+                {
+                    cachedAggregatedTiles = aggregatedTiles;
+
+                    lvTiles.Items.Clear();
+                    lvTiles.View = View.LargeIcon;
+
+                    ImageList imageList = new ImageList();
+                    imageList.ImageSize = new Size(48, 48);
+                    imageList.ColorDepth = ColorDepth.Depth32Bit;
+                    lvTiles.LargeImageList = imageList;
+
+                    int index = 0;
+                    foreach (var tileKvp in aggregatedTiles.OrderBy(t => t.Key))
+                    {
+                        var tile = tileKvp.Value;
+                        if (tile.Thumbnail != null)
+                        {
+                            imageList.Images.Add(tile.Thumbnail);
+                            var item = new ListViewItem
+                            {
+                                Text = $"ID:{tile.TileId}\n×{tile.UsageCount}",
+                                ImageIndex = index,
+                                Tag = tile
+                            };
+                            lvTiles.Items.Add(item);
+                            index++;
+                        }
+                    }
+
+                    lblTileList.Text = $"顯示 {lvTiles.Items.Count} 個 Tile (來自 {_document.S32Files.Count} 個 S32 檔案)";
+                });
+            });
         }
 
         // 更新 Tile 清單顯示（支援搜尋過濾）
@@ -5155,17 +5323,22 @@ namespace L1FlyMapViewer
             UpdateTileList(txtTileSearch.Text);
         }
 
-        // 載入 Tile 縮圖
+        // 載入 Tile 縮圖（使用快取）
         private Bitmap LoadTileThumbnail(int tileId, int indexId)
         {
             try
             {
-                string key = $"{tileId}.til";
-                byte[] data = L1PakReader.UnPack("Tile", key);
-                if (data == null) return CreatePlaceholderThumbnail(tileId);
+                // 使用已存在的 til 檔案快取
+                List<byte[]> tilArray = _tilFileCache.GetOrAdd(tileId, _ =>
+                {
+                    string key = $"{tileId}.til";
+                    byte[] data = L1PakReader.UnPack("Tile", key);
+                    if (data == null) return null;
+                    return L1Til.Parse(data);
+                });
 
-                var tilArray = L1Til.Parse(data);
-                if (indexId >= tilArray.Count) return CreatePlaceholderThumbnail(tileId);
+                if (tilArray == null || indexId >= tilArray.Count)
+                    return CreatePlaceholderThumbnail(tileId);
 
                 // 繪製實際的 tile 圖片
                 byte[] tilData = tilArray[indexId];
