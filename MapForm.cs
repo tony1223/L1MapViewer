@@ -1824,9 +1824,10 @@ namespace L1FlyMapViewer
         private int _miniMapOffsetX = 0;
         private int _miniMapOffsetY = 0;
         private readonly object _miniMapLock = new object();
+        private bool _miniMapRendering = false;  // 是否正在渲染中
 
         /// <summary>
-        /// 更新小地圖（如果沒有快取則渲染，否則只更新紅框）
+        /// 更新小地圖（如果沒有快取則背景渲染，否則只更新紅框）
         /// </summary>
         private void UpdateMiniMap()
         {
@@ -1838,10 +1839,11 @@ namespace L1FlyMapViewer
                 if (mapWidth <= 0 || mapHeight <= 0)
                     return;
 
-                // 如果沒有快取，渲染整張小地圖
-                if (_miniMapFullBitmap == null)
+                // 如果沒有快取且沒有在渲染中，啟動背景渲染
+                if (_miniMapFullBitmap == null && !_miniMapRendering)
                 {
-                    RenderMiniMapFull();
+                    RenderMiniMapFullAsync();
+                    return;
                 }
 
                 // 更新紅框顯示
@@ -1854,9 +1856,9 @@ namespace L1FlyMapViewer
         }
 
         /// <summary>
-        /// 渲染完整的小地圖（與主地圖 RenderS32Map 邏輯相同，只是縮小）
+        /// 背景渲染完整的小地圖（與主地圖 RenderS32Map 邏輯相同，只是縮小）
         /// </summary>
-        private void RenderMiniMapFull()
+        private void RenderMiniMapFullAsync()
         {
             if (string.IsNullOrEmpty(_document.MapId) || !Share.MapDataList.ContainsKey(_document.MapId))
                 return;
@@ -1866,80 +1868,103 @@ namespace L1FlyMapViewer
             if (mapWidth <= 0 || mapHeight <= 0)
                 return;
 
-            // 計算縮放比例
+            // 標記正在渲染
+            _miniMapRendering = true;
+
+            // 計算縮放比例（在 UI 執行緒計算並快取）
             float scale = Math.Min((float)MINIMAP_SIZE / mapWidth, (float)MINIMAP_SIZE / mapHeight);
             int scaledWidth = (int)(mapWidth * scale);
             int scaledHeight = (int)(mapHeight * scale);
 
-            // 快取縮放參數
             _miniMapScale = scale;
             _miniMapOffsetX = (MINIMAP_SIZE - scaledWidth) / 2;
             _miniMapOffsetY = (MINIMAP_SIZE - scaledHeight) / 2;
 
-            int blockWidth = 64 * 24 * 2;  // 3072
-            int blockHeight = 64 * 12 * 2; // 1536
+            // 複製需要的資料（避免跨執行緒存取）
+            var s32FilesSnapshot = _document.S32Files.ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
 
-            // 建立小地圖 Bitmap
-            Bitmap miniBitmap = new Bitmap(scaledWidth, scaledHeight, PixelFormat.Format16bppRgb555);
-
-            // 透明色設定
-            ImageAttributes vAttr = new ImageAttributes();
-            vAttr.SetColorKey(Color.FromArgb(0), Color.FromArgb(0));
-
-            using (Graphics g = Graphics.FromImage(miniBitmap))
+            // 建立勾選的 S32 檔案清單
+            HashSet<string> checkedFilePaths = new HashSet<string>();
+            for (int i = 0; i < lstS32Files.Items.Count; i++)
             {
-                g.Clear(Color.Black);
-
-                // 建立勾選的 S32 檔案清單
-                HashSet<string> checkedFilePaths = new HashSet<string>();
-                for (int i = 0; i < lstS32Files.Items.Count; i++)
+                if (lstS32Files.GetItemChecked(i) && lstS32Files.Items[i] is S32FileItem item)
                 {
-                    if (lstS32Files.GetItemChecked(i) && lstS32Files.Items[i] is S32FileItem item)
-                    {
-                        checkedFilePaths.Add(item.FilePath);
-                    }
-                }
-
-                // 使用與主地圖相同的排序方式
-                var sortedFilePaths = Utils.SortDesc(_document.S32Files.Keys);
-
-                foreach (object filePathObj in sortedFilePaths)
-                {
-                    string filePath = filePathObj as string;
-                    if (filePath == null || !_document.S32Files.ContainsKey(filePath)) continue;
-                    if (!checkedFilePaths.Contains(filePath)) continue;
-
-                    var s32Data = _document.S32Files[filePath];
-
-                    // 使用與主地圖相同的座標計算
-                    int[] loc = s32Data.SegInfo.GetLoc(1.0);
-                    int blockX = loc[0];
-                    int blockY = loc[1];
-
-                    // 渲染這個 S32 區塊（只渲染 Layer1）
-                    using (Bitmap blockBmp = RenderS32Block(s32Data, true, false))
-                    {
-                        // 縮小繪製到小地圖
-                        int destX = (int)(blockX * scale);
-                        int destY = (int)(blockY * scale);
-                        int destW = (int)(blockWidth * scale);
-                        int destH = (int)(blockHeight * scale);
-
-                        g.DrawImage(blockBmp,
-                            new Rectangle(destX, destY, destW, destH),
-                            0, 0, blockBmp.Width, blockBmp.Height,
-                            GraphicsUnit.Pixel, vAttr);
-                    }
+                    checkedFilePaths.Add(item.FilePath);
                 }
             }
 
-            // 更新快取
-            lock (_miniMapLock)
+            // 背景執行緒渲染
+            Task.Run(() =>
             {
-                if (_miniMapFullBitmap != null)
-                    _miniMapFullBitmap.Dispose();
-                _miniMapFullBitmap = miniBitmap;
-            }
+                try
+                {
+                    int blockWidth = 64 * 24 * 2;  // 3072
+                    int blockHeight = 64 * 12 * 2; // 1536
+
+                    // 建立小地圖 Bitmap
+                    Bitmap miniBitmap = new Bitmap(scaledWidth, scaledHeight, PixelFormat.Format16bppRgb555);
+
+                    // 透明色設定
+                    ImageAttributes vAttr = new ImageAttributes();
+                    vAttr.SetColorKey(Color.FromArgb(0), Color.FromArgb(0));
+
+                    using (Graphics g = Graphics.FromImage(miniBitmap))
+                    {
+                        g.Clear(Color.Black);
+
+                        // 使用與主地圖相同的排序方式
+                        var sortedFilePaths = Utils.SortDesc(s32FilesSnapshot.Keys);
+
+                        foreach (object filePathObj in sortedFilePaths)
+                        {
+                            string filePath = filePathObj as string;
+                            if (filePath == null || !s32FilesSnapshot.ContainsKey(filePath)) continue;
+                            if (!checkedFilePaths.Contains(filePath)) continue;
+
+                            var s32Data = s32FilesSnapshot[filePath];
+
+                            // 使用與主地圖相同的座標計算
+                            int[] loc = s32Data.SegInfo.GetLoc(1.0);
+                            int blockX = loc[0];
+                            int blockY = loc[1];
+
+                            // 渲染這個 S32 區塊（Layer1 + Layer4）
+                            using (Bitmap blockBmp = RenderS32Block(s32Data, true, true))
+                            {
+                                // 縮小繪製到小地圖
+                                int destX = (int)(blockX * scale);
+                                int destY = (int)(blockY * scale);
+                                int destW = (int)(blockWidth * scale);
+                                int destH = (int)(blockHeight * scale);
+
+                                g.DrawImage(blockBmp,
+                                    new Rectangle(destX, destY, destW, destH),
+                                    0, 0, blockBmp.Width, blockBmp.Height,
+                                    GraphicsUnit.Pixel, vAttr);
+                            }
+                        }
+                    }
+
+                    // 回到 UI 執行緒更新
+                    this.BeginInvoke((MethodInvoker)delegate
+                    {
+                        lock (_miniMapLock)
+                        {
+                            if (_miniMapFullBitmap != null)
+                                _miniMapFullBitmap.Dispose();
+                            _miniMapFullBitmap = miniBitmap;
+                        }
+                        _miniMapRendering = false;
+
+                        // 渲染完成，更新顯示
+                        UpdateMiniMapRedBox();
+                    });
+                }
+                catch
+                {
+                    _miniMapRendering = false;
+                }
+            });
         }
 
         /// <summary>
