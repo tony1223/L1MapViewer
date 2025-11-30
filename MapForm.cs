@@ -4055,14 +4055,26 @@ namespace L1FlyMapViewer
             s32MapPanel.AutoScroll = false;
 
             // 檢查是否可以增量渲染（舊 viewport 與新 viewport 有重疊）
+            // 注意：增量渲染會複製舊 bitmap 的內容，所以不再持有舊 bitmap 的引用
             Rectangle oldWorldRect = new Rectangle(_viewState.RenderOriginX, _viewState.RenderOriginY, _viewState.RenderWidth, _viewState.RenderHeight);
-            bool canIncrementalRender = _viewportBitmap != null &&
-                                         _viewState.RenderWidth > 0 &&
-                                         oldWorldRect.IntersectsWith(worldRect) &&
-                                         Math.Abs(_viewState.RenderZoomLevel - _viewState.ZoomLevel) < 0.001;
+            bool canIncrementalRender = false;
+            Bitmap oldBitmapCopy = null;
+            HashSet<string> oldRenderedBlocks = new HashSet<string>();
 
-            Bitmap oldBitmap = canIncrementalRender ? _viewportBitmap : null;
-            HashSet<string> oldRenderedBlocks = canIncrementalRender ? new HashSet<string>(_renderedS32Blocks) : new HashSet<string>();
+            lock (_viewportBitmapLock)
+            {
+                canIncrementalRender = _viewportBitmap != null &&
+                                             _viewState.RenderWidth > 0 &&
+                                             oldWorldRect.IntersectsWith(worldRect) &&
+                                             Math.Abs(_viewState.RenderZoomLevel - _viewState.ZoomLevel) < 0.001;
+
+                if (canIncrementalRender)
+                {
+                    // 複製舊 bitmap（避免與 Paint 事件衝突）
+                    oldBitmapCopy = (Bitmap)_viewportBitmap.Clone();
+                    oldRenderedBlocks = new HashSet<string>(_renderedS32Blocks);
+                }
+            }
 
             // 背景執行渲染
             Task.Run(() =>
@@ -4099,7 +4111,7 @@ namespace L1FlyMapViewer
                 using (Graphics g = Graphics.FromImage(viewportBitmap))
                 {
                     // 如果可以增量渲染，先把舊 bitmap 的重疊部分複製過來
-                    if (canIncrementalRender && oldBitmap != null)
+                    if (canIncrementalRender && oldBitmapCopy != null)
                     {
                         // 計算重疊區域
                         Rectangle overlap = Rectangle.Intersect(oldWorldRect, worldRect);
@@ -4112,11 +4124,15 @@ namespace L1FlyMapViewer
                             int dstX = overlap.X - worldRect.X;
                             int dstY = overlap.Y - worldRect.Y;
 
-                            g.DrawImage(oldBitmap,
+                            g.DrawImage(oldBitmapCopy,
                                 new Rectangle(dstX, dstY, overlap.Width, overlap.Height),
                                 new Rectangle(srcX, srcY, overlap.Width, overlap.Height),
                                 GraphicsUnit.Pixel);
                         }
+
+                        // 釋放複製的舊 bitmap
+                        oldBitmapCopy.Dispose();
+                        oldBitmapCopy = null;
                     }
 
                     // 使用空間索引快速查找與 worldRect 相交的 S32 檔案
