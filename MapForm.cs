@@ -56,7 +56,7 @@ namespace L1FlyMapViewer
         // 縮放相關（地圖預覽）
         [System.ComponentModel.DesignerSerializationVisibility(System.ComponentModel.DesignerSerializationVisibility.Hidden)]
         public double zoomLevel { get; set; } = 1.0;
-        private const double ZOOM_MIN = 0.1;
+        private const double ZOOM_MIN = 0.5;
         private const double ZOOM_MAX = 5.0;
         private const double ZOOM_STEP = 0.2;
         private Image originalMapImage;
@@ -402,7 +402,7 @@ namespace L1FlyMapViewer
         {
             if (!isLayer4CopyMode || _editState.SelectedCells.Count == 0)
             {
-                this.toolStripStatusLabel1.Text = "請先使用 Shift+左鍵 選取要刪除的區域";
+                this.toolStripStatusLabel1.Text = "請先使用左鍵選取要刪除的區域";
                 return;
             }
 
@@ -594,6 +594,10 @@ namespace L1FlyMapViewer
             hasLayer4Clipboard = _editState.CellClipboard.Count > 0;
             _editState.SourceMapId = _document.MapId;
 
+            // Debug log
+            File.AppendAllText("copy_paste_debug.log", $"[COPY] CellClipboard.Count={_editState.CellClipboard.Count}, layer1Count={layer1Count}, layer3Count={layer3Count}, layer4Count={layer4Count}\n");
+            File.AppendAllText("copy_paste_debug.log", $"[COPY] minGlobalX={minGlobalX}, minGlobalY={minGlobalY}\n");
+
             // 複製 Layer2 和 Layer5-8 資料（從所有涉及的 S32 收集，根據設定）
             _editState.Layer2Clipboard.Clear();
             _editState.Layer5Clipboard.Clear();
@@ -720,7 +724,7 @@ namespace L1FlyMapViewer
                 parts.Add($"L5:{_editState.Layer5Clipboard.Count} L6:{_editState.Layer6Clipboard.Count} L7:{_editState.Layer7Clipboard.Count} L8:{_editState.Layer8Clipboard.Count}");
 
             string layerInfo = parts.Count > 0 ? string.Join(", ", parts) : "無資料";
-            this.toolStripStatusLabel1.Text = $"已複製 {selectedCells.Count} 格 ({layerInfo}) 來源: {_document.MapId}，Shift+左鍵選取貼上位置後按 Ctrl+V";
+            this.toolStripStatusLabel1.Text = $"已複製 {selectedCells.Count} 格 ({layerInfo}) 來源: {_document.MapId}，左鍵選取貼上位置後按 Ctrl+V";
 
             // 清除選取框但保留複製資料
             isLayer4CopyMode = false;
@@ -735,20 +739,23 @@ namespace L1FlyMapViewer
         {
             if (!hasLayer4Clipboard || _editState.CellClipboard.Count == 0)
             {
-                this.toolStripStatusLabel1.Text = "剪貼簿沒有資料，請先使用 Shift+左鍵 選取區域後按 Ctrl+C 複製";
+                this.toolStripStatusLabel1.Text = "剪貼簿沒有資料，請先使用左鍵選取區域後按 Ctrl+C 複製";
                 return;
             }
 
-            // 需要先選取貼上位置
-            if (!isLayer4CopyMode || copyRegionBounds.Width == 0)
+            // 需要先選取貼上位置（檢查 CopyRegionOrigin 是否有效）
+            if (_editState.CopyRegionOrigin.X < 0 || _editState.CopyRegionOrigin.Y < 0)
             {
-                this.toolStripStatusLabel1.Text = "請使用 Shift+左鍵 選取貼上位置";
+                this.toolStripStatusLabel1.Text = "請使用左鍵選取貼上位置";
                 return;
             }
 
             // 取得貼上位置的全域 Layer1 座標
             int pasteOriginX = _editState.CopyRegionOrigin.X;
             int pasteOriginY = _editState.CopyRegionOrigin.Y;
+
+            // Debug log
+            File.AppendAllText("copy_paste_debug.log", $"[PASTE] CopyRegionOrigin=({pasteOriginX}, {pasteOriginY}), CellClipboard.Count={_editState.CellClipboard.Count}\n");
 
             int layer1Count = 0, layer3Count = 0, layer4Count = 0;
             int skippedCount = 0;
@@ -760,6 +767,8 @@ namespace L1FlyMapViewer
             };
 
             // 貼上每個格子的資料
+            File.AppendAllText("copy_paste_debug.log", $"[PASTE] Starting loop, CellClipboard.Count={_editState.CellClipboard.Count}\n");
+            int processedCount = 0;
             foreach (var cellData in _editState.CellClipboard)
             {
                 // 計算目標全域 Layer1 座標
@@ -770,10 +779,19 @@ namespace L1FlyMapViewer
                 int targetGameX = targetGlobalX / 2;
                 int targetGameY = targetGlobalY;
 
+                // Debug: 顯示前幾筆
+                if (processedCount < 3)
+                {
+                    File.AppendAllText("copy_paste_debug.log", $"[PASTE] cellData: RelativeX={cellData.RelativeX}, RelativeY={cellData.RelativeY}, targetGlobal=({targetGlobalX},{targetGlobalY}), targetGame=({targetGameX},{targetGameY})\n");
+                    File.AppendAllText("copy_paste_debug.log", $"[PASTE]   Layer1Cell1={cellData.Layer1Cell1 != null}, Layer1Cell2={cellData.Layer1Cell2 != null}, Layer3Attr={cellData.Layer3Attr != null}, Layer4Objects.Count={cellData.Layer4Objects.Count}\n");
+                }
+                processedCount++;
+
                 // 找到目標格子所屬的 S32
                 S32Data targetS32 = GetS32DataByGameCoords(targetGameX, targetGameY);
                 if (targetS32 == null)
                 {
+                    File.AppendAllText("copy_paste_debug.log", $"[PASTE] targetS32 is NULL for targetGame=({targetGameX},{targetGameY})\n");
                     skippedCount++;
                     continue;
                 }
@@ -992,6 +1010,13 @@ namespace L1FlyMapViewer
             if (skippedCount > 0)
                 message += $"，{skippedCount} 格超出範圍被跳過";
             this.toolStripStatusLabel1.Text = message;
+
+            // Debug log
+            File.AppendAllText("copy_paste_debug.log", $"[PASTE] Done! layer1Count={layer1Count}, layer3Count={layer3Count}, layer4Count={layer4Count}, skippedCount={skippedCount}\n");
+
+            // 清除快取並重新渲染
+            ClearS32BlockCache();
+            RenderS32Map();
         }
 
         // 取消複製/貼上模式
@@ -10545,7 +10570,7 @@ namespace L1FlyMapViewer
             }
             else
             {
-                this.toolStripStatusLabel1.Text = "請先使用 Shift+左鍵 選取格子";
+                this.toolStripStatusLabel1.Text = "請先使用左鍵選取格子";
             }
         }
 

@@ -302,8 +302,10 @@ namespace L1MapViewer.Models
         /// </summary>
         public Rectangle GetViewportWorldRect()
         {
-            int x = (int)(ScrollX / ZoomLevel);
-            int y = (int)(ScrollY / ZoomLevel);
+            // ScrollX/ScrollY 已經是世界座標，不需要除以 ZoomLevel
+            int x = ScrollX;
+            int y = ScrollY;
+            // ViewportWidth/Height 是螢幕像素，需要除以 ZoomLevel 轉成世界座標
             int width = (int)(ViewportWidth / ZoomLevel);
             int height = (int)(ViewportHeight / ZoomLevel);
             return new Rectangle(x, y, width, height);
