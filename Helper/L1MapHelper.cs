@@ -8,6 +8,7 @@ using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.IO;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
@@ -78,6 +79,9 @@ namespace L1MapViewer.Helper {
                     pMap.szName = getDescribe(di.Name);
 
                     //取得地圖資料夾內檔案資料
+                    // 先收集所有有效的 seg 和 s32 檔案，按檔名分組
+                    var filesByName = new Dictionary<string, (FileInfo s32File, FileInfo segFile)>(StringComparer.OrdinalIgnoreCase);
+
                     foreach (FileInfo file in di.GetFiles()) {
                         string szExt = Path.GetExtension(file.FullName).ToLower(); //7ff88000.s32->.s32
                         string szFileName = Path.GetFileNameWithoutExtension(file.FullName).ToLower();
@@ -88,12 +92,40 @@ namespace L1MapViewer.Helper {
                         if (!Regex.IsMatch(szFileName, "^[a-fA-F0-9]+$")) {
                             continue; //不是16進位的檔名
                         }
-                        //如果有同檔名的seg跟s32檔...則s32優先
-                        if (szExt.Equals(".seg") && pMap.FullFileNameList.ContainsKey(file.FullName.Replace(".seg", ".s32"))) {
-                            continue; //已經有.s32檔了
+
+                        // 按檔名分組
+                        if (!filesByName.ContainsKey(szFileName)) {
+                            filesByName[szFileName] = (null, null);
                         }
-                        if (isRemastered && szExt.Equals(".seg")) {
-                            continue; //天R不讀取seg
+
+                        var entry = filesByName[szFileName];
+                        if (szExt.Equals(".s32")) {
+                            filesByName[szFileName] = (file, entry.segFile);
+                        } else {
+                            filesByName[szFileName] = (entry.s32File, file);
+                        }
+                    }
+
+                    // 處理每個檔名：s32 優先，沒有才用 seg
+                    foreach (var kvp in filesByName) {
+                        string szFileName = kvp.Key;
+                        var (s32File, segFile) = kvp.Value;
+
+                        // 決定要使用的檔案
+                        FileInfo fileToUse = null;
+                        bool isS32 = false;
+
+                        if (s32File != null) {
+                            fileToUse = s32File;
+                            isS32 = true;
+                        } else if (segFile != null && !isRemastered) {
+                            // 只有非天R才讀取 seg
+                            fileToUse = segFile;
+                            isS32 = false;
+                        }
+
+                        if (fileToUse == null) {
+                            continue;
                         }
 
                         //取得邊界
@@ -106,8 +138,8 @@ namespace L1MapViewer.Helper {
                         pMap.nMaxBlockX = Math.Max(pMap.nMaxBlockX, nBlockX);
                         pMap.nMaxBlockY = Math.Max(pMap.nMaxBlockY, nBlockY);
 
-                        L1MapSeg pMapSeg = new L1MapSeg(nBlockX, nBlockY, szExt.Equals(".s32"));
-                        pMap.FullFileNameList.Add(file.FullName, pMapSeg);
+                        L1MapSeg pMapSeg = new L1MapSeg(nBlockX, nBlockY, isS32);
+                        pMap.FullFileNameList.Add(fileToUse.FullName, pMapSeg);
                         totalFileCount++;
                     }
 

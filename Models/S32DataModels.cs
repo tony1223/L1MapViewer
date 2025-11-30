@@ -222,6 +222,36 @@ namespace L1MapViewer.Models
         public List<UndoObjectInfo> AddedObjects { get; set; } = new List<UndoObjectInfo>();
         public List<UndoObjectInfo> RemovedObjects { get; set; } = new List<UndoObjectInfo>();
         public List<UndoLayer7Info> RemovedLayer7Items { get; set; } = new List<UndoLayer7Info>();
+        public List<UndoLayer1Info> ModifiedLayer1 { get; set; } = new List<UndoLayer1Info>();
+        public List<UndoLayer3Info> ModifiedLayer3 { get; set; } = new List<UndoLayer3Info>();
+    }
+
+    /// <summary>
+    /// Undo 第一層資訊（地板）
+    /// </summary>
+    public class UndoLayer1Info
+    {
+        public string S32FilePath { get; set; } = string.Empty;
+        public int LocalX { get; set; }
+        public int LocalY { get; set; }
+        public int OldTileId { get; set; }
+        public int OldIndexId { get; set; }
+        public int NewTileId { get; set; }
+        public int NewIndexId { get; set; }
+    }
+
+    /// <summary>
+    /// Undo 第三層資訊（屬性）
+    /// </summary>
+    public class UndoLayer3Info
+    {
+        public string S32FilePath { get; set; } = string.Empty;
+        public int LocalX { get; set; }
+        public int LocalY { get; set; }
+        public short OldAttribute1 { get; set; }
+        public short OldAttribute2 { get; set; }
+        public short NewAttribute1 { get; set; }
+        public short NewAttribute2 { get; set; }
     }
 
     /// <summary>

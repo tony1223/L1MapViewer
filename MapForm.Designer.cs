@@ -26,6 +26,8 @@ namespace L1FlyMapViewer
         public ComboBox comboBox1;
         private PictureBox miniMapPictureBox;
         private Label lblS32Files;
+        private Button btnS32SelectAll;
+        private Button btnS32SelectNone;
         private CheckedListBox lstS32Files;
 
         // 右側面板（Tile 清單）
@@ -141,6 +143,8 @@ namespace L1FlyMapViewer
             this.comboBox1 = new ComboBox();
             this.miniMapPictureBox = new PictureBox();
             this.lblS32Files = new Label();
+            this.btnS32SelectAll = new Button();
+            this.btnS32SelectNone = new Button();
             this.lstS32Files = new CheckedListBox();
 
             // 右側面板
@@ -358,6 +362,8 @@ namespace L1FlyMapViewer
             this.leftPanel.Controls.Add(this.comboBox1);
             this.leftPanel.Controls.Add(this.miniMapPictureBox);
             this.leftPanel.Controls.Add(this.lblS32Files);
+            this.leftPanel.Controls.Add(this.btnS32SelectAll);
+            this.leftPanel.Controls.Add(this.btnS32SelectNone);
             this.leftPanel.Controls.Add(this.lstS32Files);
             this.leftPanel.Dock = DockStyle.Left;
             this.leftPanel.Location = new Point(0, 24);
@@ -400,10 +406,30 @@ namespace L1FlyMapViewer
             //
             this.lblS32Files.Location = new Point(5, 320);
             this.lblS32Files.Name = "lblS32Files";
-            this.lblS32Files.Size = new Size(260, 20);
+            this.lblS32Files.Size = new Size(150, 20);
             this.lblS32Files.TabIndex = 2;
             this.lblS32Files.Text = "S32 檔案清單";
             this.lblS32Files.TextAlign = ContentAlignment.MiddleLeft;
+
+            //
+            // btnS32SelectAll
+            //
+            this.btnS32SelectAll.Location = new Point(160, 320);
+            this.btnS32SelectAll.Name = "btnS32SelectAll";
+            this.btnS32SelectAll.Size = new Size(50, 20);
+            this.btnS32SelectAll.TabIndex = 20;
+            this.btnS32SelectAll.Text = "全選";
+            this.btnS32SelectAll.Click += new System.EventHandler(this.btnS32SelectAll_Click);
+
+            //
+            // btnS32SelectNone
+            //
+            this.btnS32SelectNone.Location = new Point(215, 320);
+            this.btnS32SelectNone.Name = "btnS32SelectNone";
+            this.btnS32SelectNone.Size = new Size(50, 20);
+            this.btnS32SelectNone.TabIndex = 21;
+            this.btnS32SelectNone.Text = "全不選";
+            this.btnS32SelectNone.Click += new System.EventHandler(this.btnS32SelectNone_Click);
 
             //
             // lstS32Files
@@ -415,6 +441,7 @@ namespace L1FlyMapViewer
             this.lstS32Files.CheckOnClick = true;
             this.lstS32Files.SelectedIndexChanged += new System.EventHandler(this.lstS32Files_SelectedIndexChanged);
             this.lstS32Files.ItemCheck += new ItemCheckEventHandler(this.lstS32Files_ItemCheck);
+            this.lstS32Files.MouseUp += new MouseEventHandler(this.lstS32Files_MouseUp);
 
             //
             // tabControl1
@@ -1185,6 +1212,7 @@ namespace L1FlyMapViewer
             this.btnToolCheckL5Invalid.ForeColor = Color.Red;
             this.btnToolCheckL5Invalid.Font = new Font(this.btnToolCheckL5Invalid.Font.FontFamily, 14, FontStyle.Bold);
             this.btnToolCheckL5Invalid.UseVisualStyleBackColor = true;
+            this.btnToolCheckL5Invalid.Visible = false;  // 預設隱藏，有異常時才顯示
             this.toolTip1.SetToolTip(this.btnToolCheckL5Invalid, "檢查 Layer5 無效的 ObjectIndex");
             this.btnToolCheckL5Invalid.Click += new System.EventHandler(this.btnToolCheckL5Invalid_Click);
 

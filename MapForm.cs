@@ -595,9 +595,6 @@ namespace L1FlyMapViewer
             hasLayer4Clipboard = _editState.CellClipboard.Count > 0;
             _editState.SourceMapId = _document.MapId;
 
-            // Debug log
-            File.AppendAllText("copy_paste_debug.log", $"[COPY] CellClipboard.Count={_editState.CellClipboard.Count}, layer1Count={layer1Count}, layer3Count={layer3Count}, layer4Count={layer4Count}\n");
-            File.AppendAllText("copy_paste_debug.log", $"[COPY] minGlobalX={minGlobalX}, minGlobalY={minGlobalY}\n");
 
             // 複製 Layer2 和 Layer5-8 資料（從所有涉及的 S32 收集，根據設定）
             _editState.Layer2Clipboard.Clear();
@@ -755,8 +752,6 @@ namespace L1FlyMapViewer
             int pasteOriginX = _editState.CopyRegionOrigin.X;
             int pasteOriginY = _editState.CopyRegionOrigin.Y;
 
-            // Debug log
-            File.AppendAllText("copy_paste_debug.log", $"[PASTE] CopyRegionOrigin=({pasteOriginX}, {pasteOriginY}), CellClipboard.Count={_editState.CellClipboard.Count}\n");
 
             int layer1Count = 0, layer3Count = 0, layer4Count = 0;
             int skippedCount = 0;
@@ -808,9 +803,21 @@ namespace L1FlyMapViewer
                     continue;
                 }
 
-                // Layer1 資料（地板）
+                // Layer1 資料（地板）- 記錄舊值和新值到 Undo
                 if (cellData.Layer1Cell1 != null && localX >= 0 && localX < 128)
                 {
+                    var oldCell = targetS32.Layer1[localY, localX];
+                    undoAction.ModifiedLayer1.Add(new UndoLayer1Info
+                    {
+                        S32FilePath = targetS32.FilePath,
+                        LocalX = localX,
+                        LocalY = localY,
+                        OldTileId = oldCell?.TileId ?? 0,
+                        OldIndexId = oldCell?.IndexId ?? 0,
+                        NewTileId = cellData.Layer1Cell1.TileId,
+                        NewIndexId = cellData.Layer1Cell1.IndexId
+                    });
+
                     targetS32.Layer1[localY, localX] = new TileCell
                     {
                         X = localX,
@@ -823,6 +830,18 @@ namespace L1FlyMapViewer
                 }
                 if (cellData.Layer1Cell2 != null && localX + 1 >= 0 && localX + 1 < 128)
                 {
+                    var oldCell = targetS32.Layer1[localY, localX + 1];
+                    undoAction.ModifiedLayer1.Add(new UndoLayer1Info
+                    {
+                        S32FilePath = targetS32.FilePath,
+                        LocalX = localX + 1,
+                        LocalY = localY,
+                        OldTileId = oldCell?.TileId ?? 0,
+                        OldIndexId = oldCell?.IndexId ?? 0,
+                        NewTileId = cellData.Layer1Cell2.TileId,
+                        NewIndexId = cellData.Layer1Cell2.IndexId
+                    });
+
                     targetS32.Layer1[localY, localX + 1] = new TileCell
                     {
                         X = localX + 1,
@@ -834,12 +853,24 @@ namespace L1FlyMapViewer
                     targetS32.IsModified = true;
                 }
 
-                // Layer3 資料（屬性）
+                // Layer3 資料（屬性）- 記錄舊值和新值到 Undo
                 if (cellData.Layer3Attr != null)
                 {
                     int layer3X = localX / 2;
                     if (layer3X >= 0 && layer3X < 64)
                     {
+                        var oldAttr = targetS32.Layer3[localY, layer3X];
+                        undoAction.ModifiedLayer3.Add(new UndoLayer3Info
+                        {
+                            S32FilePath = targetS32.FilePath,
+                            LocalX = layer3X,
+                            LocalY = localY,
+                            OldAttribute1 = oldAttr?.Attribute1 ?? 0,
+                            OldAttribute2 = oldAttr?.Attribute2 ?? 0,
+                            NewAttribute1 = cellData.Layer3Attr.Attribute1,
+                            NewAttribute2 = cellData.Layer3Attr.Attribute2
+                        });
+
                         targetS32.Layer3[localY, layer3X] = new MapAttribute
                         {
                             Attribute1 = cellData.Layer3Attr.Attribute1,
@@ -895,8 +926,8 @@ namespace L1FlyMapViewer
                 }
             }
 
-            // 儲存 Undo 記錄（如果有新增物件）
-            if (undoAction.AddedObjects.Count > 0)
+            // 儲存 Undo 記錄（如果有任何修改）
+            if (undoAction.AddedObjects.Count > 0 || undoAction.ModifiedLayer1.Count > 0 || undoAction.ModifiedLayer3.Count > 0)
             {
                 PushUndoAction(undoAction);
             }
@@ -1018,6 +1049,9 @@ namespace L1FlyMapViewer
             // 清除快取並重新渲染
             ClearS32BlockCache();
             RenderS32Map();
+
+            // 更新 Layer5 異常檢查按鈕
+            UpdateLayer5InvalidButton();
         }
 
         // 取消複製/貼上模式
@@ -1126,11 +1160,47 @@ namespace L1FlyMapViewer
                 }
             }
 
+            // 還原修改的第一層資料（地板）
+            foreach (var layer1Info in action.ModifiedLayer1)
+            {
+                S32Data targetS32 = null;
+                if (_document.S32Files.TryGetValue(layer1Info.S32FilePath, out targetS32))
+                {
+                    targetS32.Layer1[layer1Info.LocalY, layer1Info.LocalX] = new TileCell
+                    {
+                        X = layer1Info.LocalX,
+                        Y = layer1Info.LocalY,
+                        TileId = layer1Info.OldTileId,
+                        IndexId = layer1Info.OldIndexId
+                    };
+                    targetS32.IsModified = true;
+                }
+            }
+
+            // 還原修改的第三層資料（屬性）
+            foreach (var layer3Info in action.ModifiedLayer3)
+            {
+                S32Data targetS32 = null;
+                if (_document.S32Files.TryGetValue(layer3Info.S32FilePath, out targetS32))
+                {
+                    targetS32.Layer3[layer3Info.LocalY, layer3Info.LocalX] = new MapAttribute
+                    {
+                        Attribute1 = layer3Info.OldAttribute1,
+                        Attribute2 = layer3Info.OldAttribute2
+                    };
+                    targetS32.IsModified = true;
+                }
+            }
+
             // 將此動作放入 redo 歷史
             _editState.RedoHistory.Push(action);
 
-            // 重新渲染地圖
+            // 清除快取並重新渲染地圖
+            ClearS32BlockCache();
             RenderS32Map();
+
+            // 更新 Layer5 異常檢查按鈕
+            UpdateLayer5InvalidButton();
 
             this.toolStripStatusLabel1.Text = $"已還原: {action.Description} (Ctrl+Z: {_editState.UndoHistory.Count} / Ctrl+Y: {_editState.RedoHistory.Count})";
         }
@@ -1209,11 +1279,47 @@ namespace L1FlyMapViewer
                 }
             }
 
+            // 重做修改的第一層資料（套用新值）
+            foreach (var layer1Info in action.ModifiedLayer1)
+            {
+                S32Data targetS32 = null;
+                if (_document.S32Files.TryGetValue(layer1Info.S32FilePath, out targetS32))
+                {
+                    targetS32.Layer1[layer1Info.LocalY, layer1Info.LocalX] = new TileCell
+                    {
+                        X = layer1Info.LocalX,
+                        Y = layer1Info.LocalY,
+                        TileId = layer1Info.NewTileId,
+                        IndexId = layer1Info.NewIndexId
+                    };
+                    targetS32.IsModified = true;
+                }
+            }
+
+            // 重做修改的第三層資料（套用新值）
+            foreach (var layer3Info in action.ModifiedLayer3)
+            {
+                S32Data targetS32 = null;
+                if (_document.S32Files.TryGetValue(layer3Info.S32FilePath, out targetS32))
+                {
+                    targetS32.Layer3[layer3Info.LocalY, layer3Info.LocalX] = new MapAttribute
+                    {
+                        Attribute1 = layer3Info.NewAttribute1,
+                        Attribute2 = layer3Info.NewAttribute2
+                    };
+                    targetS32.IsModified = true;
+                }
+            }
+
             // 將此動作放回 undo 歷史
             _editState.UndoHistory.Push(action);
 
-            // 重新渲染地圖
+            // 清除快取並重新渲染地圖
+            ClearS32BlockCache();
             RenderS32Map();
+
+            // 更新 Layer5 異常檢查按鈕
+            UpdateLayer5InvalidButton();
 
             this.toolStripStatusLabel1.Text = $"已重做: {action.Description} (Ctrl+Z: {_editState.UndoHistory.Count} / Ctrl+Y: {_editState.RedoHistory.Count})";
         }
@@ -3135,6 +3241,7 @@ namespace L1FlyMapViewer
             _checkedS32Files.Clear();  // 清空快取
             _document.S32Files.Clear();
             _document.MapId = mapId;
+            lblS32Files.Text = "S32 檔案清單";  // 重置標籤
 
             // 清除快取
             ClearS32BlockCache();
@@ -3181,6 +3288,9 @@ namespace L1FlyMapViewer
             {
                 lstS32Files.SelectedIndex = 0;
             }
+
+            // 更新 S32 檔案清單標籤顯示數量
+            lblS32Files.Text = $"S32 檔案清單 ({s32FileItems.Count})";
 
             this.toolStripStatusLabel1.Text = $"找到 {s32FileItems.Count} 個 S32 檔案，正在載入...";
 
@@ -3291,6 +3401,7 @@ namespace L1FlyMapViewer
                     if (_document.S32Files.Count > 0)
                     {
                         UpdateGroupThumbnailsList();
+                        UpdateLayer5InvalidButton();
                     }
                     long thumbnailStartMs = phaseStopwatch.ElapsedMilliseconds;
 
@@ -3432,6 +3543,51 @@ namespace L1FlyMapViewer
             LoadAndParseS32File(item.FilePath);
         }
 
+        // S32 檔案清單右鍵跳轉
+        private void lstS32Files_MouseUp(object sender, MouseEventArgs e)
+        {
+            if (e.Button != MouseButtons.Right)
+                return;
+
+            // 取得點擊位置的項目
+            int index = lstS32Files.IndexFromPoint(e.Location);
+            if (index < 0 || index >= lstS32Files.Items.Count)
+                return;
+
+            var item = lstS32Files.Items[index] as S32FileItem;
+            if (item == null)
+                return;
+
+            // 選取該項目
+            lstS32Files.SelectedIndex = index;
+
+            // 計算該 S32 區塊的中心世界座標
+            var segInfo = item.SegInfo;
+            int centerX = (segInfo.nLinBeginX + segInfo.nLinEndX) / 2;
+            int centerY = (segInfo.nLinBeginY + segInfo.nLinEndY) / 2;
+
+            // 轉換為世界像素座標（每格 24x24 像素）
+            int worldPixelX = centerX * 24;
+            int worldPixelY = centerY * 24;
+
+            // 計算目標捲動位置（讓該區塊置中）
+            int targetScrollX = worldPixelX - _viewState.ViewportWidth / 2;
+            int targetScrollY = worldPixelY - _viewState.ViewportHeight / 2;
+
+            // 設定捲動位置
+            _viewState.ScrollX = Math.Max(0, Math.Min(targetScrollX, _viewState.MaxScrollX));
+            _viewState.ScrollY = Math.Max(0, Math.Min(targetScrollY, _viewState.MaxScrollY));
+
+            // 更新捲軸
+            hScrollBar1.Value = Math.Min(_viewState.ScrollX, hScrollBar1.Maximum);
+            vScrollBar1.Value = Math.Min(_viewState.ScrollY, vScrollBar1.Maximum);
+
+            // 重新渲染
+            RenderS32Map();
+
+            this.toolStripStatusLabel1.Text = $"跳轉至 {item.DisplayName}";
+        }
+
         // S32 清單勾選狀態變更事件
         private void lstS32Files_ItemCheck(object sender, ItemCheckEventArgs e)
         {
@@ -3447,11 +3603,41 @@ namespace L1FlyMapViewer
                     _checkedS32Files.Remove(item.FilePath);
 
                 // 延遲觸發重新渲染（因為 ItemCheck 在狀態變更前觸發）
-                this.BeginInvoke((MethodInvoker)delegate
+                if (!_isBatchCheckUpdate)
                 {
-                    RenderS32Map();
-                });
+                    this.BeginInvoke((MethodInvoker)delegate
+                    {
+                        RenderS32Map();
+                    });
+                }
             }
+        }
+
+        // 批次勾選更新標記（避免每次勾選都觸發渲染）
+        private bool _isBatchCheckUpdate = false;
+
+        // 全選 S32 檔案
+        private void btnS32SelectAll_Click(object sender, EventArgs e)
+        {
+            _isBatchCheckUpdate = true;
+            for (int i = 0; i < lstS32Files.Items.Count; i++)
+            {
+                lstS32Files.SetItemChecked(i, true);
+            }
+            _isBatchCheckUpdate = false;
+            RenderS32Map();
+        }
+
+        // 全不選 S32 檔案
+        private void btnS32SelectNone_Click(object sender, EventArgs e)
+        {
+            _isBatchCheckUpdate = true;
+            for (int i = 0; i < lstS32Files.Items.Count; i++)
+            {
+                lstS32Files.SetItemChecked(i, false);
+            }
+            _isBatchCheckUpdate = false;
+            RenderS32Map();
         }
 
         // 純粹的 S32 檔案解析方法（不涉及 UI）
@@ -4054,27 +4240,7 @@ namespace L1FlyMapViewer
             s32PictureBox.Location = new Point(0, 0);
             s32MapPanel.AutoScroll = false;
 
-            // 檢查是否可以增量渲染（舊 viewport 與新 viewport 有重疊）
-            // 注意：增量渲染會複製舊 bitmap 的內容，所以不再持有舊 bitmap 的引用
-            Rectangle oldWorldRect = new Rectangle(_viewState.RenderOriginX, _viewState.RenderOriginY, _viewState.RenderWidth, _viewState.RenderHeight);
-            bool canIncrementalRender = false;
-            Bitmap oldBitmapCopy = null;
-            HashSet<string> oldRenderedBlocks = new HashSet<string>();
-
-            lock (_viewportBitmapLock)
-            {
-                canIncrementalRender = _viewportBitmap != null &&
-                                             _viewState.RenderWidth > 0 &&
-                                             oldWorldRect.IntersectsWith(worldRect) &&
-                                             Math.Abs(_viewState.RenderZoomLevel - _viewState.ZoomLevel) < 0.001;
-
-                if (canIncrementalRender)
-                {
-                    // 複製舊 bitmap（避免與 Paint 事件衝突）
-                    oldBitmapCopy = (Bitmap)_viewportBitmap.Clone();
-                    oldRenderedBlocks = new HashSet<string>(_renderedS32Blocks);
-                }
-            }
+            // 不使用增量渲染，每次完整重新渲染（避免多執行緒 bitmap 存取問題）
 
             // 背景執行渲染
             Task.Run(() =>
@@ -4103,38 +4269,12 @@ namespace L1FlyMapViewer
                 vAttr.SetColorKey(Color.FromArgb(0), Color.FromArgb(0)); // 透明色
 
                 int renderedCount = 0;
-                int reusedCount = 0;
                 int skippedCount = 0;
                 long totalGetBlockMs = 0;
                 long totalDrawImageMs = 0;
 
                 using (Graphics g = Graphics.FromImage(viewportBitmap))
                 {
-                    // 如果可以增量渲染，先把舊 bitmap 的重疊部分複製過來
-                    if (canIncrementalRender && oldBitmapCopy != null)
-                    {
-                        // 計算重疊區域
-                        Rectangle overlap = Rectangle.Intersect(oldWorldRect, worldRect);
-                        if (overlap.Width > 0 && overlap.Height > 0)
-                        {
-                            // 舊 bitmap 中的來源位置
-                            int srcX = overlap.X - oldWorldRect.X;
-                            int srcY = overlap.Y - oldWorldRect.Y;
-                            // 新 bitmap 中的目標位置
-                            int dstX = overlap.X - worldRect.X;
-                            int dstY = overlap.Y - worldRect.Y;
-
-                            g.DrawImage(oldBitmapCopy,
-                                new Rectangle(dstX, dstY, overlap.Width, overlap.Height),
-                                new Rectangle(srcX, srcY, overlap.Width, overlap.Height),
-                                GraphicsUnit.Pixel);
-                        }
-
-                        // 釋放複製的舊 bitmap
-                        oldBitmapCopy.Dispose();
-                        oldBitmapCopy = null;
-                    }
-
                     // 使用空間索引快速查找與 worldRect 相交的 S32 檔案
                     var candidateFiles = GetS32FilesInRect(worldRect);
                     LogPerf($"[SPATIAL-QUERY] worldRect=({worldRect.X},{worldRect.Y},{worldRect.Width},{worldRect.Height}), candidates={candidateFiles.Count}, total={s32FilesSnapshot.Count}");
@@ -4172,20 +4312,6 @@ namespace L1FlyMapViewer
                         }
 
                         newRenderedBlocks.Add(filePath);
-
-                        // 如果這個 block 已經在舊的重疊區域內完整渲染過，跳過
-                        if (canIncrementalRender && oldRenderedBlocks.Contains(filePath))
-                        {
-                            // 檢查 block 是否完全在重疊區域內
-                            Rectangle overlap = Rectangle.Intersect(oldWorldRect, worldRect);
-                            if (blockRect.X >= overlap.X && blockRect.Y >= overlap.Y &&
-                                blockRect.Right <= overlap.Right && blockRect.Bottom <= overlap.Bottom)
-                            {
-                                reusedCount++;
-                                continue;
-                            }
-                        }
-
                         renderedCount++;
 
                         // 為這個 S32 生成獨立的 bitmap（使用快取）
@@ -4209,7 +4335,7 @@ namespace L1FlyMapViewer
                     }
                 }
                 renderSw.Stop();
-                LogPerf($"[RENDER] total={renderSw.ElapsedMilliseconds}ms, createBmp={createBmpMs}ms, getBlock={totalGetBlockMs}ms, drawImage={totalDrawImageMs}ms, rendered={renderedCount}, reused={reusedCount}, skipped={skippedCount}, cacheHit={_cacheHits}, cacheMiss={_cacheMisses}");
+                LogPerf($"[RENDER] total={renderSw.ElapsedMilliseconds}ms, createBmp={createBmpMs}ms, getBlock={totalGetBlockMs}ms, drawImage={totalDrawImageMs}ms, rendered={renderedCount}, skipped={skippedCount}, cacheHit={_cacheHits}, cacheMiss={_cacheMisses}");
                 _cacheHits = 0;
                 _cacheMisses = 0;
 
@@ -7491,6 +7617,9 @@ namespace L1FlyMapViewer
                 // 清除快取並重新渲染
                 ClearS32BlockCache();
                 RenderS32Map();
+
+                // 更新 Layer5 異常檢查按鈕
+                UpdateLayer5InvalidButton();
 
                 // 組合結果訊息
                 var resultParts = new List<string>();
@@ -12926,14 +13055,24 @@ namespace L1FlyMapViewer
             resultForm.ShowDialog();
         }
 
-        // 檢查 Layer5 中 ObjectIndex 是否存在於 Layer4 的 GroupId
-        private void btnToolCheckL5Invalid_Click(object sender, EventArgs e)
+        // 檢查 Layer5 異常並更新按鈕顯示狀態
+        private void UpdateLayer5InvalidButton()
         {
-            if (_document.S32Files.Count == 0)
+            var invalidItems = GetInvalidLayer5Items();
+            btnToolCheckL5Invalid.Visible = invalidItems.Count > 0;
+            if (invalidItems.Count > 0)
             {
-                MessageBox.Show("請先載入地圖", "提示", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                return;
+                toolTip1.SetToolTip(btnToolCheckL5Invalid, $"發現 {invalidItems.Count} 個 Layer5 異常 ObjectIndex");
             }
+        }
+
+        // 取得 Layer5 中 ObjectIndex 不存在於 Layer4 GroupId 的項目
+        private List<(string filePath, string fileName, Layer5Item item, int itemIndex)> GetInvalidLayer5Items()
+        {
+            var invalidItems = new List<(string filePath, string fileName, Layer5Item item, int itemIndex)>();
+
+            if (_document.S32Files.Count == 0)
+                return invalidItems;
 
             // 收集所有 Layer4 的 GroupId
             HashSet<int> validGroupIds = new HashSet<int>();
@@ -12946,9 +13085,6 @@ namespace L1FlyMapViewer
             }
 
             // 檢查 Layer5 的 ObjectIndex 是否有效
-            List<(string filePath, string fileName, Layer5Item item, int itemIndex)> invalidItems =
-                new List<(string, string, Layer5Item, int)>();
-
             foreach (var kvp in _document.S32Files)
             {
                 string filePath = kvp.Key;
@@ -12966,10 +13102,19 @@ namespace L1FlyMapViewer
                 }
             }
 
+            return invalidItems;
+        }
+
+        // 檢查 Layer5 中 ObjectIndex 是否存在於 Layer4 的 GroupId
+        private void btnToolCheckL5Invalid_Click(object sender, EventArgs e)
+        {
+            var invalidItems = GetInvalidLayer5Items();
+
             if (invalidItems.Count == 0)
             {
                 MessageBox.Show("所有 Layer5 的 ObjectIndex 都有對應的 Layer4 GroupId，沒有異常資料。",
                     "檢查完成", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                btnToolCheckL5Invalid.Visible = false;
                 return;
             }
 
