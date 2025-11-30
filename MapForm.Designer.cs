@@ -381,9 +381,9 @@ namespace L1FlyMapViewer
             //
             this.miniMapPictureBox.BackColor = Color.Black;
             this.miniMapPictureBox.BorderStyle = BorderStyle.FixedSingle;
-            this.miniMapPictureBox.Location = new Point(10, 40);
+            this.miniMapPictureBox.Location = new Point(5, 40);
             this.miniMapPictureBox.Name = "miniMapPictureBox";
-            this.miniMapPictureBox.Size = new Size(260, 260);
+            this.miniMapPictureBox.Size = new Size(270, 270);
             this.miniMapPictureBox.SizeMode = PictureBoxSizeMode.Normal;
             this.miniMapPictureBox.TabIndex = 1;
             this.miniMapPictureBox.TabStop = false;
@@ -396,7 +396,7 @@ namespace L1FlyMapViewer
             //
             // lblS32Files
             //
-            this.lblS32Files.Location = new Point(10, 310);
+            this.lblS32Files.Location = new Point(5, 320);
             this.lblS32Files.Name = "lblS32Files";
             this.lblS32Files.Size = new Size(260, 20);
             this.lblS32Files.TabIndex = 2;
@@ -406,7 +406,7 @@ namespace L1FlyMapViewer
             //
             // lstS32Files
             //
-            this.lstS32Files.Location = new Point(10, 335);
+            this.lstS32Files.Location = new Point(5, 345);
             this.lstS32Files.Name = "lstS32Files";
             this.lstS32Files.Size = new Size(260, 300);
             this.lstS32Files.TabIndex = 3;
