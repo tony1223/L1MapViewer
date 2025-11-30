@@ -1971,6 +1971,10 @@ namespace L1FlyMapViewer
                 }
             }
 
+            // 決定渲染模式：超過 10 個 S32 時使用簡化渲染
+            int s32Count = checkedFilePaths.Count;
+            bool useSimplifiedRendering = s32Count > 10;
+
             // 背景執行緒渲染
             Task.Run(() =>
             {
@@ -1994,39 +1998,48 @@ namespace L1FlyMapViewer
                         // 使用與主地圖相同的排序方式
                         var sortedFilePaths = Utils.SortDesc(s32FilesSnapshot.Keys);
 
-                        foreach (object filePathObj in sortedFilePaths)
+                        if (useSimplifiedRendering)
                         {
-                            string filePath = filePathObj as string;
-                            if (filePath == null || !s32FilesSnapshot.ContainsKey(filePath)) continue;
-                            if (!checkedFilePaths.Contains(filePath)) continue;
+                            // 簡化渲染：直接在小地圖上繪製取樣的格子
+                            RenderMiniMapSimplified(g, sortedFilePaths, s32FilesSnapshot, checkedFilePaths, scale);
+                        }
+                        else
+                        {
+                            // 完整渲染：渲染每個 S32 Block 後縮小
+                            foreach (object filePathObj in sortedFilePaths)
+                            {
+                                string filePath = filePathObj as string;
+                                if (filePath == null || !s32FilesSnapshot.ContainsKey(filePath)) continue;
+                                if (!checkedFilePaths.Contains(filePath)) continue;
 
-                            var s32Data = s32FilesSnapshot[filePath];
+                                var s32Data = s32FilesSnapshot[filePath];
 
-                            // 使用與主地圖相同的座標計算
-                            int[] loc = s32Data.SegInfo.GetLoc(1.0);
-                            int blockX = loc[0];
-                            int blockY = loc[1];
+                                // 使用與主地圖相同的座標計算
+                                int[] loc = s32Data.SegInfo.GetLoc(1.0);
+                                int blockX = loc[0];
+                                int blockY = loc[1];
 
-                            // 渲染這個 S32 區塊（Layer1 + Layer4）- 使用快取
-                            Bitmap blockBmp = GetOrRenderS32Block(s32Data, true, true);
+                                // 渲染這個 S32 區塊（Layer1 + Layer4）- 使用快取
+                                Bitmap blockBmp = GetOrRenderS32Block(s32Data, true, true);
 
-                            // 縮小繪製到小地圖
-                            int destX = (int)(blockX * scale);
-                            int destY = (int)(blockY * scale);
-                            int destW = (int)(blockWidth * scale);
-                            int destH = (int)(blockHeight * scale);
+                                // 縮小繪製到小地圖
+                                int destX = (int)(blockX * scale);
+                                int destY = (int)(blockY * scale);
+                                int destW = (int)(blockWidth * scale);
+                                int destH = (int)(blockHeight * scale);
 
-                            g.DrawImage(blockBmp,
-                                new Rectangle(destX, destY, destW, destH),
-                                0, 0, blockBmp.Width, blockBmp.Height,
-                                GraphicsUnit.Pixel, vAttr);
-                            // 注意：不 Dispose，因為 blockBmp 可能來自快取
+                                g.DrawImage(blockBmp,
+                                    new Rectangle(destX, destY, destW, destH),
+                                    0, 0, blockBmp.Width, blockBmp.Height,
+                                    GraphicsUnit.Pixel, vAttr);
+                                // 注意：不 Dispose，因為 blockBmp 可能來自快取
+                            }
                         }
                     }
 
                     sw.Stop();
-                    int s32Count = checkedFilePaths.Count;
-                    LogPerf($"[MINIMAP] Rendered {s32Count} S32 blocks in {sw.ElapsedMilliseconds}ms, size={scaledWidth}x{scaledHeight}");
+                    string mode = useSimplifiedRendering ? "simplified" : "full";
+                    LogPerf($"[MINIMAP] Rendered {s32Count} S32 blocks in {sw.ElapsedMilliseconds}ms, size={scaledWidth}x{scaledHeight}, mode={mode}");
 
                     // 回到 UI 執行緒更新
                     this.BeginInvoke((MethodInvoker)delegate
@@ -2108,6 +2121,146 @@ namespace L1FlyMapViewer
                     _miniMapFullBitmap = null;
                 }
             }
+        }
+
+        /// <summary>
+        /// 簡化版 Mini Map 渲染：取樣渲染 + 快取
+        /// </summary>
+        private void RenderMiniMapSimplified(Graphics g, object[] sortedFilePaths,
+            Dictionary<string, S32Data> s32FilesSnapshot, HashSet<string> checkedFilePaths, float scale)
+        {
+            // 根據壓縮比例動態計算取樣率
+            // scale 越小，取樣間隔越大
+            int sampleStep = Math.Max(1, (int)(1.0 / (scale * 24)));
+            sampleStep = Math.Min(sampleStep, 8);
+
+            int blockWidth = 64 * 24 * 2;  // 3072
+            int blockHeight = 64 * 12 * 2; // 1536
+
+            // 透明色設定
+            ImageAttributes vAttr = new ImageAttributes();
+            vAttr.SetColorKey(Color.FromArgb(0), Color.FromArgb(0));
+
+            foreach (object filePathObj in sortedFilePaths)
+            {
+                string filePath = filePathObj as string;
+                if (filePath == null || !s32FilesSnapshot.ContainsKey(filePath)) continue;
+                if (!checkedFilePaths.Contains(filePath)) continue;
+
+                var s32Data = s32FilesSnapshot[filePath];
+
+                // 取樣渲染（帶快取）
+                Bitmap blockBmp = GetOrRenderS32BlockSampled(s32Data, sampleStep);
+                if (blockBmp == null) continue;
+
+                // S32 Block 的世界座標位置
+                int[] loc = s32Data.SegInfo.GetLoc(1.0);
+                int blockX = loc[0];
+                int blockY = loc[1];
+
+                // 縮小繪製到小地圖
+                int destX = (int)(blockX * scale);
+                int destY = (int)(blockY * scale);
+                int destW = (int)(blockWidth * scale);
+                int destH = (int)(blockHeight * scale);
+
+                g.DrawImage(blockBmp,
+                    new Rectangle(destX, destY, destW, destH),
+                    0, 0, blockBmp.Width, blockBmp.Height,
+                    GraphicsUnit.Pixel, vAttr);
+                // 不 Dispose，因為是快取
+            }
+        }
+
+        // Mini map 專用的取樣 S32 Block 快取
+        private System.Collections.Concurrent.ConcurrentDictionary<string, Bitmap> _s32BlockCacheMiniMap
+            = new System.Collections.Concurrent.ConcurrentDictionary<string, Bitmap>();
+
+        /// <summary>
+        /// 取得取樣版的 S32 Block（帶快取）
+        /// </summary>
+        private Bitmap GetOrRenderS32BlockSampled(S32Data s32Data, int sampleStep)
+        {
+            string cacheKey = $"{s32Data.FilePath}_s{sampleStep}";
+            if (_s32BlockCacheMiniMap.TryGetValue(cacheKey, out Bitmap cached))
+            {
+                return cached;
+            }
+
+            Bitmap rendered = RenderS32BlockSampled(s32Data, sampleStep);
+            _s32BlockCacheMiniMap.TryAdd(cacheKey, rendered);
+            return rendered;
+        }
+
+        /// <summary>
+        /// 渲染 S32 Block 的取樣版本（Layer1 + Layer4，每個取樣點重複畫填滿區域）
+        /// </summary>
+        private Bitmap RenderS32BlockSampled(S32Data s32Data, int sampleStep)
+        {
+            int blockWidth = 64 * 24 * 2;  // 3072
+            int blockHeight = 64 * 12 * 2; // 1536
+
+            Bitmap result = new Bitmap(blockWidth, blockHeight, PixelFormat.Format16bppRgb555);
+
+            Rectangle rect = new Rectangle(0, 0, result.Width, result.Height);
+            BitmapData bmpData = result.LockBits(rect, ImageLockMode.ReadWrite, result.PixelFormat);
+            int rowpix = bmpData.Stride;
+
+            unsafe
+            {
+                byte* ptr = (byte*)bmpData.Scan0;
+
+                // Layer1（地板）- 取樣並填滿
+                for (int sy = 0; sy < 64; sy += sampleStep)
+                {
+                    for (int sx = 0; sx < 128; sx += sampleStep)
+                    {
+                        var cell = s32Data.Layer1[sy, sx];
+                        if (cell == null || cell.TileId == 0) continue;
+
+                        // 用取樣的 tile 填滿整個區域
+                        for (int dy = 0; dy < sampleStep && sy + dy < 64; dy++)
+                        {
+                            for (int dx = 0; dx < sampleStep && sx + dx < 128; dx++)
+                            {
+                                int x = sx + dx;
+                                int y = sy + dy;
+
+                                int baseX = 0;
+                                int baseY = 63 * 12;
+                                baseX -= 24 * (x / 2);
+                                baseY -= 12 * (x / 2);
+
+                                int pixelX = baseX + x * 24 + y * 24;
+                                int pixelY = baseY + y * 12;
+
+                                DrawTilToBufferDirect(pixelX, pixelY, cell.TileId, cell.IndexId, rowpix, ptr, blockWidth, blockHeight);
+                            }
+                        }
+                    }
+                }
+
+                // Layer4（物件）- 也取樣，只畫落在取樣格子上的物件
+                var sortedObjects = s32Data.Layer4.OrderBy(o => o.Layer).ToList();
+                foreach (var obj in sortedObjects)
+                {
+                    // 只畫落在取樣點上的物件
+                    if (obj.X % sampleStep != 0 || obj.Y % sampleStep != 0) continue;
+
+                    int baseX = 0;
+                    int baseY = 63 * 12;
+                    baseX -= 24 * (obj.X / 2);
+                    baseY -= 12 * (obj.X / 2);
+
+                    int pixelX = baseX + obj.X * 24 + obj.Y * 24;
+                    int pixelY = baseY + obj.Y * 12;
+
+                    DrawTilToBufferDirect(pixelX, pixelY, obj.TileId, obj.IndexId, rowpix, ptr, blockWidth, blockHeight);
+                }
+            }
+
+            result.UnlockBits(bmpData);
+            return result;
         }
 
         public void vScrollBar1_Scroll(object sender, ScrollEventArgs e)
@@ -3571,6 +3724,7 @@ namespace L1FlyMapViewer
 
                 // 取得需要渲染的世界座標範圍（含緩衝區）
                 Rectangle renderRect = _viewState.GetRenderWorldRect();
+                LogPerf($"[RENDER-MAP] ScrollX={_viewState.ScrollX}, ScrollY={_viewState.ScrollY}, renderRect=({renderRect.X},{renderRect.Y},{renderRect.Width},{renderRect.Height})");
 
                 // 建立勾選的 S32 檔案清單
                 HashSet<string> checkedFilePaths = new HashSet<string>();
@@ -4079,11 +4233,12 @@ namespace L1FlyMapViewer
             centerX = Math.Max(0, Math.Min(centerX, maxScrollX));
             centerY = Math.Max(0, Math.Min(centerY, maxScrollY));
 
-            LogPerf($"[SCROLL-CENTER] S32 range=({minX},{minY})-({maxX},{maxY}), center=({actualCenterX},{actualCenterY}), scroll=({centerX},{centerY})");
+            LogPerf($"[SCROLL-CENTER] S32 range=({minX},{minY})-({maxX},{maxY}), center=({actualCenterX},{actualCenterY}), scroll=({centerX},{centerY}), mapSize=({mapWidth},{mapHeight}), zoom={s32ZoomLevel}");
 
             // 只設定捲動位置，不觸發渲染
             _viewState.SetScrollSilent(centerX, centerY);
             _viewState.UpdateScrollLimits(mapWidth, mapHeight);
+            LogPerf($"[SCROLL-AFTER] ScrollX={_viewState.ScrollX}, ScrollY={_viewState.ScrollY}, MaxScrollX={_viewState.MaxScrollX}, MaxScrollY={_viewState.MaxScrollY}");
         }
 
         // 捲動到地圖中央（含重新渲染）
