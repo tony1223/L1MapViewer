@@ -230,6 +230,8 @@ namespace L1MapViewer.Models
     public class UndoObjectInfo
     {
         public string S32FilePath { get; set; } = string.Empty;
+        public int GameX { get; set; }
+        public int GameY { get; set; }
         public int LocalX { get; set; }
         public int LocalY { get; set; }
         public int GroupId { get; set; }
