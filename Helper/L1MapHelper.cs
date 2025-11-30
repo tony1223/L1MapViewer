@@ -3,6 +3,7 @@ using L1MapViewer.Other;
 using L1MapViewer.Reader;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
@@ -28,6 +29,13 @@ namespace L1MapViewer.Helper {
 
         private static bool isRemastered;
 
+        // 載入時間統計（供外部查看）
+        public static long LastLoadZone3descMs { get; private set; }
+        public static long LastLoadZoneXmlMs { get; private set; }
+        public static long LastScanDirectoriesMs { get; private set; }
+        public static int LastMapCount { get; private set; }
+        public static int LastTotalFileCount { get; private set; }
+
         //讀取地圖檔資料
         public static Dictionary<string, L1Map> Read(string szSelectedPath) {
             if (string.IsNullOrEmpty(szSelectedPath)) {
@@ -45,11 +53,18 @@ namespace L1MapViewer.Helper {
                 isRemastered = true;
             }
 
+            var stopwatch = Stopwatch.StartNew();
+
             //map
             LoadZone3descTbl();
+            LastLoadZone3descMs = stopwatch.ElapsedMilliseconds;
 
+            stopwatch.Restart();
             LoadZoneXml();
+            LastLoadZoneXmlMs = stopwatch.ElapsedMilliseconds;
 
+            stopwatch.Restart();
+            int totalFileCount = 0;
 
             if (Share.MapDataList.Count == 0) {
                 //開始讀取資料夾
@@ -93,6 +108,7 @@ namespace L1MapViewer.Helper {
 
                         L1MapSeg pMapSeg = new L1MapSeg(nBlockX, nBlockY, szExt.Equals(".s32"));
                         pMap.FullFileNameList.Add(file.FullName, pMapSeg);
+                        totalFileCount++;
                     }
 
                     //計算整張圖的起始坐標
@@ -128,6 +144,11 @@ namespace L1MapViewer.Helper {
                     Application.DoEvents();
                 }
             }
+
+            LastScanDirectoriesMs = stopwatch.ElapsedMilliseconds;
+            LastMapCount = Share.MapDataList.Count;
+            LastTotalFileCount = totalFileCount;
+
             return Share.MapDataList;
         }
 

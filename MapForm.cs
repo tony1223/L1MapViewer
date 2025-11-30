@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.IO;
@@ -99,8 +100,8 @@ namespace L1FlyMapViewer
         // Viewport 渲染相關
         private Bitmap _viewportBitmap;  // 當前渲染的 Viewport Bitmap
 
-        // Tile 資料快取 - key: "tileId_indexId"
-        private Dictionary<string, byte[]> tileDataCache = new Dictionary<string, byte[]>();
+        // Tile 資料快取 - key: "tileId_indexId" (使用 ConcurrentDictionary 支援多執行緒)
+        private System.Collections.Concurrent.ConcurrentDictionary<string, byte[]> tileDataCache = new System.Collections.Concurrent.ConcurrentDictionary<string, byte[]>();
 
         // 地圖過濾相關
         private List<string> allMapItems = new List<string>();  // 所有地圖項目
@@ -1627,58 +1628,84 @@ namespace L1FlyMapViewer
 
         public void LoadMap(string selectedPath)
         {
+            // 先在 UI 執行緒檢查路徑是否有效（避免 MessageBox 在背景執行緒彈出）
+            string szMapPath = string.Format(@"{0}\map\", selectedPath);
+            if (!Directory.Exists(szMapPath))
+            {
+                MessageBox.Show("錯誤的天堂路徑");
+                return;
+            }
+
             Utils.ShowProgressBar(true, this);
-            var dictionary = L1MapHelper.Read(selectedPath);
+            this.toolStripStatusLabel1.Text = "正在讀取地圖列表...";
 
-            // 儲存所有地圖項目供過濾使用
-            allMapItems.Clear();
-            foreach (string key in Utils.SortAsc(dictionary.Keys))
+            // 在背景執行緒載入地圖資料
+            Task.Run(() =>
             {
-                Struct.L1Map l1Map = dictionary[key];
-                allMapItems.Add(string.Format("{0}-{1}", key, l1Map.szName));
-            }
+                var stopwatch = Stopwatch.StartNew();
+                var dictionary = L1MapHelper.Read(selectedPath);
+                stopwatch.Stop();
+                long readMs = stopwatch.ElapsedMilliseconds;
 
-            // 填充 ComboBox
-            isFiltering = true;
-            this.comboBox1.Items.Clear();
-            this.comboBox1.BeginUpdate();
-            foreach (var item in allMapItems)
-            {
-                this.comboBox1.Items.Add(item);
-            }
-            this.comboBox1.EndUpdate();
-            isFiltering = false;
-
-            // 讀取上次選擇的地圖名稱（改用名稱而非索引，避免過濾後索引錯亂）
-            if (this.comboBox1.Items.Count > 0)
-            {
-                string iniPath = Path.GetTempPath() + "mapviewer.ini";
-                string lastMapName = "";
-
-                if (File.Exists(iniPath))
+                // 回到 UI 執行緒更新介面
+                this.BeginInvoke((MethodInvoker)delegate
                 {
-                    lastMapName = Utils.GetINI("MapForm", "LastSelectedMapName", "", iniPath);
-                }
+                    stopwatch.Restart();
 
-                // 如果有上次選擇的地圖，找到它
-                int selectedIndex = 0;
-                if (!string.IsNullOrEmpty(lastMapName))
-                {
-                    for (int i = 0; i < this.comboBox1.Items.Count; i++)
+                    // 儲存所有地圖項目供過濾使用
+                    allMapItems.Clear();
+                    foreach (string key in Utils.SortAsc(dictionary.Keys))
                     {
-                        if (this.comboBox1.Items[i].ToString() == lastMapName)
-                        {
-                            selectedIndex = i;
-                            break;
-                        }
+                        Struct.L1Map l1Map = dictionary[key];
+                        allMapItems.Add(string.Format("{0}-{1}", key, l1Map.szName));
                     }
-                }
 
-                this.comboBox1.SelectedIndex = selectedIndex;
-            }
+                    // 填充 ComboBox
+                    isFiltering = true;
+                    this.comboBox1.Items.Clear();
+                    this.comboBox1.BeginUpdate();
+                    foreach (var item in allMapItems)
+                    {
+                        this.comboBox1.Items.Add(item);
+                    }
+                    this.comboBox1.EndUpdate();
+                    isFiltering = false;
 
-            this.toolStripStatusLabel2.Text = "MapCount=" + dictionary.Count;
-            Utils.ShowProgressBar(false, this);
+                    long uiMs = stopwatch.ElapsedMilliseconds;
+
+                    // 讀取上次選擇的地圖名稱（改用名稱而非索引，避免過濾後索引錯亂）
+                    if (this.comboBox1.Items.Count > 0)
+                    {
+                        string iniPath = Path.GetTempPath() + "mapviewer.ini";
+                        string lastMapName = "";
+
+                        if (File.Exists(iniPath))
+                        {
+                            lastMapName = Utils.GetINI("MapForm", "LastSelectedMapName", "", iniPath);
+                        }
+
+                        // 如果有上次選擇的地圖，找到它
+                        int selectedIndex = 0;
+                        if (!string.IsNullOrEmpty(lastMapName))
+                        {
+                            for (int i = 0; i < this.comboBox1.Items.Count; i++)
+                            {
+                                if (this.comboBox1.Items[i].ToString() == lastMapName)
+                                {
+                                    selectedIndex = i;
+                                    break;
+                                }
+                            }
+                        }
+
+                        this.comboBox1.SelectedIndex = selectedIndex;
+                    }
+
+                    this.toolStripStatusLabel2.Text = $"Maps={dictionary.Count}, Files={L1MapHelper.LastTotalFileCount}";
+                    this.toolStripStatusLabel1.Text = $"載入完成 - Zone3desc:{L1MapHelper.LastLoadZone3descMs}ms, ZoneXml:{L1MapHelper.LastLoadZoneXmlMs}ms, 掃描目錄:{L1MapHelper.LastScanDirectoriesMs}ms, UI:{uiMs}ms (總計:{readMs + uiMs}ms)";
+                    Utils.ShowProgressBar(false, this);
+                });
+            });
         }
 
         // 地圖搜尋過濾
@@ -1788,76 +1815,37 @@ namespace L1FlyMapViewer
             ResetMapFilter();
         }
 
-        // 更新小地圖
+        // ===== 小地圖 =====
+        // 小地圖尺寸常數
+        private const int MINIMAP_SIZE = 400;
+
+        // 小地圖的縮放比例和偏移（快取計算結果）
+        private float _miniMapScale = 1.0f;
+        private int _miniMapOffsetX = 0;
+        private int _miniMapOffsetY = 0;
+        private readonly object _miniMapLock = new object();
+
+        /// <summary>
+        /// 更新小地圖（如果沒有快取則渲染，否則只更新紅框）
+        /// </summary>
         private void UpdateMiniMap()
         {
             try
             {
-                int pictureWidth = _viewState.MapWidth;
-                int pictureHeight = _viewState.MapHeight;
+                int mapWidth = _viewState.MapWidth;
+                int mapHeight = _viewState.MapHeight;
 
-                if (pictureWidth <= 0 || pictureHeight <= 0)
+                if (mapWidth <= 0 || mapHeight <= 0)
                     return;
 
-                // 如果還沒有渲染完整小地圖，先渲染
+                // 如果沒有快取，渲染整張小地圖
                 if (_miniMapFullBitmap == null)
                 {
                     RenderMiniMapFull();
                 }
 
-                if (_miniMapFullBitmap == null)
-                    return;
-
-                int miniWidth = 260;
-                int miniHeight = 260;
-
-                // 計算縮放比例和偏移
-                float scaleX = (float)miniWidth / pictureWidth;
-                float scaleY = (float)miniHeight / pictureHeight;
-                float scale = Math.Min(scaleX, scaleY);
-
-                int scaledWidth = (int)(pictureWidth * scale);
-                int scaledHeight = (int)(pictureHeight * scale);
-                int offsetX = (miniWidth - scaledWidth) / 2;
-                int offsetY = (miniHeight - scaledHeight) / 2;
-
-                // 建立顯示圖（含紅框）
-                Bitmap miniMap = new Bitmap(miniWidth, miniHeight);
-                using (Graphics g = Graphics.FromImage(miniMap))
-                {
-                    g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
-                    g.FillRectangle(Brushes.Black, 0, 0, miniWidth, miniHeight);
-
-                    // 繪製完整的小地圖底圖
-                    g.DrawImage(_miniMapFullBitmap, offsetX, offsetY, scaledWidth, scaledHeight);
-
-                    // 繪製視窗位置紅框
-                    if (this.s32MapPanel.Width > 0 && this.s32MapPanel.Height > 0)
-                    {
-                        // 使用 ViewState 的捲動位置（世界座標）
-                        int scrollX = _viewState.ScrollX;
-                        int scrollY = _viewState.ScrollY;
-
-                        // Viewport 大小（世界座標）
-                        int viewportWidthWorld = (int)(s32MapPanel.Width / s32ZoomLevel);
-                        int viewportHeightWorld = (int)(s32MapPanel.Height / s32ZoomLevel);
-
-                        // 轉換為小地圖座標
-                        int viewX = (int)(scrollX * scale) + offsetX;
-                        int viewY = (int)(scrollY * scale) + offsetY;
-                        int viewWidth = (int)(viewportWidthWorld * scale);
-                        int viewHeight = (int)(viewportHeightWorld * scale);
-
-                        using (Pen viewPortPen = new Pen(Color.Red, 2))
-                        {
-                            g.DrawRectangle(viewPortPen, viewX, viewY, viewWidth, viewHeight);
-                        }
-                    }
-                }
-
-                if (this.miniMapPictureBox.Image != null)
-                    this.miniMapPictureBox.Image.Dispose();
-                this.miniMapPictureBox.Image = miniMap;
+                // 更新紅框顯示
+                UpdateMiniMapRedBox();
             }
             catch
             {
@@ -1865,23 +1853,42 @@ namespace L1FlyMapViewer
             }
         }
 
-        // 渲染完整的小地圖縮圖（整張地圖）
+        /// <summary>
+        /// 渲染完整的小地圖（與主地圖 RenderS32Map 邏輯相同，只是縮小）
+        /// </summary>
         private void RenderMiniMapFull()
         {
-            try
+            if (string.IsNullOrEmpty(_document.MapId) || !Share.MapDataList.ContainsKey(_document.MapId))
+                return;
+
+            int mapWidth = _viewState.MapWidth;
+            int mapHeight = _viewState.MapHeight;
+            if (mapWidth <= 0 || mapHeight <= 0)
+                return;
+
+            // 計算縮放比例
+            float scale = Math.Min((float)MINIMAP_SIZE / mapWidth, (float)MINIMAP_SIZE / mapHeight);
+            int scaledWidth = (int)(mapWidth * scale);
+            int scaledHeight = (int)(mapHeight * scale);
+
+            // 快取縮放參數
+            _miniMapScale = scale;
+            _miniMapOffsetX = (MINIMAP_SIZE - scaledWidth) / 2;
+            _miniMapOffsetY = (MINIMAP_SIZE - scaledHeight) / 2;
+
+            int blockWidth = 64 * 24 * 2;  // 3072
+            int blockHeight = 64 * 12 * 2; // 1536
+
+            // 建立小地圖 Bitmap
+            Bitmap miniBitmap = new Bitmap(scaledWidth, scaledHeight, PixelFormat.Format16bppRgb555);
+
+            // 透明色設定
+            ImageAttributes vAttr = new ImageAttributes();
+            vAttr.SetColorKey(Color.FromArgb(0), Color.FromArgb(0));
+
+            using (Graphics g = Graphics.FromImage(miniBitmap))
             {
-                if (string.IsNullOrEmpty(_document.MapId) || !Share.MapDataList.ContainsKey(_document.MapId))
-                    return;
-
-                Struct.L1Map currentMap = Share.MapDataList[_document.MapId];
-                int blockWidth = 64 * 24 * 2;  // 3072
-                int blockHeight = 64 * 12 * 2; // 1536
-
-                int mapWidth = _viewState.MapWidth;
-                int mapHeight = _viewState.MapHeight;
-
-                if (mapWidth <= 0 || mapHeight <= 0)
-                    return;
+                g.Clear(Color.Black);
 
                 // 建立勾選的 S32 檔案清單
                 HashSet<string> checkedFilePaths = new HashSet<string>();
@@ -1893,54 +1900,105 @@ namespace L1FlyMapViewer
                     }
                 }
 
-                // 創建整張地圖的 Bitmap
-                if (_miniMapFullBitmap != null)
-                    _miniMapFullBitmap.Dispose();
-                _miniMapFullBitmap = new Bitmap(mapWidth, mapHeight, PixelFormat.Format16bppRgb555);
+                // 使用與主地圖相同的排序方式
+                var sortedFilePaths = Utils.SortDesc(_document.S32Files.Keys);
 
-                ImageAttributes vAttr = new ImageAttributes();
-                vAttr.SetColorKey(Color.FromArgb(0), Color.FromArgb(0));
-
-                using (Graphics g = Graphics.FromImage(_miniMapFullBitmap))
+                foreach (object filePathObj in sortedFilePaths)
                 {
-                    // 使用與 RenderViewport 相同的排序方式
-                    var sortedFilePaths = Utils.SortDesc(_document.S32Files.Keys);
+                    string filePath = filePathObj as string;
+                    if (filePath == null || !_document.S32Files.ContainsKey(filePath)) continue;
+                    if (!checkedFilePaths.Contains(filePath)) continue;
 
-                    foreach (object filePathObj in sortedFilePaths)
+                    var s32Data = _document.S32Files[filePath];
+
+                    // 使用與主地圖相同的座標計算
+                    int[] loc = s32Data.SegInfo.GetLoc(1.0);
+                    int blockX = loc[0];
+                    int blockY = loc[1];
+
+                    // 渲染這個 S32 區塊（只渲染 Layer1）
+                    using (Bitmap blockBmp = RenderS32Block(s32Data, true, false))
                     {
-                        string filePath = filePathObj as string;
-                        if (filePath == null || !_document.S32Files.ContainsKey(filePath)) continue;
-                        if (!checkedFilePaths.Contains(filePath)) continue;
+                        // 縮小繪製到小地圖
+                        int destX = (int)(blockX * scale);
+                        int destY = (int)(blockY * scale);
+                        int destW = (int)(blockWidth * scale);
+                        int destH = (int)(blockHeight * scale);
 
-                        var s32Data = _document.S32Files[filePath];
-                        int[] loc = s32Data.SegInfo.GetLoc(1.0);
-                        int mx = loc[0];
-                        int my = loc[1];
-
-                        // 渲染這個 S32 區塊
-                        Bitmap blockBmp = RenderS32Block(s32Data, chkLayer1.Checked, chkLayer4.Checked);
-
-                        // 繪製到整張地圖上
-                        g.DrawImage(blockBmp, new Rectangle(mx, my, blockBmp.Width, blockBmp.Height),
-                            0, 0, blockBmp.Width, blockBmp.Height, GraphicsUnit.Pixel, vAttr);
-
-                        blockBmp.Dispose();
+                        g.DrawImage(blockBmp,
+                            new Rectangle(destX, destY, destW, destH),
+                            0, 0, blockBmp.Width, blockBmp.Height,
+                            GraphicsUnit.Pixel, vAttr);
                     }
                 }
             }
-            catch
+
+            // 更新快取
+            lock (_miniMapLock)
             {
-                // 忽略錯誤
+                if (_miniMapFullBitmap != null)
+                    _miniMapFullBitmap.Dispose();
+                _miniMapFullBitmap = miniBitmap;
             }
         }
 
-        // 清除小地圖快取（地圖變更時呼叫）
+        /// <summary>
+        /// 只更新小地圖紅框位置（不重新渲染底圖）
+        /// </summary>
+        private void UpdateMiniMapRedBox()
+        {
+            lock (_miniMapLock)
+            {
+                if (_miniMapFullBitmap == null)
+                    return;
+
+                // 建立顯示圖（底圖 + 紅框）
+                Bitmap displayBitmap = new Bitmap(MINIMAP_SIZE, MINIMAP_SIZE);
+                using (Graphics g = Graphics.FromImage(displayBitmap))
+                {
+                    g.Clear(Color.Black);
+
+                    // 繪製小地圖底圖（置中）
+                    g.DrawImage(_miniMapFullBitmap, _miniMapOffsetX, _miniMapOffsetY);
+
+                    // 繪製視窗位置紅框
+                    if (s32MapPanel.Width > 0 && s32MapPanel.Height > 0)
+                    {
+                        int scrollX = _viewState.ScrollX;
+                        int scrollY = _viewState.ScrollY;
+                        int viewportWidthWorld = (int)(s32MapPanel.Width / s32ZoomLevel);
+                        int viewportHeightWorld = (int)(s32MapPanel.Height / s32ZoomLevel);
+
+                        int viewX = (int)(scrollX * _miniMapScale) + _miniMapOffsetX;
+                        int viewY = (int)(scrollY * _miniMapScale) + _miniMapOffsetY;
+                        int viewWidth = (int)(viewportWidthWorld * _miniMapScale);
+                        int viewHeight = (int)(viewportHeightWorld * _miniMapScale);
+
+                        using (Pen viewPortPen = new Pen(Color.Red, 2))
+                        {
+                            g.DrawRectangle(viewPortPen, viewX, viewY, viewWidth, viewHeight);
+                        }
+                    }
+                }
+
+                if (miniMapPictureBox.Image != null)
+                    miniMapPictureBox.Image.Dispose();
+                miniMapPictureBox.Image = displayBitmap;
+            }
+        }
+
+        /// <summary>
+        /// 清除小地圖快取（地圖變更時呼叫）
+        /// </summary>
         private void ClearMiniMapCache()
         {
-            if (_miniMapFullBitmap != null)
+            lock (_miniMapLock)
             {
-                _miniMapFullBitmap.Dispose();
-                _miniMapFullBitmap = null;
+                if (_miniMapFullBitmap != null)
+                {
+                    _miniMapFullBitmap.Dispose();
+                    _miniMapFullBitmap = null;
+                }
             }
         }
 
@@ -2266,8 +2324,8 @@ namespace L1FlyMapViewer
                 if (pictureWidth <= 0 || pictureHeight <= 0)
                     return;
 
-                int miniWidth = 260;
-                int miniHeight = 260;
+                int miniWidth = MINIMAP_SIZE;
+                int miniHeight = MINIMAP_SIZE;
 
                 // 計算小地圖中圖片的縮放和偏移（與 UpdateMiniMap 一致）
                 float scaleX = (float)miniWidth / pictureWidth;
@@ -2316,77 +2374,13 @@ namespace L1FlyMapViewer
                 {
                     // 拖拽時只更新小地圖紅框位置和重繪（快速繪製）
                     s32PictureBox.Invalidate();
-                    UpdateMiniMapRedBox(newScrollX, newScrollY);
+                    UpdateMiniMapRedBox();
                 }
             }
             catch
             {
                 // 忽略錯誤
             }
-        }
-
-        // 快速更新小地圖紅框位置（不重繪整張小地圖）
-        // scrollX, scrollY 是世界座標
-        private void UpdateMiniMapRedBox(int scrollXWorld, int scrollYWorld)
-        {
-            try
-            {
-                int pictureWidth = _viewState.MapWidth;
-                int pictureHeight = _viewState.MapHeight;
-
-                if (pictureWidth <= 0 || pictureHeight <= 0)
-                    return;
-
-                // 如果沒有完整小地圖，先渲染
-                if (_miniMapFullBitmap == null)
-                {
-                    UpdateMiniMap();
-                    return;
-                }
-
-                int miniWidth = 260;
-                int miniHeight = 260;
-
-                float scaleX = (float)miniWidth / pictureWidth;
-                float scaleY = (float)miniHeight / pictureHeight;
-                float scale = Math.Min(scaleX, scaleY);
-
-                int scaledWidth = (int)(pictureWidth * scale);
-                int scaledHeight = (int)(pictureHeight * scale);
-                int offsetX = (miniWidth - scaledWidth) / 2;
-                int offsetY = (miniHeight - scaledHeight) / 2;
-
-                // 建立顯示圖
-                Bitmap miniMap = new Bitmap(miniWidth, miniHeight);
-                using (Graphics g = Graphics.FromImage(miniMap))
-                {
-                    g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
-                    g.FillRectangle(Brushes.Black, 0, 0, miniWidth, miniHeight);
-
-                    // 繪製完整的小地圖底圖
-                    g.DrawImage(_miniMapFullBitmap, offsetX, offsetY, scaledWidth, scaledHeight);
-
-                    // Viewport 大小（世界座標）
-                    int viewportWidthWorld = (int)(s32MapPanel.Width / s32ZoomLevel);
-                    int viewportHeightWorld = (int)(s32MapPanel.Height / s32ZoomLevel);
-
-                    // 轉換為小地圖座標
-                    int viewX = (int)(scrollXWorld * scale) + offsetX;
-                    int viewY = (int)(scrollYWorld * scale) + offsetY;
-                    int viewWidth = (int)(viewportWidthWorld * scale);
-                    int viewHeight = (int)(viewportHeightWorld * scale);
-
-                    using (Pen viewPortPen = new Pen(Color.Red, 2))
-                    {
-                        g.DrawRectangle(viewPortPen, viewX, viewY, viewWidth, viewHeight);
-                    }
-                }
-
-                if (this.miniMapPictureBox.Image != null)
-                    this.miniMapPictureBox.Image.Dispose();
-                this.miniMapPictureBox.Image = miniMap;
-            }
-            catch { }
         }
 
         // 小地圖點擊跳轉（保留給滑鼠右鍵查詢 S32 檔案用）
@@ -2404,8 +2398,8 @@ namespace L1FlyMapViewer
                     if (pictureWidth <= 0 || pictureHeight <= 0)
                         return;
 
-                    int miniWidth = 260;
-                    int miniHeight = 260;
+                    int miniWidth = MINIMAP_SIZE;
+                    int miniHeight = MINIMAP_SIZE;
 
                     float scaleX = (float)miniWidth / pictureWidth;
                     float scaleY = (float)miniHeight / pictureHeight;
@@ -2616,6 +2610,9 @@ namespace L1FlyMapViewer
         // 載入當前地圖的 s32 檔案清單並載入所有 S32 資料
         private void LoadS32FileList(string mapId)
         {
+            var totalStopwatch = Stopwatch.StartNew();
+            var phaseStopwatch = new Stopwatch();
+
             lstS32Files.Items.Clear();
             _document.S32Files.Clear();
             _document.MapId = mapId;
@@ -2626,7 +2623,8 @@ namespace L1FlyMapViewer
 
             Struct.L1Map currentMap = Share.MapDataList[mapId];
 
-            // 先快速添加清單項目（不載入資料）
+            // 階段 1: UI 清單建立
+            phaseStopwatch.Restart();
             List<S32FileItem> s32FileItems = new List<S32FileItem>();
             foreach (var kvp in currentMap.FullFileNameList)
             {
@@ -2652,6 +2650,7 @@ namespace L1FlyMapViewer
                     s32FileItems.Add(item);
                 }
             }
+            long uiListMs = phaseStopwatch.ElapsedMilliseconds;
 
             // 自動選擇第一個S32檔案
             if (lstS32Files.Items.Count > 0)
@@ -2664,30 +2663,30 @@ namespace L1FlyMapViewer
             // 使用背景執行緒順序載入（避免並行造成磁碟競爭）
             Task.Run(() =>
             {
+                long totalFileReadMs = 0;
+                long totalParseMs = 0;
                 int loadedCount = 0;
 
                 foreach (var item in s32FileItems)
                 {
                     try
                     {
+                        // 檔案讀取時間
+                        phaseStopwatch.Restart();
                         byte[] data = File.ReadAllBytes(item.FilePath);
+                        totalFileReadMs += phaseStopwatch.ElapsedMilliseconds;
+
+                        // S32 解析時間
+                        phaseStopwatch.Restart();
                         S32Data s32Data = ParseS32File(data);
+                        totalParseMs += phaseStopwatch.ElapsedMilliseconds;
+
                         s32Data.FilePath = item.FilePath;
                         s32Data.SegInfo = item.SegInfo;
                         s32Data.IsModified = false;
                         _document.S32Files[item.FilePath] = s32Data;
 
                         loadedCount++;
-
-                        // 更新進度（每5個更新一次UI）
-                        if (loadedCount % 5 == 0 || loadedCount == s32FileItems.Count)
-                        {
-                            int count = loadedCount;
-                            this.Invoke((MethodInvoker)delegate
-                            {
-                                this.toolStripStatusLabel1.Text = $"已載入 {count}/{s32FileItems.Count} 個 S32 檔案...";
-                            });
-                        }
                     }
                     catch (Exception ex)
                     {
@@ -2695,23 +2694,91 @@ namespace L1FlyMapViewer
                     }
                 }
 
+                // 記錄背景載入完成時間
+                long bgLoadMs = totalStopwatch.ElapsedMilliseconds;
+
                 // 載入完成後更新 UI
                 this.Invoke((MethodInvoker)delegate
                 {
-                    this.toolStripStatusLabel1.Text = $"已載入 {_document.S32Files.Count} 個 S32 檔案";
+                    long invokeStartMs = totalStopwatch.ElapsedMilliseconds;
+                    long invokeOverheadMs = invokeStartMs - bgLoadMs;
 
-                    // 自動渲染整張地圖和更新 Tile 清單
+                    // 階段 3: 設定初始捲動位置到地圖中央（在渲染之前）
+                    phaseStopwatch.Restart();
+                    if (_document.S32Files.Count > 0)
+                    {
+                        SetInitialScrollToCenter(currentMap);
+                    }
+                    long scrollSetupMs = phaseStopwatch.ElapsedMilliseconds;
+
+                    // 階段 4: Viewport 渲染（已經在中央位置）
+                    phaseStopwatch.Restart();
                     if (_document.S32Files.Count > 0)
                     {
                         RenderS32Map();
-                        UpdateTileList();
-
-                        // 更新群組縮圖列表（載入時執行一次）
-                        UpdateGroupThumbnailsList();
-
-                        // 捲動到地圖中間
-                        ScrollToMapCenter();
                     }
+                    long viewportRenderMs = phaseStopwatch.ElapsedMilliseconds;
+
+                    // 階段 5: 小地圖更新
+                    phaseStopwatch.Restart();
+                    if (_document.S32Files.Count > 0)
+                    {
+                        UpdateMiniMap();
+                    }
+                    long miniMapMs = phaseStopwatch.ElapsedMilliseconds;
+
+                    // 階段 6: Tile 列表更新
+                    phaseStopwatch.Restart();
+                    if (_document.S32Files.Count > 0)
+                    {
+                        UpdateTileList();
+                    }
+                    long tileListMs = phaseStopwatch.ElapsedMilliseconds;
+
+                    // 階段 7: 群組縮圖更新（背景執行，不計入載入時間）
+                    phaseStopwatch.Restart();
+                    if (_document.S32Files.Count > 0)
+                    {
+                        UpdateGroupThumbnailsList();
+                    }
+                    long thumbnailStartMs = phaseStopwatch.ElapsedMilliseconds;
+
+                    totalStopwatch.Stop();
+                    long totalMs = totalStopwatch.ElapsedMilliseconds;
+
+                    // 計算各階段佔比
+                    long sumMs = uiListMs + totalFileReadMs + totalParseMs + invokeOverheadMs + scrollSetupMs + viewportRenderMs + miniMapMs + tileListMs + thumbnailStartMs;
+                    long unmeasuredMs = totalMs - sumMs;
+
+                    // 顯示載入時間統計（群組縮圖在背景執行，完成後會更新自己的標籤）
+                    string stats = $"Loaded ({_document.S32Files.Count} S32) | " +
+                                   $"Total: {totalMs}ms | " +
+                                   $"UI: {uiListMs}ms | " +
+                                   $"FileRead: {totalFileReadMs}ms | " +
+                                   $"Parse: {totalParseMs}ms | " +
+                                   $"Viewport: {viewportRenderMs}ms | " +
+                                   $"TileList: {tileListMs}ms | " +
+                                   $"Thumbnails: background";
+
+                    this.toolStripStatusLabel1.Text = stats;
+
+                    // Console log detailed timing
+                    Console.WriteLine("========================================");
+                    Console.WriteLine($"[LOAD TIMING] Map: {mapId}, S32 Files: {_document.S32Files.Count}");
+                    Console.WriteLine("========================================");
+                    Console.WriteLine($"  UI List:        {uiListMs,6} ms  ({(uiListMs * 100.0 / totalMs),5:F1}%)");
+                    Console.WriteLine($"  File Read:      {totalFileReadMs,6} ms  ({(totalFileReadMs * 100.0 / totalMs),5:F1}%)  [{s32FileItems.Count} files]");
+                    Console.WriteLine($"  S32 Parse:      {totalParseMs,6} ms  ({(totalParseMs * 100.0 / totalMs),5:F1}%)");
+                    Console.WriteLine($"  Invoke Wait:    {invokeOverheadMs,6} ms  ({(invokeOverheadMs * 100.0 / totalMs),5:F1}%)  [thread switch]");
+                    Console.WriteLine($"  Scroll Setup:   {scrollSetupMs,6} ms  ({(scrollSetupMs * 100.0 / totalMs),5:F1}%)  [set center pos]");
+                    Console.WriteLine($"  Viewport:       {viewportRenderMs,6} ms  ({(viewportRenderMs * 100.0 / totalMs),5:F1}%)");
+                    Console.WriteLine($"  Mini Map:       {miniMapMs,6} ms  ({(miniMapMs * 100.0 / totalMs),5:F1}%)");
+                    Console.WriteLine($"  Tile List:      {tileListMs,6} ms  ({(tileListMs * 100.0 / totalMs),5:F1}%)");
+                    Console.WriteLine($"  Thumb Start:    {thumbnailStartMs,6} ms  ({(thumbnailStartMs * 100.0 / totalMs),5:F1}%)  [async start]");
+                    Console.WriteLine($"  Unmeasured:     {unmeasuredMs,6} ms  ({(unmeasuredMs * 100.0 / totalMs),5:F1}%)");
+                    Console.WriteLine("----------------------------------------");
+                    Console.WriteLine($"  TOTAL:          {totalMs,6} ms  (thumbnails in background)");
+                    Console.WriteLine("========================================");
                 });
             });
         }
@@ -3396,107 +3463,172 @@ namespace L1FlyMapViewer
             }
         }
 
-        // 渲染指定範圍的 Viewport
+        // Viewport 渲染取消 token
+        private System.Threading.CancellationTokenSource _viewportRenderCts = null;
+        private readonly object _viewportRenderLock = new object();
+
+        // 渲染指定範圍的 Viewport（非同步背景渲染）
         private void RenderViewport(Rectangle worldRect, Struct.L1Map currentMap, HashSet<string> checkedFilePaths)
         {
-            int blockWidth = 64 * 24 * 2;  // 3072
-            int blockHeight = 64 * 12 * 2; // 1536
-
-            // 創建 Viewport Bitmap
-            Bitmap viewportBitmap = new Bitmap(worldRect.Width, worldRect.Height, PixelFormat.Format16bppRgb555);
-
-            ImageAttributes vAttr = new ImageAttributes();
-            vAttr.SetColorKey(Color.FromArgb(0), Color.FromArgb(0)); // 透明色
-
-            using (Graphics g = Graphics.FromImage(viewportBitmap))
+            // 取消之前的渲染任務
+            lock (_viewportRenderLock)
             {
-                // 使用與原始 L1MapHelper.LoadMap 完全相同的排序方式（Utils.SortDesc）
-                var sortedFilePaths = Utils.SortDesc(_document.S32Files.Keys);
-
-                // 遍歷所有 S32 檔案
-                foreach (object filePathObj in sortedFilePaths)
+                if (_viewportRenderCts != null)
                 {
-                    string filePath = filePathObj as string;
-                    if (filePath == null || !_document.S32Files.ContainsKey(filePath)) continue;
-
-                    // 只渲染有勾選的 S32
-                    if (!checkedFilePaths.Contains(filePath)) continue;
-
-                    var s32Data = _document.S32Files[filePath];
-                    // 使用 GetLoc 計算區塊位置（世界座標）
-                    int[] loc = s32Data.SegInfo.GetLoc(1.0);
-                    int mx = loc[0];
-                    int my = loc[1];
-
-                    // 檢查是否與渲染範圍相交
-                    Rectangle blockRect = new Rectangle(mx, my, blockWidth, blockHeight);
-                    if (!blockRect.IntersectsWith(worldRect))
-                        continue;
-
-                    // 為這個 S32 生成獨立的 bitmap
-                    Bitmap blockBmp = RenderS32Block(s32Data, chkLayer1.Checked, chkLayer4.Checked);
-
-                    // 計算繪製位置（減去 worldRect 原點偏移）
-                    int drawX = mx - worldRect.X;
-                    int drawY = my - worldRect.Y;
-
-                    // 合併到 Viewport Bitmap
-                    g.DrawImage(blockBmp, new Rectangle(drawX, drawY, blockBmp.Width, blockBmp.Height),
-                        0, 0, blockBmp.Width, blockBmp.Height, GraphicsUnit.Pixel, vAttr);
-
-                    blockBmp.Dispose();
+                    _viewportRenderCts.Cancel();
+                    _viewportRenderCts.Dispose();
                 }
+                _viewportRenderCts = new System.Threading.CancellationTokenSource();
             }
+            var cancellationToken = _viewportRenderCts.Token;
 
-            // 繪製覆蓋層（需要傳入世界座標偏移）
-            if (chkLayer3.Checked)
-            {
-                DrawLayer3AttributesViewport(viewportBitmap, currentMap, worldRect);
-            }
+            // 預先讀取 UI 狀態（在 UI Thread）
+            bool showLayer1 = chkLayer1.Checked;
+            bool showLayer4 = chkLayer4.Checked;
+            bool showLayer3 = chkLayer3.Checked;
+            bool showPassable = chkShowPassable.Checked;
+            bool showGrid = chkShowGrid.Checked;
+            bool showS32Boundary = chkShowS32Boundary.Checked;
+            bool hasHighlight = _editState.HighlightedS32Data != null && _editState.HighlightedCellX >= 0 && _editState.HighlightedCellY >= 0;
+            int panelWidth = s32MapPanel.Width;
+            int panelHeight = s32MapPanel.Height;
 
-            if (chkShowPassable.Checked)
-            {
-                DrawPassableOverlayViewport(viewportBitmap, currentMap, worldRect);
-            }
+            // 複製需要的資料（避免跨執行緒存取）
+            var s32FilesSnapshot = _document.S32Files.ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
 
-            if (chkShowGrid.Checked)
-            {
-                DrawS32GridViewport(viewportBitmap, currentMap, worldRect);
-                DrawCoordinateLabelsViewport(viewportBitmap, currentMap, worldRect);
-            }
-
-            if (chkShowS32Boundary.Checked)
-            {
-                DrawS32BoundaryOnlyViewport(viewportBitmap, currentMap, worldRect);
-            }
-
-            if (_editState.HighlightedS32Data != null && _editState.HighlightedCellX >= 0 && _editState.HighlightedCellY >= 0)
-            {
-                DrawHighlightedCellViewport(viewportBitmap, currentMap, worldRect);
-            }
-
-            // 保存渲染結果元數據
-            _viewState.SetRenderResult(worldRect.X, worldRect.Y, worldRect.Width, worldRect.Height, _viewState.ZoomLevel);
-
-            // 釋放舊的 Viewport Bitmap
-            if (_viewportBitmap != null)
-                _viewportBitmap.Dispose();
-            _viewportBitmap = viewportBitmap;
-
-            // 更新 PictureBox - 設定為 Panel 大小（不使用 AutoScroll）
-            if (s32PictureBox.Image != null)
-                s32PictureBox.Image.Dispose();
-
-            s32PictureBox.Image = null;
-            // PictureBox 大小等於 Panel 的可見區域
-            s32PictureBox.Size = new Size(s32MapPanel.Width, s32MapPanel.Height);
+            // 先設定 PictureBox（讓 UI 立即反應）
+            s32PictureBox.Size = new Size(panelWidth, panelHeight);
             s32PictureBox.Location = new Point(0, 0);
-
-            // 禁用 Panel 的 AutoScroll（我們用拖曳來移動）
             s32MapPanel.AutoScroll = false;
 
-            // 強制重繪
-            s32PictureBox.Invalidate();
+            // 背景執行渲染
+            Task.Run(() =>
+            {
+                if (cancellationToken.IsCancellationRequested) return;
+
+                int blockWidth = 64 * 24 * 2;  // 3072
+                int blockHeight = 64 * 12 * 2; // 1536
+
+                // 創建 Viewport Bitmap
+                Bitmap viewportBitmap = new Bitmap(worldRect.Width, worldRect.Height, PixelFormat.Format16bppRgb555);
+
+                ImageAttributes vAttr = new ImageAttributes();
+                vAttr.SetColorKey(Color.FromArgb(0), Color.FromArgb(0)); // 透明色
+
+                using (Graphics g = Graphics.FromImage(viewportBitmap))
+                {
+                    // 使用與原始 L1MapHelper.LoadMap 完全相同的排序方式（Utils.SortDesc）
+                    var sortedFilePaths = Utils.SortDesc(s32FilesSnapshot.Keys);
+
+                    // 遍歷所有 S32 檔案
+                    foreach (object filePathObj in sortedFilePaths)
+                    {
+                        if (cancellationToken.IsCancellationRequested)
+                        {
+                            viewportBitmap.Dispose();
+                            return;
+                        }
+
+                        string filePath = filePathObj as string;
+                        if (filePath == null || !s32FilesSnapshot.ContainsKey(filePath)) continue;
+
+                        // 只渲染有勾選的 S32
+                        if (!checkedFilePaths.Contains(filePath)) continue;
+
+                        var s32Data = s32FilesSnapshot[filePath];
+                        // 使用 GetLoc 計算區塊位置（世界座標）
+                        int[] loc = s32Data.SegInfo.GetLoc(1.0);
+                        int mx = loc[0];
+                        int my = loc[1];
+
+                        // 檢查是否與渲染範圍相交
+                        Rectangle blockRect = new Rectangle(mx, my, blockWidth, blockHeight);
+                        if (!blockRect.IntersectsWith(worldRect))
+                            continue;
+
+                        // 為這個 S32 生成獨立的 bitmap
+                        Bitmap blockBmp = RenderS32Block(s32Data, showLayer1, showLayer4);
+
+                        // 計算繪製位置（減去 worldRect 原點偏移）
+                        int drawX = mx - worldRect.X;
+                        int drawY = my - worldRect.Y;
+
+                        // 合併到 Viewport Bitmap
+                        g.DrawImage(blockBmp, new Rectangle(drawX, drawY, blockBmp.Width, blockBmp.Height),
+                            0, 0, blockBmp.Width, blockBmp.Height, GraphicsUnit.Pixel, vAttr);
+
+                        blockBmp.Dispose();
+                    }
+                }
+
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    viewportBitmap.Dispose();
+                    return;
+                }
+
+                // 繪製覆蓋層（需要傳入世界座標偏移）
+                if (showLayer3)
+                {
+                    DrawLayer3AttributesViewport(viewportBitmap, currentMap, worldRect);
+                }
+
+                if (showPassable)
+                {
+                    DrawPassableOverlayViewport(viewportBitmap, currentMap, worldRect);
+                }
+
+                if (showGrid)
+                {
+                    DrawS32GridViewport(viewportBitmap, currentMap, worldRect);
+                    DrawCoordinateLabelsViewport(viewportBitmap, currentMap, worldRect);
+                }
+
+                if (showS32Boundary)
+                {
+                    DrawS32BoundaryOnlyViewport(viewportBitmap, currentMap, worldRect);
+                }
+
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    viewportBitmap.Dispose();
+                    return;
+                }
+
+                // 回到 UI Thread 更新
+                try
+                {
+                    this.BeginInvoke((MethodInvoker)delegate
+                    {
+                        if (cancellationToken.IsCancellationRequested)
+                        {
+                            viewportBitmap.Dispose();
+                            return;
+                        }
+
+                        // 如果有高亮，在 UI Thread 繪製（因為需要存取 _editState）
+                        if (hasHighlight && _editState.HighlightedS32Data != null)
+                        {
+                            DrawHighlightedCellViewport(viewportBitmap, currentMap, worldRect);
+                        }
+
+                        // 保存渲染結果元數據
+                        _viewState.SetRenderResult(worldRect.X, worldRect.Y, worldRect.Width, worldRect.Height, _viewState.ZoomLevel);
+
+                        // 釋放舊的 Viewport Bitmap
+                        if (_viewportBitmap != null)
+                            _viewportBitmap.Dispose();
+                        _viewportBitmap = viewportBitmap;
+
+                        // 強制重繪
+                        s32PictureBox.Invalidate();
+                    });
+                }
+                catch
+                {
+                    viewportBitmap.Dispose();
+                }
+            });
         }
 
         // 檢查是否需要重新渲染並執行
@@ -3594,7 +3726,40 @@ namespace L1FlyMapViewer
             return result;
         }
 
-        // 捲動到地圖中央
+        // 設定初始捲動位置到地圖中央（不渲染，用於載入時先設定位置）
+        private void SetInitialScrollToCenter(Struct.L1Map currentMap)
+        {
+            // 計算地圖像素大小
+            int blockWidth = 64 * 24 * 2;  // 3072
+            int blockHeight = 64 * 12 * 2; // 1536
+            int mapWidth = currentMap.nBlockCountX * blockWidth;
+            int mapHeight = currentMap.nBlockCountX * blockHeight / 2 + currentMap.nBlockCountY * blockHeight / 2;
+
+            // 更新 ViewState（RenderS32Map 會用到）
+            _viewState.MapWidth = mapWidth;
+            _viewState.MapHeight = mapHeight;
+            _viewState.ViewportWidth = s32MapPanel.Width;
+            _viewState.ViewportHeight = s32MapPanel.Height;
+            _viewState.ZoomLevel = s32ZoomLevel;
+
+            // 計算中央位置（世界座標）
+            int viewportWidthWorld = (int)(s32MapPanel.Width / s32ZoomLevel);
+            int viewportHeightWorld = (int)(s32MapPanel.Height / s32ZoomLevel);
+            int centerX = mapWidth / 2 - viewportWidthWorld / 2;
+            int centerY = mapHeight / 2 - viewportHeightWorld / 2;
+
+            // 限制在有效範圍內
+            int maxScrollX = Math.Max(0, mapWidth - viewportWidthWorld);
+            int maxScrollY = Math.Max(0, mapHeight - viewportHeightWorld);
+            centerX = Math.Max(0, Math.Min(centerX, maxScrollX));
+            centerY = Math.Max(0, Math.Min(centerY, maxScrollY));
+
+            // 只設定捲動位置，不觸發渲染
+            _viewState.SetScrollSilent(centerX, centerY);
+            _viewState.UpdateScrollLimits(mapWidth, mapHeight);
+        }
+
+        // 捲動到地圖中央（含重新渲染）
         private void ScrollToMapCenter()
         {
             int mapWidth = _viewState.MapWidth;
@@ -4377,25 +4542,21 @@ namespace L1FlyMapViewer
         {
             try
             {
-                // 使用快取減少重複讀取
+                // 使用快取減少重複讀取（ConcurrentDictionary.GetOrAdd 是執行緒安全的）
                 string cacheKey = $"{tileId}_{indexId}";
-                byte[] tilData;
-
-                if (!tileDataCache.TryGetValue(cacheKey, out tilData))
+                byte[] tilData = tileDataCache.GetOrAdd(cacheKey, _ =>
                 {
-                    // 快取中沒有，需要讀取
                     string key = $"{tileId}.til";
                     byte[] data = L1PakReader.UnPack("Tile", key);
-                    if (data == null) return;
+                    if (data == null) return null;
 
                     var tilArray = L1Til.Parse(data);
-                    if (indexId >= tilArray.Count) return;
+                    if (indexId >= tilArray.Count) return null;
 
-                    tilData = tilArray[indexId];
+                    return tilArray[indexId];
+                });
 
-                    // 加入快取
-                    tileDataCache[cacheKey] = tilData;
-                }
+                if (tilData == null) return;
 
                 fixed (byte* til_ptr_fixed = tilData)
                 {
@@ -4528,25 +4689,21 @@ namespace L1FlyMapViewer
         {
             try
             {
-                // 使用快取減少重複讀取
+                // 使用快取減少重複讀取（ConcurrentDictionary.GetOrAdd 是執行緒安全的）
                 string cacheKey = $"{tileId}_{indexId}";
-                byte[] tilData;
-
-                if (!tileDataCache.TryGetValue(cacheKey, out tilData))
+                byte[] tilData = tileDataCache.GetOrAdd(cacheKey, _ =>
                 {
-                    // 快取中沒有，需要讀取
                     string key = $"{tileId}.til";
                     byte[] data = L1PakReader.UnPack("Tile", key);
-                    if (data == null) return;
+                    if (data == null) return null;
 
                     var tilArray = L1Til.Parse(data);
-                    if (indexId >= tilArray.Count) return;
+                    if (indexId >= tilArray.Count) return null;
 
-                    tilData = tilArray[indexId];
+                    return tilArray[indexId];
+                });
 
-                    // 加入快取
-                    tileDataCache[cacheKey] = tilData;
-                }
+                if (tilData == null) return;
 
                 fixed (byte* til_ptr_fixed = tilData)
                 {
@@ -8608,9 +8765,21 @@ namespace L1FlyMapViewer
             UpdateGroupThumbnailsList(null);  // 不帶選取區域時顯示全部
         }
 
-        // 更新群組縮圖列表（可指定只顯示選取區域內的群組）
+        // 群組縮圖產生取消 token
+        private System.Threading.CancellationTokenSource _groupThumbnailCts = null;
+
+        // 更新群組縮圖列表（可指定只顯示選取區域內的群組）- 非同步版本
         private void UpdateGroupThumbnailsList(List<SelectedCell> selectedCells)
         {
+            // 取消之前的縮圖產生任務
+            if (_groupThumbnailCts != null)
+            {
+                _groupThumbnailCts.Cancel();
+                _groupThumbnailCts.Dispose();
+            }
+            _groupThumbnailCts = new System.Threading.CancellationTokenSource();
+            var cancellationToken = _groupThumbnailCts.Token;
+
             lvGroupThumbnails.Items.Clear();
 
             if (lvGroupThumbnails.LargeImageList != null)
@@ -8693,37 +8862,142 @@ namespace L1FlyMapViewer
                 return;
             }
 
-            // 建立 ImageList
-            ImageList imageList = new ImageList();
-            imageList.ImageSize = new Size(80, 80);
-            imageList.ColorDepth = ColorDepth.Depth32Bit;
+            int totalGroups = allGroupsDict.Count;
+            bool isSelectedMode = selectedCells != null && selectedCells.Count > 0;
 
-            int thumbnailIndex = 0;
-            foreach (var kvp in allGroupsDict.OrderBy(k => k.Key))
+            // 顯示載入中狀態
+            lblGroupThumbnails.Text = isSelectedMode
+                ? $"選取區域群組 (載入中 0/{totalGroups})"
+                : $"群組縮圖列表 (載入中 0/{totalGroups})";
+
+            // 準備群組資料供背景執行緒使用
+            var groupList = allGroupsDict.OrderBy(k => k.Key).ToList();
+
+            // 在背景執行緒並行產生縮圖
+            Task.Run(() =>
             {
-                int groupId = kvp.Key;
-                var objects = kvp.Value;
+                var stopwatch = Stopwatch.StartNew();
 
-                // 生成群組縮圖
-                Bitmap thumbnail = GenerateGroupThumbnail(objects, 80);
-                if (thumbnail != null)
+                // 使用 Parallel.ForEach 並行產生縮圖
+                var thumbnailResults = new System.Collections.Concurrent.ConcurrentDictionary<int, (int groupId, int objectCount, Bitmap thumbnail, List<(S32Data s32, ObjectTile obj)> objects)>();
+
+                int processedCount = 0;
+                int lastReportedCount = 0;
+
+                Parallel.ForEach(groupList, new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount }, (kvp, state) =>
                 {
-                    imageList.Images.Add(thumbnail);
+                    if (cancellationToken.IsCancellationRequested)
+                    {
+                        state.Stop();
+                        return;
+                    }
 
-                    ListViewItem item = new ListViewItem($"G{groupId} ({objects.Count})");
-                    item.ImageIndex = thumbnailIndex;
-                    item.Tag = new GroupThumbnailInfo { GroupId = groupId, Objects = objects };
-                    lvGroupThumbnails.Items.Add(item);
+                    int groupId = kvp.Key;
+                    var objects = kvp.Value;
 
-                    thumbnailIndex++;
+                    // 生成群組縮圖
+                    Bitmap thumbnail = GenerateGroupThumbnail(objects, 80);
+
+                    if (thumbnail != null && !cancellationToken.IsCancellationRequested)
+                    {
+                        thumbnailResults[groupId] = (groupId, objects.Count, thumbnail, objects);
+                    }
+
+                    // 更新進度（每處理 10 個或處理完成時更新 UI）
+                    int current = System.Threading.Interlocked.Increment(ref processedCount);
+                    if (current - lastReportedCount >= 10 || current == totalGroups)
+                    {
+                        lastReportedCount = current;
+                        try
+                        {
+                            this.BeginInvoke((MethodInvoker)delegate
+                            {
+                                if (!cancellationToken.IsCancellationRequested)
+                                {
+                                    lblGroupThumbnails.Text = isSelectedMode
+                                        ? $"選取區域群組 (載入中 {current}/{totalGroups})"
+                                        : $"群組縮圖列表 (載入中 {current}/{totalGroups})";
+                                }
+                            });
+                        }
+                        catch { }
+                    }
+                });
+
+                stopwatch.Stop();
+                long elapsedMs = stopwatch.ElapsedMilliseconds;
+
+                // 如果被取消就不更新 UI
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    // 清理已產生的 Bitmap
+                    foreach (var result in thumbnailResults.Values)
+                    {
+                        result.thumbnail?.Dispose();
+                    }
+                    return;
                 }
-            }
 
-            lvGroupThumbnails.LargeImageList = imageList;
-            string labelText = selectedCells != null && selectedCells.Count > 0
-                ? $"選取區域群組 ({allGroupsDict.Count})"
-                : $"群組縮圖列表 ({allGroupsDict.Count})";
-            lblGroupThumbnails.Text = labelText;
+                // 在 UI 執行緒更新 ListView
+                try
+                {
+                    this.BeginInvoke((MethodInvoker)delegate
+                    {
+                        if (cancellationToken.IsCancellationRequested)
+                        {
+                            foreach (var result in thumbnailResults.Values)
+                            {
+                                result.thumbnail?.Dispose();
+                            }
+                            return;
+                        }
+
+                        // 建立 ImageList
+                        ImageList imageList = new ImageList();
+                        imageList.ImageSize = new Size(80, 80);
+                        imageList.ColorDepth = ColorDepth.Depth32Bit;
+
+                        lvGroupThumbnails.Items.Clear();
+                        if (lvGroupThumbnails.LargeImageList != null)
+                        {
+                            lvGroupThumbnails.LargeImageList.Dispose();
+                        }
+
+                        int thumbnailIndex = 0;
+                        foreach (var groupId in thumbnailResults.Keys.OrderBy(k => k))
+                        {
+                            var result = thumbnailResults[groupId];
+                            imageList.Images.Add(result.thumbnail);
+
+                            ListViewItem item = new ListViewItem($"G{result.groupId} ({result.objectCount})");
+                            item.ImageIndex = thumbnailIndex;
+                            item.Tag = new GroupThumbnailInfo { GroupId = result.groupId, Objects = result.objects };
+                            lvGroupThumbnails.Items.Add(item);
+
+                            thumbnailIndex++;
+                        }
+
+                        lvGroupThumbnails.LargeImageList = imageList;
+
+                        string labelText = isSelectedMode
+                            ? $"選取區域群組 ({totalGroups}) [{elapsedMs}ms]"
+                            : $"群組縮圖列表 ({totalGroups}) [{elapsedMs}ms]";
+                        lblGroupThumbnails.Text = labelText;
+
+                        // 更新狀態列，將「background」替換為實際時間
+                        if (this.toolStripStatusLabel1.Text.Contains("Thumbnails: background"))
+                        {
+                            this.toolStripStatusLabel1.Text = this.toolStripStatusLabel1.Text.Replace(
+                                "Thumbnails: background",
+                                $"Thumbnails: {elapsedMs}ms");
+                        }
+
+                        // Console log thumbnail timing
+                        Console.WriteLine($"[THUMBNAILS] Completed: {totalGroups} groups in {elapsedMs} ms");
+                    });
+                }
+                catch { }
+            });
         }
 
         // 群組縮圖資訊
@@ -8739,6 +9013,9 @@ namespace L1FlyMapViewer
             UpdateGroupThumbnailsList(null);  // 傳入 null 顯示全部
         }
 
+        // 縮圖邊框畫筆（重用避免重複建立）
+        private static readonly Pen _thumbnailBorderPen = new Pen(Color.LightGray, 1);
+
         // 生成群組縮圖（將同 GroupId 的物件按相對位置組裝，使用與主畫布相同的繪製方式）
         private Bitmap GenerateGroupThumbnail(List<(S32Data s32, ObjectTile obj)> objects, int thumbnailSize)
         {
@@ -8752,16 +9029,20 @@ namespace L1FlyMapViewer
                 int pixelMinX = int.MaxValue, pixelMaxX = int.MinValue;
                 int pixelMinY = int.MaxValue, pixelMaxY = int.MinValue;
 
+                // 預先計算每個物件的像素座標，避免重複計算
+                var objectPixels = new List<(ObjectTile obj, int px, int py)>(objects.Count);
+
                 foreach (var item in objects)
                 {
                     var obj = item.obj;
                     // 使用與 RenderS32Block 完全相同的座標計算
-                    int baseX = 0;
-                    int baseY = 63 * 12;
-                    baseX -= 24 * (obj.X / 2);
-                    baseY -= 12 * (obj.X / 2);
+                    int halfX = obj.X / 2;
+                    int baseX = -24 * halfX;
+                    int baseY = 63 * 12 - 12 * halfX;
                     int px = baseX + obj.X * 24 + obj.Y * 24;
                     int py = baseY + obj.Y * 12;
+
+                    objectPixels.Add((obj, px, py));
 
                     pixelMinX = Math.Min(pixelMinX, px);
                     pixelMaxX = Math.Max(pixelMaxX, px + 48);  // tile 寬度約 48
@@ -8769,15 +9050,25 @@ namespace L1FlyMapViewer
                     pixelMaxY = Math.Max(pixelMaxY, py + 48);  // tile 高度預留空間
                 }
 
-                // 計算實際所需的圖片大小
-                int actualWidth = pixelMaxX - pixelMinX + 48;
-                int actualHeight = pixelMaxY - pixelMinY + 48;
+                // 計算實際所需的圖片大小（加上邊距）
+                int margin = 8;
+                int actualWidth = pixelMaxX - pixelMinX + margin * 2;
+                int actualHeight = pixelMaxY - pixelMinY + margin * 2;
 
-                // 建立暫存圖片
-                int tempWidth = Math.Max(actualWidth, 96);
-                int tempHeight = Math.Max(actualHeight, 96);
-                if (tempWidth > 2048) tempWidth = 2048;
-                if (tempHeight > 2048) tempHeight = 2048;
+                // 限制 tempBitmap 大小：縮圖只有 80px，不需要太大的暫存圖
+                // 最大 512x512 足夠，超過的會被縮放
+                int maxTempSize = 512;
+                int tempWidth = Math.Min(Math.Max(actualWidth, 64), maxTempSize);
+                int tempHeight = Math.Min(Math.Max(actualHeight, 64), maxTempSize);
+
+                // 如果實際大小超過限制，計算縮放比例
+                float preScale = 1.0f;
+                if (actualWidth > maxTempSize || actualHeight > maxTempSize)
+                {
+                    preScale = Math.Min((float)maxTempSize / actualWidth, (float)maxTempSize / actualHeight);
+                    tempWidth = (int)(actualWidth * preScale);
+                    tempHeight = (int)(actualHeight * preScale);
+                }
 
                 // 使用 16bpp 格式與主畫布相同
                 Bitmap tempBitmap = new Bitmap(tempWidth, tempHeight, PixelFormat.Format16bppRgb555);
@@ -8790,34 +9081,36 @@ namespace L1FlyMapViewer
                 {
                     byte* ptr = (byte*)bmpData.Scan0;
 
-                    // 填充白色背景 (RGB555: 0x7FFF = 白色)
+                    // 使用 Marshal.Copy 批次填充白色背景 (RGB555: 0x7FFF = 白色)
+                    // 建立一行白色資料
+                    byte[] whiteLine = new byte[rowpix];
+                    for (int x = 0; x < tempWidth; x++)
+                    {
+                        whiteLine[x * 2] = 0xFF;
+                        whiteLine[x * 2 + 1] = 0x7F;
+                    }
+                    // 批次複製到每一行
                     for (int y = 0; y < tempHeight; y++)
                     {
-                        for (int x = 0; x < tempWidth; x++)
-                        {
-                            int v = y * rowpix + (x * 2);
-                            *(ptr + v) = 0xFF;
-                            *(ptr + v + 1) = 0x7F;
-                        }
+                        System.Runtime.InteropServices.Marshal.Copy(whiteLine, 0, (IntPtr)(ptr + y * rowpix), rowpix);
                     }
 
                     // 計算偏移量，讓圖片置中
-                    int offsetX = (tempWidth - actualWidth) / 2 - pixelMinX + 24;
-                    int offsetY = (tempHeight - actualHeight) / 2 - pixelMinY + 24;
+                    int offsetX = (int)((tempWidth / 2.0f) - ((pixelMinX + pixelMaxX) / 2.0f - pixelMinX) * preScale);
+                    int offsetY = (int)((tempHeight / 2.0f) - ((pixelMinY + pixelMaxY) / 2.0f - pixelMinY) * preScale);
 
                     // 按 Layer 排序後繪製（使用與主畫布完全相同的繪製方式）
-                    foreach (var item in objects.OrderBy(o => o.obj.Layer))
+                    foreach (var item in objectPixels.OrderBy(o => o.obj.Layer))
                     {
                         var obj = item.obj;
 
-                        // 使用與 RenderS32Block 相同的座標計算
-                        int baseX = 0;
-                        int baseY = 63 * 12;
-                        baseX -= 24 * (obj.X / 2);
-                        baseY -= 12 * (obj.X / 2);
+                        // 使用預先計算的座標，套用縮放和偏移
+                        int pixelX = (int)((item.px - pixelMinX) * preScale) + offsetX - (int)(tempWidth / 2.0f - actualWidth * preScale / 2.0f);
+                        int pixelY = (int)((item.py - pixelMinY) * preScale) + offsetY - (int)(tempHeight / 2.0f - actualHeight * preScale / 2.0f);
 
-                        int pixelX = offsetX + baseX + obj.X * 24 + obj.Y * 24;
-                        int pixelY = offsetY + baseY + obj.Y * 12;
+                        // 簡化座標計算
+                        pixelX = (int)((item.px - pixelMinX + margin) * preScale);
+                        pixelY = (int)((item.py - pixelMinY + margin) * preScale);
 
                         // 使用與主畫布相同的繪製函數
                         DrawTilToBufferDirect(pixelX, pixelY, obj.TileId, obj.IndexId, rowpix, ptr, tempWidth, tempHeight);
@@ -8832,7 +9125,10 @@ namespace L1FlyMapViewer
                 {
                     // 白色底
                     g.Clear(Color.White);
-                    g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+                    // 使用較快的插值模式（縮圖不需要高品質）
+                    g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.NearestNeighbor;
+                    g.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.HighSpeed;
+                    g.CompositingQuality = System.Drawing.Drawing2D.CompositingQuality.HighSpeed;
 
                     // 保持比例縮放
                     float scaleX = (float)(thumbnailSize - 4) / tempWidth;
@@ -8845,11 +9141,8 @@ namespace L1FlyMapViewer
 
                     g.DrawImage(tempBitmap, drawX, drawY, scaledWidth, scaledHeight);
 
-                    // 加邊框
-                    using (Pen borderPen = new Pen(Color.LightGray, 1))
-                    {
-                        g.DrawRectangle(borderPen, 0, 0, thumbnailSize - 1, thumbnailSize - 1);
-                    }
+                    // 加邊框（使用重用的 Pen）
+                    g.DrawRectangle(_thumbnailBorderPen, 0, 0, thumbnailSize - 1, thumbnailSize - 1);
                 }
 
                 tempBitmap.Dispose();
