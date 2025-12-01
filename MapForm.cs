@@ -14060,6 +14060,7 @@ namespace L1FlyMapViewer
                 MessageBox.Show($"已清除 {removedCount} 個 Layer5 項目。\n\n請記得儲存 S32 檔案。", "完成",
                     MessageBoxButtons.OK, MessageBoxIcon.Information);
 
+                UpdateLayer5InvalidButton();
                 resultForm.Close();
                 RenderS32Map();
             };
@@ -14095,6 +14096,7 @@ namespace L1FlyMapViewer
                 MessageBox.Show($"已清除 {removedCount} 個 Layer5 項目。\n\n請記得儲存 S32 檔案。", "完成",
                     MessageBoxButtons.OK, MessageBoxIcon.Information);
 
+                UpdateLayer5InvalidButton();
                 resultForm.Close();
                 RenderS32Map();
             };
@@ -14117,7 +14119,7 @@ namespace L1FlyMapViewer
                 btnClose.Location = new Point(resultForm.ClientSize.Width - 100, resultForm.ClientSize.Height - 45);
             };
 
-            resultForm.ShowDialog();
+            resultForm.Show();
         }
 
         // 檢查 Layer5 異常並更新按鈕顯示狀態
