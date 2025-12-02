@@ -96,6 +96,10 @@ namespace L1FlyMapViewer
         private PassableEditMode currentPassableEditMode = PassableEditMode.None;
         private Label lblPassabilityHelp; // 通行性編輯操作說明標籤
 
+        // Layer5 透明編輯模式
+        private bool isLayer5EditMode = false;
+        private Label lblLayer5Help; // Layer5 編輯操作說明標籤
+
         // Undo 相關常數
         private const int MAX_UNDO_HISTORY = 5;
 
@@ -4086,6 +4090,10 @@ namespace L1FlyMapViewer
             {
                 chkShowS32Boundary.Checked = chkFloatS32Boundary.Checked;
             }
+            else if (sender == chkFloatLayer5)
+            {
+                chkShowLayer5.Checked = chkFloatLayer5.Checked;
+            }
 
             // 更新圖示顯示狀態
             UpdateLayerIconText();
@@ -4102,12 +4110,13 @@ namespace L1FlyMapViewer
             if (chkFloatPassable.Checked) enabledCount++;
             if (chkFloatGrid.Checked) enabledCount++;
             if (chkFloatS32Boundary.Checked) enabledCount++;
+            if (chkFloatLayer5.Checked) enabledCount++;
 
             if (enabledCount == 0)
             {
                 lblLayerIcon.ForeColor = Color.Gray;
             }
-            else if (enabledCount == 6)
+            else if (enabledCount == 7)
             {
                 lblLayerIcon.ForeColor = Color.LightGreen;
             }
@@ -4138,6 +4147,7 @@ namespace L1FlyMapViewer
             chkFloatPassable.Checked = chkShowPassable.Checked;
             chkFloatGrid.Checked = chkShowGrid.Checked;
             chkFloatS32Boundary.Checked = chkShowS32Boundary.Checked;
+            chkFloatLayer5.Checked = chkShowLayer5.Checked;
             UpdateLayerIconText();
         }
 
@@ -4211,6 +4221,10 @@ namespace L1FlyMapViewer
                 currentPassableEditMode = PassableEditMode.SetPassable;
                 btnSetPassable.BackColor = Color.LightGreen;
                 btnSetImpassable.BackColor = SystemColors.Control;
+                // 取消 Layer5 編輯模式
+                isLayer5EditMode = false;
+                btnEditLayer5.BackColor = SystemColors.Control;
+                UpdateLayer5HelpLabel();
                 // 自動顯示通行性覆蓋層
                 EnsurePassabilityLayerVisible();
                 this.toolStripStatusLabel1.Text = "允許通行模式：點擊格子設定 | Ctrl+左鍵繪製多邊形，右鍵完成";
@@ -4235,6 +4249,10 @@ namespace L1FlyMapViewer
                 currentPassableEditMode = PassableEditMode.SetImpassable;
                 btnSetImpassable.BackColor = Color.LightCoral;
                 btnSetPassable.BackColor = SystemColors.Control;
+                // 取消 Layer5 編輯模式
+                isLayer5EditMode = false;
+                btnEditLayer5.BackColor = SystemColors.Control;
+                UpdateLayer5HelpLabel();
                 // 自動顯示通行性覆蓋層
                 EnsurePassabilityLayerVisible();
                 this.toolStripStatusLabel1.Text = "禁止通行模式：點擊格子設定 | Ctrl+左鍵繪製多邊形，右鍵完成";
@@ -4252,6 +4270,77 @@ namespace L1FlyMapViewer
                 UpdateLayerIconText();
                 RenderS32Map();
             }
+        }
+
+        // 透明編輯按鈕點擊事件
+        private void btnEditLayer5_Click(object sender, EventArgs e)
+        {
+            if (isLayer5EditMode)
+            {
+                // 取消模式
+                isLayer5EditMode = false;
+                btnEditLayer5.BackColor = SystemColors.Control;
+                this.toolStripStatusLabel1.Text = "已取消透明編輯模式";
+                UpdateLayer5HelpLabel();
+            }
+            else
+            {
+                // 啟用透明編輯模式
+                isLayer5EditMode = true;
+                btnEditLayer5.BackColor = Color.FromArgb(100, 180, 255);
+                // 取消通行性編輯模式
+                currentPassableEditMode = PassableEditMode.None;
+                btnSetPassable.BackColor = SystemColors.Control;
+                btnSetImpassable.BackColor = SystemColors.Control;
+                UpdatePassabilityHelpLabel();
+                // 自動顯示 Layer5 覆蓋層
+                EnsureLayer5Visible();
+                this.toolStripStatusLabel1.Text = "透明編輯模式：左鍵添加/右鍵刪除透明設定";
+                UpdateLayer5HelpLabel();
+            }
+        }
+
+        // 確保 Layer5 圖層可見
+        private void EnsureLayer5Visible()
+        {
+            if (!chkShowLayer5.Checked)
+            {
+                chkShowLayer5.Checked = true;
+                chkFloatLayer5.Checked = true;
+                UpdateLayerIconText();
+                RenderS32Map();
+            }
+        }
+
+        // 更新 Layer5 編輯操作說明標籤
+        private void UpdateLayer5HelpLabel()
+        {
+            if (lblLayer5Help == null)
+            {
+                lblLayer5Help = new Label();
+                lblLayer5Help.AutoSize = false;
+                lblLayer5Help.Size = new Size(200, 80);
+                lblLayer5Help.BackColor = Color.FromArgb(220, 30, 30, 50);
+                lblLayer5Help.ForeColor = Color.FromArgb(100, 180, 255);
+                lblLayer5Help.Font = new Font("Microsoft JhengHei", 9F, FontStyle.Regular);
+                lblLayer5Help.Padding = new Padding(8);
+                lblLayer5Help.BorderStyle = BorderStyle.FixedSingle;
+                s32MapPanel.Controls.Add(lblLayer5Help);
+            }
+
+            if (!isLayer5EditMode)
+            {
+                lblLayer5Help.Visible = false;
+                return;
+            }
+
+            lblLayer5Help.Text = "【透明編輯模式】\n" +
+                                 "• 左鍵：添加透明設定\n" +
+                                 "• 右鍵：刪除透明設定\n" +
+                                 "• 再按按鈕：取消模式";
+            lblLayer5Help.Location = new Point(s32MapPanel.Width - lblLayer5Help.Width - 20, 200);
+            lblLayer5Help.Visible = true;
+            lblLayer5Help.BringToFront();
         }
 
         // 更新通行性編輯操作說明標籤
@@ -4376,6 +4465,7 @@ namespace L1FlyMapViewer
             bool showPassable = chkShowPassable.Checked;
             bool showGrid = chkShowGrid.Checked;
             bool showS32Boundary = chkShowS32Boundary.Checked;
+            bool showLayer5 = chkShowLayer5.Checked;
             bool hasHighlight = _editState.HighlightedS32Data != null && _editState.HighlightedCellX >= 0 && _editState.HighlightedCellY >= 0;
             int panelWidth = s32MapPanel.Width;
             int panelHeight = s32MapPanel.Height;
@@ -4521,6 +4611,11 @@ namespace L1FlyMapViewer
                 if (showS32Boundary)
                 {
                     DrawS32BoundaryOnlyViewport(viewportBitmap, currentMap, worldRect);
+                }
+
+                if (showLayer5)
+                {
+                    DrawLayer5OverlayViewport(viewportBitmap, currentMap, worldRect);
                 }
 
                 if (cancellationToken.IsCancellationRequested)
@@ -5401,6 +5496,88 @@ namespace L1FlyMapViewer
 
                                 Pen penRight = (attr.Attribute2 & 0x01) != 0 ? penImpassable : penPassable;
                                 g.DrawLine(penRight, pTop, pRight);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 繪製 Layer5 覆蓋層（透明圖塊標記）
+        private void DrawLayer5OverlayViewport(Bitmap bitmap, Struct.L1Map currentMap, Rectangle worldRect)
+        {
+            using (Graphics g = Graphics.FromImage(bitmap))
+            {
+                g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+
+                // 收集所有 Layer5 位置（去重）
+                var drawnPositions = new HashSet<(int mx, int my, int x, int y)>();
+
+                // 半透明藍色填充和邊框
+                using (SolidBrush fillBrush = new SolidBrush(Color.FromArgb(80, 60, 140, 255)))
+                using (Pen borderPen = new Pen(Color.FromArgb(180, 80, 160, 255), 1.5f))
+                using (Pen highlightPen = new Pen(Color.FromArgb(200, 150, 200, 255), 1f))
+                {
+                    foreach (var s32Data in _document.S32Files.Values)
+                    {
+                        if (s32Data.Layer5.Count == 0) continue;
+
+                        int[] loc = s32Data.SegInfo.GetLoc(1.0);
+                        int mx = loc[0];
+                        int my = loc[1];
+
+                        foreach (var item in s32Data.Layer5)
+                        {
+                            // 同位置只畫一次
+                            var posKey = (mx, my, (int)item.X, (int)item.Y);
+                            if (drawnPositions.Contains(posKey)) continue;
+                            drawnPositions.Add(posKey);
+                            // Layer5 的 X 是 0-127（Layer1 座標系），Y 是 0-63
+                            // 繪製半格大小的三角形（X 切半）
+                            int x1 = item.X;  // 0-127
+                            int y = item.Y;   // 0-63
+
+                            int localBaseX = 0 - 24 * (x1 / 2);
+                            int localBaseY = 63 * 12 - 12 * (x1 / 2);
+
+                            int X = mx + localBaseX + x1 * 24 + y * 24 - worldRect.X;
+                            int Y = my + localBaseY + y * 12 - worldRect.Y;
+
+                            // 跳過不在 Viewport 內的格子
+                            if (X + 24 < 0 || X > worldRect.Width || Y + 12 < 0 || Y > worldRect.Height)
+                                continue;
+
+                            // 繪製半格三角形（根據 X 奇偶決定左半或右半）
+                            Point[] triangle;
+                            if (x1 % 2 == 0)
+                            {
+                                // 偶數 X：左半三角形
+                                Point pLeft = new Point(X + 0, Y + 12);
+                                Point pTop = new Point(X + 24, Y + 0);
+                                Point pBottom = new Point(X + 24, Y + 24);
+                                triangle = new Point[] { pLeft, pTop, pBottom };
+
+                                // 填充
+                                g.FillPolygon(fillBrush, triangle);
+                                // 邊框（上亮下暗）
+                                g.DrawLine(highlightPen, pLeft, pTop);
+                                g.DrawLine(borderPen, pTop, pBottom);
+                                g.DrawLine(borderPen, pBottom, pLeft);
+                            }
+                            else
+                            {
+                                // 奇數 X：右半三角形
+                                Point pTop = new Point(X + 0, Y + 0);
+                                Point pRight = new Point(X + 24, Y + 12);
+                                Point pBottom = new Point(X + 0, Y + 24);
+                                triangle = new Point[] { pTop, pRight, pBottom };
+
+                                // 填充
+                                g.FillPolygon(fillBrush, triangle);
+                                // 邊框（上亮下暗）
+                                g.DrawLine(highlightPen, pTop, pRight);
+                                g.DrawLine(borderPen, pRight, pBottom);
+                                g.DrawLine(borderPen, pBottom, pTop);
                             }
                         }
                     }

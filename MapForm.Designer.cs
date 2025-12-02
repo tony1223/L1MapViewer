@@ -98,13 +98,16 @@ namespace L1FlyMapViewer
         private CheckBox chkFloatPassable;
         private CheckBox chkFloatGrid;
         private CheckBox chkFloatS32Boundary;
+        private CheckBox chkFloatLayer5;
         private CheckBox chkShowPassable;
+        private CheckBox chkShowLayer5;
         private CheckBox chkShowGrid;
         private CheckBox chkShowS32Boundary;
         private Button btnCopySettings;
         private Button btnCopyMapCoords;
         private Button btnSetPassable;
         private Button btnSetImpassable;
+        private Button btnEditLayer5;
         private Button btnSaveS32;
         private Button btnReloadMap;
         private Button btnAnalyzeAttr;
@@ -212,6 +215,7 @@ namespace L1FlyMapViewer
             this.btnCopyMapCoords = new Button();
             this.btnSetPassable = new Button();
             this.btnSetImpassable = new Button();
+            this.btnEditLayer5 = new Button();
             this.btnSaveS32 = new Button();
             this.btnReloadMap = new Button();
             this.btnAnalyzeAttr = new Button();
@@ -229,6 +233,8 @@ namespace L1FlyMapViewer
             this.chkFloatPassable = new CheckBox();
             this.chkFloatGrid = new CheckBox();
             this.chkFloatS32Boundary = new CheckBox();
+            this.chkFloatLayer5 = new CheckBox();
+            this.chkShowLayer5 = new CheckBox();
 
             this.menuStrip1.SuspendLayout();
             this.statusStrip1.SuspendLayout();
@@ -584,6 +590,7 @@ namespace L1FlyMapViewer
             this.s32LayerControlPanel.Controls.Add(this.btnCopyMapCoords);
             this.s32LayerControlPanel.Controls.Add(this.btnSetPassable);
             this.s32LayerControlPanel.Controls.Add(this.btnSetImpassable);
+            this.s32LayerControlPanel.Controls.Add(this.btnEditLayer5);
             this.s32LayerControlPanel.Controls.Add(this.btnSaveS32);
             this.s32LayerControlPanel.Controls.Add(this.btnReloadMap);
             this.s32LayerControlPanel.Controls.Add(this.btnAnalyzeAttr);
@@ -684,6 +691,12 @@ namespace L1FlyMapViewer
             this.chkShowS32Boundary.CheckedChanged += new System.EventHandler(this.S32Layer_CheckedChanged);
 
             //
+            // chkShowLayer5
+            //
+            this.chkShowLayer5.Name = "chkShowLayer5";
+            this.chkShowLayer5.CheckedChanged += new System.EventHandler(this.S32Layer_CheckedChanged);
+
+            //
             // btnCopySettings
             //
             this.btnCopySettings.Location = new Point(520, 5);
@@ -728,9 +741,20 @@ namespace L1FlyMapViewer
             this.btnSetImpassable.Click += new System.EventHandler(this.btnSetImpassable_Click);
 
             //
+            // btnEditLayer5
+            //
+            this.btnEditLayer5.Location = new Point(190, 5);
+            this.btnEditLayer5.Name = "btnEditLayer5";
+            this.btnEditLayer5.Size = new Size(80, 25);
+            this.btnEditLayer5.TabIndex = 14;
+            this.btnEditLayer5.Text = "透明編輯";
+            this.btnEditLayer5.UseVisualStyleBackColor = true;
+            this.btnEditLayer5.Click += new System.EventHandler(this.btnEditLayer5_Click);
+
+            //
             // btnSaveS32
             //
-            this.btnSaveS32.Location = new Point(190, 5);
+            this.btnSaveS32.Location = new Point(280, 5);
             this.btnSaveS32.Name = "btnSaveS32";
             this.btnSaveS32.Size = new Size(80, 25);
             this.btnSaveS32.TabIndex = 11;
@@ -741,7 +765,7 @@ namespace L1FlyMapViewer
             //
             // btnReloadMap
             //
-            this.btnReloadMap.Location = new Point(280, 5);
+            this.btnReloadMap.Location = new Point(370, 5);
             this.btnReloadMap.Name = "btnReloadMap";
             this.btnReloadMap.Size = new Size(100, 25);
             this.btnReloadMap.TabIndex = 12;
@@ -799,7 +823,7 @@ namespace L1FlyMapViewer
             this.layerFloatPanel.Controls.Add(this.layerPopupPanel);
             this.layerFloatPanel.Location = new Point(10, 10);
             this.layerFloatPanel.Name = "layerFloatPanel";
-            this.layerFloatPanel.Size = new Size(90, 164);
+            this.layerFloatPanel.Size = new Size(90, 186);
             this.layerFloatPanel.TabIndex = 10;
             this.layerFloatPanel.Anchor = AnchorStyles.Top | AnchorStyles.Right;
 
@@ -823,13 +847,14 @@ namespace L1FlyMapViewer
             this.layerPopupPanel.Controls.Add(this.chkFloatLayer1);
             this.layerPopupPanel.Controls.Add(this.chkFloatLayer2);
             this.layerPopupPanel.Controls.Add(this.chkFloatLayer4);
+            this.layerPopupPanel.Controls.Add(this.chkFloatLayer5);
             this.layerPopupPanel.Controls.Add(this.chkFloatPassable);
             this.layerPopupPanel.Controls.Add(this.chkFloatGrid);
             this.layerPopupPanel.Controls.Add(this.chkFloatS32Boundary);
             this.layerPopupPanel.Location = new Point(0, 24);
             this.layerPopupPanel.Name = "layerPopupPanel";
             this.layerPopupPanel.Padding = new Padding(5);
-            this.layerPopupPanel.Size = new Size(90, 140);
+            this.layerPopupPanel.Size = new Size(90, 162);
             this.layerPopupPanel.TabIndex = 1;
             this.layerPopupPanel.Visible = true;
 
@@ -877,14 +902,27 @@ namespace L1FlyMapViewer
             this.chkFloatLayer4.CheckedChanged += new System.EventHandler(this.chkFloatLayer_CheckedChanged);
 
             //
+            // chkFloatLayer5 (放在 L4 下面)
+            //
+            this.chkFloatLayer5.AutoSize = true;
+            this.chkFloatLayer5.ForeColor = Color.FromArgb(100, 180, 255);
+            this.chkFloatLayer5.Location = new Point(8, 71);
+            this.chkFloatLayer5.Name = "chkFloatLayer5";
+            this.chkFloatLayer5.Size = new Size(80, 19);
+            this.chkFloatLayer5.TabIndex = 3;
+            this.chkFloatLayer5.Text = "L5 透明";
+            this.chkFloatLayer5.UseVisualStyleBackColor = true;
+            this.chkFloatLayer5.CheckedChanged += new System.EventHandler(this.chkFloatLayer_CheckedChanged);
+
+            //
             // chkFloatPassable
             //
             this.chkFloatPassable.AutoSize = true;
             this.chkFloatPassable.ForeColor = Color.LightGreen;
-            this.chkFloatPassable.Location = new Point(8, 71);
+            this.chkFloatPassable.Location = new Point(8, 93);
             this.chkFloatPassable.Name = "chkFloatPassable";
             this.chkFloatPassable.Size = new Size(80, 19);
-            this.chkFloatPassable.TabIndex = 3;
+            this.chkFloatPassable.TabIndex = 4;
             this.chkFloatPassable.Text = "通行";
             this.chkFloatPassable.UseVisualStyleBackColor = true;
             this.chkFloatPassable.CheckedChanged += new System.EventHandler(this.chkFloatLayer_CheckedChanged);
@@ -894,10 +932,10 @@ namespace L1FlyMapViewer
             //
             this.chkFloatGrid.AutoSize = true;
             this.chkFloatGrid.ForeColor = Color.LightBlue;
-            this.chkFloatGrid.Location = new Point(8, 93);
+            this.chkFloatGrid.Location = new Point(8, 115);
             this.chkFloatGrid.Name = "chkFloatGrid";
             this.chkFloatGrid.Size = new Size(80, 19);
-            this.chkFloatGrid.TabIndex = 4;
+            this.chkFloatGrid.TabIndex = 5;
             this.chkFloatGrid.Text = "格線";
             this.chkFloatGrid.UseVisualStyleBackColor = true;
             this.chkFloatGrid.CheckedChanged += new System.EventHandler(this.chkFloatLayer_CheckedChanged);
@@ -907,10 +945,10 @@ namespace L1FlyMapViewer
             //
             this.chkFloatS32Boundary.AutoSize = true;
             this.chkFloatS32Boundary.ForeColor = Color.Orange;
-            this.chkFloatS32Boundary.Location = new Point(8, 115);
+            this.chkFloatS32Boundary.Location = new Point(8, 137);
             this.chkFloatS32Boundary.Name = "chkFloatS32Boundary";
             this.chkFloatS32Boundary.Size = new Size(80, 19);
-            this.chkFloatS32Boundary.TabIndex = 5;
+            this.chkFloatS32Boundary.TabIndex = 6;
             this.chkFloatS32Boundary.Text = "S32邊界";
             this.chkFloatS32Boundary.UseVisualStyleBackColor = true;
             this.chkFloatS32Boundary.CheckedChanged += new System.EventHandler(this.chkFloatLayer_CheckedChanged);
