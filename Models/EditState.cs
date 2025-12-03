@@ -244,6 +244,15 @@ namespace L1MapViewer.Models
 
         #endregion
 
+        #region Layer5 透明編輯
+
+        /// <summary>
+        /// 是否在 Layer5 透明編輯模式
+        /// </summary>
+        public bool IsLayer5EditMode { get; set; }
+
+        #endregion
+
         #region 方法
 
         /// <summary>
@@ -284,6 +293,7 @@ namespace L1MapViewer.Models
             PassableMode = PassableEditMode.None;
             PassabilityPolygonPoints.Clear();
             IsDrawingPassabilityPolygon = false;
+            IsLayer5EditMode = false;
             HighlightedS32Data = null;
             HighlightedCellX = -1;
             HighlightedCellY = -1;
