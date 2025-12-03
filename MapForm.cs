@@ -434,8 +434,10 @@ namespace L1FlyMapViewer
             bool copyLayer1 = copySettingLayer1;
             bool copyLayer3 = copySettingLayer3;
             bool copyLayer4 = copySettingLayer4;
+            bool copyLayer5 = copySettingLayer5;
+            bool copyLayer6to8 = copySettingLayer6to8;
 
-            if (!copyLayer1 && !copyLayer3 && !copyLayer4)
+            if (!copyLayer1 && !copyLayer3 && !copyLayer4 && !copyLayer5 && !copyLayer6to8)
             {
                 this.toolStripStatusLabel1.Text = "請點擊「複製設定...」按鈕選擇要複製的圖層";
                 return;
@@ -595,7 +597,6 @@ namespace L1FlyMapViewer
                 }
             }
 
-            hasLayer4Clipboard = _editState.CellClipboard.Count > 0;
             _editState.SourceMapId = _document.MapId;
             _editState.CopySourceOrigin = new Point(minGlobalX, minGlobalY);  // 記錄複製時的原點
 
@@ -606,8 +607,6 @@ namespace L1FlyMapViewer
             _editState.Layer7Clipboard.Clear();
             _editState.Layer8Clipboard.Clear();
             bool copyLayer2 = copySettingLayer2;
-            bool copyLayer5 = copySettingLayer5;
-            bool copyLayer6to8 = copySettingLayer6to8;
 
             var processedS32 = new HashSet<S32Data>();
             foreach (var cell in selectedCells)
@@ -653,7 +652,12 @@ namespace L1FlyMapViewer
                         selectedL3CellsByS32[cell.S32Data] = new HashSet<(int, int)>();
                     }
                     // Layer5: X 是 0-127 (Layer1 座標)，Y 是 0-63
+                    // 一個遊戲格子對應兩個 Layer1 X 座標（LocalX 和 LocalX+1）
                     selectedL1CellsByS32[cell.S32Data].Add((cell.LocalX, cell.LocalY));
+                    if (cell.LocalX + 1 < 128)
+                    {
+                        selectedL1CellsByS32[cell.S32Data].Add((cell.LocalX + 1, cell.LocalY));
+                    }
                     // Layer7: X 是 0-63 (Layer3 座標)，Y 是 0-63
                     int localL3X = cell.LocalX / 2;
                     selectedL3CellsByS32[cell.S32Data].Add((localL3X, cell.LocalY));
@@ -755,6 +759,14 @@ namespace L1FlyMapViewer
                 }
             }
 
+            // 設定剪貼簿狀態（任何一個剪貼簿有資料就算有）
+            hasLayer4Clipboard = _editState.CellClipboard.Count > 0 ||
+                                 _editState.Layer2Clipboard.Count > 0 ||
+                                 _editState.Layer5Clipboard.Count > 0 ||
+                                 _editState.Layer6Clipboard.Count > 0 ||
+                                 _editState.Layer7Clipboard.Count > 0 ||
+                                 _editState.Layer8Clipboard.Count > 0;
+
             // 組合提示訊息
             var parts = new List<string>();
             if (copyLayer1 && layer1Count > 0) parts.Add($"L1:{layer1Count}");
@@ -779,7 +791,15 @@ namespace L1FlyMapViewer
         // 貼上選取區域
         private void PasteSelectedCells()
         {
-            if (!hasLayer4Clipboard || _editState.CellClipboard.Count == 0)
+            // 檢查任何一個剪貼簿是否有資料
+            bool hasAnyClipboardData = _editState.CellClipboard.Count > 0 ||
+                                       _editState.Layer2Clipboard.Count > 0 ||
+                                       _editState.Layer5Clipboard.Count > 0 ||
+                                       _editState.Layer6Clipboard.Count > 0 ||
+                                       _editState.Layer7Clipboard.Count > 0 ||
+                                       _editState.Layer8Clipboard.Count > 0;
+
+            if (!hasLayer4Clipboard || !hasAnyClipboardData)
             {
                 this.toolStripStatusLabel1.Text = "剪貼簿沒有資料，請先使用左鍵選取區域後按 Ctrl+C 複製";
                 return;
