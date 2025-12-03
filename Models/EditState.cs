@@ -107,9 +107,14 @@ namespace L1MapViewer.Models
         public List<Layer8Item> Layer8Clipboard { get; private set; } = new List<Layer8Item>();
 
         /// <summary>
-        /// 複製區域的原點（全域座標）
+        /// 複製區域的原點（全域座標）- 用於貼上時的基準位置
         /// </summary>
         public Point CopyRegionOrigin { get; set; }
+
+        /// <summary>
+        /// 複製來源區域的原點（全域 Layer1 座標）- 記錄複製時的起始位置
+        /// </summary>
+        public Point CopySourceOrigin { get; set; }
 
         /// <summary>
         /// 複製來源地圖 ID
