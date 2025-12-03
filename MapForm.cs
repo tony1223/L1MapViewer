@@ -375,11 +375,22 @@ namespace L1FlyMapViewer
                 e.Handled = true;
                 PasteSelectedCells();
             }
-            // Escape: 取消複製/貼上模式
+            // Escape: 取消複製/貼上模式或取消多邊形繪製
             else if (e.KeyCode == Keys.Escape)
             {
                 e.Handled = true;
-                CancelLayer4CopyPaste();
+                // 優先取消多邊形繪製
+                if (_editState.IsDrawingPassabilityPolygon)
+                {
+                    _editState.PassabilityPolygonPoints.Clear();
+                    _editState.IsDrawingPassabilityPolygon = false;
+                    s32PictureBox.Invalidate();
+                    this.toolStripStatusLabel1.Text = "已取消多邊形繪製";
+                }
+                else
+                {
+                    CancelLayer4CopyPaste();
+                }
             }
             // Ctrl+Z: 還原
             else if (e.Control && e.KeyCode == Keys.Z)
