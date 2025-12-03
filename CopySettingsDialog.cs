@@ -10,7 +10,8 @@ namespace L1FlyMapViewer
         private CheckBox chkLayer2 = null!;
         private CheckBox chkLayer3 = null!;
         private CheckBox chkLayer4 = null!;
-        private CheckBox chkLayer5to8 = null!;
+        private CheckBox chkLayer5 = null!;
+        private CheckBox chkLayer6to8 = null!;
         private Button btnOK = null!;
         private Button btnCancel = null!;
         private Label lblDescription = null!;
@@ -19,22 +20,33 @@ namespace L1FlyMapViewer
         public bool CopyLayer2 { get; private set; }
         public bool CopyLayer3 { get; private set; }
         public bool CopyLayer4 { get; private set; }
-        public bool CopyLayer5to8 { get; private set; }
+        public bool CopyLayer5 { get; private set; }
+        public bool CopyLayer6to8 { get; private set; }
 
-        public CopySettingsDialog(bool currentLayer1, bool currentLayer2, bool currentLayer3, bool currentLayer4, bool currentLayer5to8)
+        // 保持向後相容
+        public bool CopyLayer5to8 => CopyLayer5 || CopyLayer6to8;
+
+        public CopySettingsDialog(bool currentLayer1, bool currentLayer2, bool currentLayer3, bool currentLayer4, bool currentLayer5, bool currentLayer6to8)
         {
             CopyLayer1 = currentLayer1;
             CopyLayer2 = currentLayer2;
             CopyLayer3 = currentLayer3;
             CopyLayer4 = currentLayer4;
-            CopyLayer5to8 = currentLayer5to8;
+            CopyLayer5 = currentLayer5;
+            CopyLayer6to8 = currentLayer6to8;
             InitializeComponent();
+        }
+
+        // 舊版建構子（向後相容）
+        public CopySettingsDialog(bool currentLayer1, bool currentLayer2, bool currentLayer3, bool currentLayer4, bool currentLayer5to8)
+            : this(currentLayer1, currentLayer2, currentLayer3, currentLayer4, currentLayer5to8, currentLayer5to8)
+        {
         }
 
         private void InitializeComponent()
         {
             this.Text = "複製/刪除設定";
-            this.Size = new Size(300, 280);
+            this.Size = new Size(300, 310);
             this.FormBorderStyle = FormBorderStyle.FixedDialog;
             this.MaximizeBox = false;
             this.MinimizeBox = false;
@@ -85,20 +97,29 @@ namespace L1FlyMapViewer
                 Checked = CopyLayer4
             };
 
-            // Layer 5-8 選項
-            chkLayer5to8 = new CheckBox
+            // Layer 5 選項（透明/消失設定）
+            chkLayer5 = new CheckBox
             {
-                Text = "Layer 5-8 - 其他資料",
+                Text = "Layer 5 - 透明/消失設定",
                 Location = new Point(25, 153),
                 Size = new Size(240, 24),
-                Checked = CopyLayer5to8
+                Checked = CopyLayer5
+            };
+
+            // Layer 6-8 選項
+            chkLayer6to8 = new CheckBox
+            {
+                Text = "Layer 6-8 - Til索引/傳送點/特效",
+                Location = new Point(25, 180),
+                Size = new Size(240, 24),
+                Checked = CopyLayer6to8
             };
 
             // 確定按鈕
             btnOK = new Button
             {
                 Text = "確定",
-                Location = new Point(100, 195),
+                Location = new Point(100, 225),
                 Size = new Size(75, 28),
                 DialogResult = DialogResult.OK
             };
@@ -108,7 +129,7 @@ namespace L1FlyMapViewer
             btnCancel = new Button
             {
                 Text = "取消",
-                Location = new Point(190, 195),
+                Location = new Point(190, 225),
                 Size = new Size(75, 28),
                 DialogResult = DialogResult.Cancel
             };
@@ -122,7 +143,8 @@ namespace L1FlyMapViewer
                 chkLayer2,
                 chkLayer3,
                 chkLayer4,
-                chkLayer5to8,
+                chkLayer5,
+                chkLayer6to8,
                 btnOK,
                 btnCancel
             });
@@ -130,7 +152,7 @@ namespace L1FlyMapViewer
 
         private void BtnOK_Click(object? sender, EventArgs e)
         {
-            if (!chkLayer1.Checked && !chkLayer2.Checked && !chkLayer3.Checked && !chkLayer4.Checked && !chkLayer5to8.Checked)
+            if (!chkLayer1.Checked && !chkLayer2.Checked && !chkLayer3.Checked && !chkLayer4.Checked && !chkLayer5.Checked && !chkLayer6to8.Checked)
             {
                 MessageBox.Show("請至少選擇一個圖層", "提示", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 this.DialogResult = DialogResult.None;
@@ -141,7 +163,8 @@ namespace L1FlyMapViewer
             CopyLayer2 = chkLayer2.Checked;
             CopyLayer3 = chkLayer3.Checked;
             CopyLayer4 = chkLayer4.Checked;
-            CopyLayer5to8 = chkLayer5to8.Checked;
+            CopyLayer5 = chkLayer5.Checked;
+            CopyLayer6to8 = chkLayer6to8.Checked;
         }
     }
 }

@@ -597,7 +597,7 @@ namespace L1FlyMapViewer
 
             hasLayer4Clipboard = _editState.CellClipboard.Count > 0;
             _editState.SourceMapId = _document.MapId;
-
+            _editState.CopySourceOrigin = new Point(minGlobalX, minGlobalY);  // 記錄複製時的原點
 
             // 複製 Layer2 和 Layer5-8 資料（從所有涉及的 S32 收集，根據設定）
             _editState.Layer2Clipboard.Clear();
@@ -606,7 +606,8 @@ namespace L1FlyMapViewer
             _editState.Layer7Clipboard.Clear();
             _editState.Layer8Clipboard.Clear();
             bool copyLayer2 = copySettingLayer2;
-            bool copyLayer5to8 = copySettingLayer5to8;
+            bool copyLayer5 = copySettingLayer5;
+            bool copyLayer6to8 = copySettingLayer6to8;
 
             var processedS32 = new HashSet<S32Data>();
             foreach (var cell in selectedCells)
@@ -637,78 +638,117 @@ namespace L1FlyMapViewer
             }
 
             // Layer5-8：只複製座標落在選取格子範圍內的項目
-            if (copyLayer5to8)
+            if (copyLayer5 || copyLayer6to8)
             {
                 // 建立選取格子的本地座標集合（按 S32 檔案分組）
-                var selectedLocalCellsByS32 = new Dictionary<S32Data, HashSet<(int x, int y)>>();
+                // Layer5 使用 Layer1 座標系 (X=0-127, Y=0-63)
+                // Layer7 使用 Layer3 座標系 (X=0-63, Y=0-63)
+                var selectedL1CellsByS32 = new Dictionary<S32Data, HashSet<(int x, int y)>>();  // Layer5 用
+                var selectedL3CellsByS32 = new Dictionary<S32Data, HashSet<(int x, int y)>>();  // Layer7 用
                 foreach (var cell in selectedCells)
                 {
-                    if (!selectedLocalCellsByS32.ContainsKey(cell.S32Data))
-                        selectedLocalCellsByS32[cell.S32Data] = new HashSet<(int, int)>();
-                    // Layer3/Layer5/Layer7 使用的座標系是 64x64，LocalX 需要除以 2
+                    if (!selectedL1CellsByS32.ContainsKey(cell.S32Data))
+                    {
+                        selectedL1CellsByS32[cell.S32Data] = new HashSet<(int, int)>();
+                        selectedL3CellsByS32[cell.S32Data] = new HashSet<(int, int)>();
+                    }
+                    // Layer5: X 是 0-127 (Layer1 座標)，Y 是 0-63
+                    selectedL1CellsByS32[cell.S32Data].Add((cell.LocalX, cell.LocalY));
+                    // Layer7: X 是 0-63 (Layer3 座標)，Y 是 0-63
                     int localL3X = cell.LocalX / 2;
-                    selectedLocalCellsByS32[cell.S32Data].Add((localL3X, cell.LocalY));
+                    selectedL3CellsByS32[cell.S32Data].Add((localL3X, cell.LocalY));
                 }
 
-                foreach (var kvp in selectedLocalCellsByS32)
+                foreach (var kvp in selectedL1CellsByS32)
                 {
                     var s32Data = kvp.Key;
-                    var localCells = kvp.Value;
+                    var l1Cells = kvp.Value;
+                    var l3Cells = selectedL3CellsByS32[s32Data];
+                    int segStartX = s32Data.SegInfo.nLinBeginX;
+                    int segStartY = s32Data.SegInfo.nLinBeginY;
 
                     // Layer5 - 透明圖塊（檢查 X, Y 是否在選取範圍內）
-                    foreach (var item in s32Data.Layer5)
+                    if (copyLayer5)
                     {
-                        // Layer5 的 X, Y 是 64x64 座標系
-                        if (localCells.Contains((item.X, item.Y)))
+                        foreach (var item in s32Data.Layer5)
                         {
-                            if (!_editState.Layer5Clipboard.Any(l => l.X == item.X && l.Y == item.Y))
+                            // Layer5 的 X 是 0-127 (Layer1 座標)，Y 是 0-63
+                            if (l1Cells.Contains((item.X, item.Y)))
                             {
-                                _editState.Layer5Clipboard.Add(new Layer5Item { X = item.X, Y = item.Y, ObjectIndex = item.ObjectIndex, Type = item.Type });
+                                // 計算相對於複製原點的全域座標
+                                int globalL1X = segStartX * 2 + item.X;
+                                int globalY = segStartY + item.Y;
+                                int relX = globalL1X - minGlobalX;
+                                int relY = globalY - minGlobalY;
+
+                                // 儲存相對座標（使用 X, Y 欄位暫存）
+                                if (!_editState.Layer5Clipboard.Any(l => l.X == relX && l.Y == relY && l.ObjectIndex == item.ObjectIndex))
+                                {
+                                    _editState.Layer5Clipboard.Add(new Layer5Item { X = (byte)relX, Y = (byte)relY, ObjectIndex = item.ObjectIndex, Type = item.Type });
+                                }
                             }
                         }
                     }
 
                     // Layer6 - 使用的 TilId（合併不重複的，這個是整個 S32 的）
-                    foreach (var tilId in s32Data.Layer6)
+                    if (copyLayer6to8)
                     {
-                        if (!_editState.Layer6Clipboard.Contains(tilId))
+                        foreach (var tilId in s32Data.Layer6)
                         {
-                            _editState.Layer6Clipboard.Add(tilId);
-                        }
-                    }
-
-                    // Layer7 - 傳送點（檢查 X, Y 是否在選取範圍內）
-                    foreach (var item in s32Data.Layer7)
-                    {
-                        // Layer7 的 X, Y 是 64x64 座標系
-                        if (localCells.Contains((item.X, item.Y)))
-                        {
-                            if (!_editState.Layer7Clipboard.Any(l => l.Name == item.Name && l.X == item.X && l.Y == item.Y))
+                            if (!_editState.Layer6Clipboard.Contains(tilId))
                             {
-                                _editState.Layer7Clipboard.Add(new Layer7Item { Name = item.Name, X = item.X, Y = item.Y, TargetMapId = item.TargetMapId, PortalId = item.PortalId });
+                                _editState.Layer6Clipboard.Add(tilId);
                             }
                         }
                     }
 
-                    // Layer8 - 特效（檢查 X, Y 是否在選取範圍內）
-                    // Layer8 的 X, Y 可能是像素座標，需要轉換為格子座標
-                    foreach (var item in s32Data.Layer8)
+                    // Layer7 - 傳送點（檢查 X, Y 是否在選取範圍內）
+                    if (copyLayer6to8)
                     {
-                        // 假設 Layer8 的 X, Y 也是 64x64 座標系（如果是像素座標則需要除以 tile 大小）
-                        // 根據實際檔案格式，Layer8 座標可能需要調整
-                        int cellX = item.X;
-                        int cellY = item.Y;
-                        // 如果座標超過 64，可能是像素座標，需要除以某個係數（假設是 24）
-                        if (cellX >= 64 || cellY >= 64)
+                        foreach (var item in s32Data.Layer7)
                         {
-                            cellX = item.X / 24;  // 假設 tile 寬度
-                            cellY = item.Y / 24;  // 假設 tile 高度
-                        }
-                        if (localCells.Contains((cellX, cellY)))
-                        {
-                            if (!_editState.Layer8Clipboard.Any(l => l.SprId == item.SprId && l.X == item.X && l.Y == item.Y))
+                            // Layer7 的 X, Y 是 64x64 座標系 (Layer3)
+                            if (l3Cells.Contains((item.X, item.Y)))
                             {
-                                _editState.Layer8Clipboard.Add(new Layer8Item { SprId = item.SprId, X = item.X, Y = item.Y, ExtendedData = item.ExtendedData });
+                                // 計算相對於複製原點的座標（Layer3 座標系）
+                                int globalL3X = segStartX + item.X;
+                                int globalY = segStartY + item.Y;
+                                int relL3X = globalL3X - (minGlobalX / 2);  // minGlobalX 是 Layer1 座標，除以 2 得到 Layer3
+                                int relY = globalY - minGlobalY;
+
+                                if (!_editState.Layer7Clipboard.Any(l => l.Name == item.Name && l.X == relL3X && l.Y == relY))
+                                {
+                                    _editState.Layer7Clipboard.Add(new Layer7Item { Name = item.Name, X = (byte)relL3X, Y = (byte)relY, TargetMapId = item.TargetMapId, PortalId = item.PortalId });
+                                }
+                            }
+                        }
+
+                        // Layer8 - 特效（檢查 X, Y 是否在選取範圍內）
+                        // Layer8 的 X, Y 可能是像素座標，需要轉換為格子座標
+                        foreach (var item in s32Data.Layer8)
+                        {
+                            // 假設 Layer8 的 X, Y 也是 64x64 座標系（如果是像素座標則需要除以 tile 大小）
+                            // 根據實際檔案格式，Layer8 座標可能需要調整
+                            int cellX = item.X;
+                            int cellY = item.Y;
+                            // 如果座標超過 64，可能是像素座標，需要除以某個係數（假設是 24）
+                            if (cellX >= 64 || cellY >= 64)
+                            {
+                                cellX = item.X / 24;  // 假設 tile 寬度
+                                cellY = item.Y / 24;  // 假設 tile 高度
+                            }
+                            if (l3Cells.Contains((cellX, cellY)))
+                            {
+                                // 計算相對於複製原點的座標
+                                int globalL3X = segStartX + cellX;
+                                int globalY = segStartY + cellY;
+                                int relL3X = globalL3X - (minGlobalX / 2);
+                                int relY = globalY - minGlobalY;
+
+                                if (!_editState.Layer8Clipboard.Any(l => l.SprId == item.SprId && l.X == relL3X && l.Y == relY))
+                                {
+                                    _editState.Layer8Clipboard.Add(new Layer8Item { SprId = item.SprId, X = (ushort)relL3X, Y = (ushort)relY, ExtendedData = item.ExtendedData });
+                                }
                             }
                         }
                     }
@@ -721,8 +761,9 @@ namespace L1FlyMapViewer
             if (copyLayer2 && _editState.Layer2Clipboard.Count > 0) parts.Add($"L2:{_editState.Layer2Clipboard.Count}");
             if (copyLayer3 && layer3Count > 0) parts.Add($"L3:{layer3Count}");
             if (copyLayer4 && layer4Count > 0) parts.Add($"L4:{layer4Count}");
-            if (copyLayer5to8 && (_editState.Layer5Clipboard.Count > 0 || _editState.Layer6Clipboard.Count > 0 || _editState.Layer7Clipboard.Count > 0 || _editState.Layer8Clipboard.Count > 0))
-                parts.Add($"L5:{_editState.Layer5Clipboard.Count} L6:{_editState.Layer6Clipboard.Count} L7:{_editState.Layer7Clipboard.Count} L8:{_editState.Layer8Clipboard.Count}");
+            if (copyLayer5 && _editState.Layer5Clipboard.Count > 0) parts.Add($"L5:{_editState.Layer5Clipboard.Count}");
+            if (copyLayer6to8 && (_editState.Layer6Clipboard.Count > 0 || _editState.Layer7Clipboard.Count > 0 || _editState.Layer8Clipboard.Count > 0))
+                parts.Add($"L6:{_editState.Layer6Clipboard.Count} L7:{_editState.Layer7Clipboard.Count} L8:{_editState.Layer8Clipboard.Count}");
 
             string layerInfo = parts.Count > 0 ? string.Join(", ", parts) : "無資料";
             this.toolStripStatusLabel1.Text = $"已複製 {selectedCells.Count} 格 ({layerInfo}) 來源: {_document.MapId}，左鍵選取貼上位置後按 Ctrl+V";
@@ -962,19 +1003,9 @@ namespace L1FlyMapViewer
                     }
                 }
 
-                // 複製 Layer5-8（合併到目標 S32）- 根據設定
-                if (copySettingLayer5to8)
+                // Layer6 - 使用的 TilId（合併不重複的）- 根據設定
+                if (copySettingLayer6to8)
                 {
-                    // Layer5 - 透明圖塊（合併不重複的）
-                    foreach (var item in _editState.Layer5Clipboard)
-                    {
-                        if (!targetS32.Layer5.Any(l => l.X == item.X && l.Y == item.Y))
-                        {
-                            targetS32.Layer5.Add(new Layer5Item { X = item.X, Y = item.Y, ObjectIndex = item.ObjectIndex, Type = item.Type });
-                            targetS32.IsModified = true;
-                        }
-                    }
-                    // Layer6 - 使用的 TilId（合併不重複的）
                     int layer6Added = 0;
                     foreach (var tilId in _editState.Layer6Clipboard)
                     {
@@ -986,23 +1017,121 @@ namespace L1FlyMapViewer
                         }
                     }
                     if (layer6Added > 0) layer5to8CopiedCount++;
-                    // Layer7 - 傳送點（合併不重複的）
-                    foreach (var item in _editState.Layer7Clipboard)
+                }
+            }
+
+            // Layer5 - 透明圖塊（需要計算正確的目標座標）- 根據設定
+            if (copySettingLayer5 && _editState.Layer5Clipboard.Count > 0)
+            {
+                foreach (var item in _editState.Layer5Clipboard)
+                {
+                    // item.X, item.Y 是相對座標（相對於複製原點）
+                    int targetGlobalL1X = pasteOriginX + item.X;
+                    int targetGlobalY = pasteOriginY + item.Y;
+
+                    // 找到目標 S32
+                    int targetGameX = targetGlobalL1X / 2;
+                    int targetGameY = targetGlobalY;
+                    S32Data l5TargetS32 = GetS32DataByGameCoords(targetGameX, targetGameY);
+                    if (l5TargetS32 == null) continue;
+
+                    // 計算目標 S32 內的局部座標
+                    int localL1X = targetGlobalL1X - l5TargetS32.SegInfo.nLinBeginX * 2;
+                    int localY = targetGlobalY - l5TargetS32.SegInfo.nLinBeginY;
+
+                    // 檢查座標是否有效
+                    if (localL1X < 0 || localL1X >= 128 || localY < 0 || localY >= 64)
+                        continue;
+
+                    // 檢查是否已存在
+                    if (!l5TargetS32.Layer5.Any(l => l.X == localL1X && l.Y == localY && l.ObjectIndex == item.ObjectIndex))
                     {
-                        if (!targetS32.Layer7.Any(l => l.Name == item.Name && l.X == item.X && l.Y == item.Y))
+                        l5TargetS32.Layer5.Add(new Layer5Item
                         {
-                            targetS32.Layer7.Add(new Layer7Item { Name = item.Name, X = item.X, Y = item.Y, TargetMapId = item.TargetMapId, PortalId = item.PortalId });
-                            targetS32.IsModified = true;
-                        }
+                            X = (byte)localL1X,
+                            Y = (byte)localY,
+                            ObjectIndex = item.ObjectIndex,
+                            Type = item.Type
+                        });
+                        l5TargetS32.IsModified = true;
                     }
-                    // Layer8 - 特效（合併不重複的）
-                    foreach (var item in _editState.Layer8Clipboard)
+                }
+            }
+
+            // Layer7 - 傳送點（需要計算正確的目標座標）- 根據設定
+            if (copySettingLayer6to8 && _editState.Layer7Clipboard.Count > 0)
+            {
+                foreach (var item in _editState.Layer7Clipboard)
+                {
+                    // item.X, item.Y 是相對座標（相對於複製原點的 Layer3 座標）
+                    // 先轉為 Layer1 座標系，再計算目標
+                    int targetGlobalL1X = pasteOriginX + item.X * 2;
+                    int targetGlobalY = pasteOriginY + item.Y;
+
+                    // 找到目標 S32
+                    int targetGameX = targetGlobalL1X / 2;
+                    int targetGameY = targetGlobalY;
+                    S32Data l7TargetS32 = GetS32DataByGameCoords(targetGameX, targetGameY);
+                    if (l7TargetS32 == null) continue;
+
+                    // 計算目標 S32 內的局部 Layer3 座標
+                    int localL3X = targetGameX - l7TargetS32.SegInfo.nLinBeginX;
+                    int localY = targetGlobalY - l7TargetS32.SegInfo.nLinBeginY;
+
+                    // 檢查座標是否有效
+                    if (localL3X < 0 || localL3X >= 64 || localY < 0 || localY >= 64)
+                        continue;
+
+                    // 檢查是否已存在
+                    if (!l7TargetS32.Layer7.Any(l => l.Name == item.Name && l.X == localL3X && l.Y == localY))
                     {
-                        if (!targetS32.Layer8.Any(l => l.SprId == item.SprId && l.X == item.X && l.Y == item.Y))
+                        l7TargetS32.Layer7.Add(new Layer7Item
                         {
-                            targetS32.Layer8.Add(new Layer8Item { SprId = item.SprId, X = item.X, Y = item.Y, ExtendedData = item.ExtendedData });
-                            targetS32.IsModified = true;
-                        }
+                            Name = item.Name,
+                            X = (byte)localL3X,
+                            Y = (byte)localY,
+                            TargetMapId = item.TargetMapId,
+                            PortalId = item.PortalId
+                        });
+                        l7TargetS32.IsModified = true;
+                    }
+                }
+            }
+
+            // Layer8 - 特效（需要計算正確的目標座標）- 根據設定
+            if (copySettingLayer6to8 && _editState.Layer8Clipboard.Count > 0)
+            {
+                foreach (var item in _editState.Layer8Clipboard)
+                {
+                    // item.X, item.Y 可能是像素座標或格子座標，這裡假設是格子座標
+                    int targetGlobalL1X = pasteOriginX + item.X * 2;
+                    int targetGlobalY = pasteOriginY + item.Y;
+
+                    // 找到目標 S32
+                    int targetGameX = targetGlobalL1X / 2;
+                    int targetGameY = targetGlobalY;
+                    S32Data l8TargetS32 = GetS32DataByGameCoords(targetGameX, targetGameY);
+                    if (l8TargetS32 == null) continue;
+
+                    // 計算目標 S32 內的局部座標
+                    int localL3X = targetGameX - l8TargetS32.SegInfo.nLinBeginX;
+                    int localY = targetGlobalY - l8TargetS32.SegInfo.nLinBeginY;
+
+                    // 檢查座標是否有效
+                    if (localL3X < 0 || localL3X >= 64 || localY < 0 || localY >= 64)
+                        continue;
+
+                    // 檢查是否已存在
+                    if (!l8TargetS32.Layer8.Any(l => l.SprId == item.SprId && l.X == localL3X && l.Y == localY))
+                    {
+                        l8TargetS32.Layer8.Add(new Layer8Item
+                        {
+                            SprId = item.SprId,
+                            X = (ushort)localL3X,
+                            Y = (ushort)localY,
+                            ExtendedData = item.ExtendedData
+                        });
+                        l8TargetS32.IsModified = true;
                     }
                 }
             }
@@ -3083,7 +3212,10 @@ namespace L1FlyMapViewer
         private bool copySettingLayer2 = true;
         private bool copySettingLayer3 = true;
         private bool copySettingLayer4 = true;
-        private bool copySettingLayer5to8 = true;
+        private bool copySettingLayer5 = true;
+        private bool copySettingLayer6to8 = true;
+        // 向後相容屬性
+        private bool copySettingLayer5to8 => copySettingLayer5 || copySettingLayer6to8;
 
         // 根據遊戲座標找到對應的 S32Data
         private S32Data GetS32DataByGameCoords(int gameX, int gameY)
@@ -4153,7 +4285,7 @@ namespace L1FlyMapViewer
         // 複製設定按鈕點擊事件
         private void btnCopySettings_Click(object sender, EventArgs e)
         {
-            using (var dialog = new CopySettingsDialog(copySettingLayer1, copySettingLayer2, copySettingLayer3, copySettingLayer4, copySettingLayer5to8))
+            using (var dialog = new CopySettingsDialog(copySettingLayer1, copySettingLayer2, copySettingLayer3, copySettingLayer4, copySettingLayer5, copySettingLayer6to8))
             {
                 if (dialog.ShowDialog(this) == DialogResult.OK)
                 {
@@ -4161,7 +4293,8 @@ namespace L1FlyMapViewer
                     copySettingLayer2 = dialog.CopyLayer2;
                     copySettingLayer3 = dialog.CopyLayer3;
                     copySettingLayer4 = dialog.CopyLayer4;
-                    copySettingLayer5to8 = dialog.CopyLayer5to8;
+                    copySettingLayer5 = dialog.CopyLayer5;
+                    copySettingLayer6to8 = dialog.CopyLayer6to8;
 
                     // 更新按鈕文字顯示目前設定
                     var layers = new List<string>();
@@ -4169,7 +4302,8 @@ namespace L1FlyMapViewer
                     if (copySettingLayer2) layers.Add("L2");
                     if (copySettingLayer3) layers.Add("L3");
                     if (copySettingLayer4) layers.Add("L4");
-                    if (copySettingLayer5to8) layers.Add("L5-8");
+                    if (copySettingLayer5) layers.Add("L5");
+                    if (copySettingLayer6to8) layers.Add("L6-8");
                     string layerInfo = layers.Count > 0 ? string.Join(",", layers) : "無";
 
                     this.toolStripStatusLabel1.Text = $"複製/刪除設定已更新: {layerInfo}";
@@ -5610,9 +5744,10 @@ namespace L1FlyMapViewer
                 // 查找該格子位置對應的 Layer5 設定
                 // Layer5 的 X 是 0-127，Y 是 0-63
                 // selectedCell.LocalX 是 Layer1 座標 (0-127)，LocalY 是 (0-63)
+                // 一個遊戲格子對應兩個 Layer1 X 座標（localX 和 localX+1）
                 foreach (var item in s32Data.Layer5)
                 {
-                    if (item.X == localX && item.Y == localY)
+                    if ((item.X == localX || item.X == localX + 1) && item.Y == localY)
                     {
                         // 如果同一個 GroupId 有多個設定，保留第一個
                         if (!groupLayer5Info.ContainsKey(item.ObjectIndex))
@@ -7908,9 +8043,11 @@ namespace L1FlyMapViewer
             {
                 foreach (var cell in cells)
                 {
-                    // Layer5 的 X, Y 是 0-63 範圍（與 Layer3 相同）
-                    int layer3X = cell.LocalX / 2;
-                    var layer5Items = cell.S32Data.Layer5.Where(l => l.X == layer3X && l.Y == cell.LocalY).ToList();
+                    // Layer5 的 X 是 0-127 (Layer1 座標)，Y 是 0-63
+                    // cell.LocalX 已經是 Layer1 座標 (0-127)
+                    // 一個遊戲格子對應兩個 Layer1 X 座標（LocalX 和 LocalX+1）
+                    int layer1X = cell.LocalX;
+                    var layer5Items = cell.S32Data.Layer5.Where(l => (l.X == layer1X || l.X == layer1X + 1) && l.Y == cell.LocalY).ToList();
                     if (layer5Items.Count > 0)
                     {
                         if (!layer5ToDeleteByS32.ContainsKey(cell.S32Data))
@@ -8527,11 +8664,12 @@ namespace L1FlyMapViewer
             // 只篩選該格子相關的 Layer5 項目
             // x 是 Layer1 座標 (0-127)，y 是 Layer3 座標 (0-63)
             // Layer5 的 X 是 0-127，Y 是 0-63
+            // 一個遊戲格子對應兩個 Layer1 X 座標（x 和 x+1）
             var cellLayer5Items = new List<(int index, Layer5Item item)>();
             for (int i = 0; i < currentS32Data.Layer5.Count; i++)
             {
                 var item5 = currentS32Data.Layer5[i];
-                if (item5.X == x && item5.Y == y)
+                if ((item5.X == x || item5.X == x + 1) && item5.Y == y)
                 {
                     cellLayer5Items.Add((i, item5));
                 }
@@ -11366,6 +11504,25 @@ namespace L1FlyMapViewer
                 menu.Items.Add(gotoItem);
                 menu.Items.Add(new ToolStripSeparator());
                 menu.Items.Add(deleteItem);
+
+                // Layer5 設定選項（僅在透明編輯模式或有選取格子時顯示）
+                if (_editState.IsLayer5EditMode && _editState.SelectedCells.Count > 0)
+                {
+                    menu.Items.Add(new ToolStripSeparator());
+
+                    ToolStripMenuItem setTransparentItem = new ToolStripMenuItem($"設定群組 {info.GroupId} 為透明 (Type=0)");
+                    setTransparentItem.Click += (s, ev) => SetGroupLayer5Setting(new List<GroupThumbnailInfo> { info }, 0);
+
+                    ToolStripMenuItem setDisappearItem = new ToolStripMenuItem($"設定群組 {info.GroupId} 為消失 (Type=1)");
+                    setDisappearItem.Click += (s, ev) => SetGroupLayer5Setting(new List<GroupThumbnailInfo> { info }, 1);
+
+                    ToolStripMenuItem removeLayer5Item = new ToolStripMenuItem($"移除群組 {info.GroupId} 的 Layer5 設定");
+                    removeLayer5Item.Click += (s, ev) => RemoveGroupLayer5Setting(new List<GroupThumbnailInfo> { info });
+
+                    menu.Items.Add(setTransparentItem);
+                    menu.Items.Add(setDisappearItem);
+                    menu.Items.Add(removeLayer5Item);
+                }
             }
             else
             {
@@ -11381,6 +11538,25 @@ namespace L1FlyMapViewer
                 menu.Items.Add(copyItem);
                 menu.Items.Add(new ToolStripSeparator());
                 menu.Items.Add(deleteItem);
+
+                // Layer5 設定選項（僅在透明編輯模式或有選取格子時顯示）
+                if (_editState.IsLayer5EditMode && _editState.SelectedCells.Count > 0)
+                {
+                    menu.Items.Add(new ToolStripSeparator());
+
+                    ToolStripMenuItem setTransparentItem = new ToolStripMenuItem($"設定 {selectedInfos.Count} 個群組為透明 (Type=0)");
+                    setTransparentItem.Click += (s, ev) => SetGroupLayer5Setting(selectedInfos, 0);
+
+                    ToolStripMenuItem setDisappearItem = new ToolStripMenuItem($"設定 {selectedInfos.Count} 個群組為消失 (Type=1)");
+                    setDisappearItem.Click += (s, ev) => SetGroupLayer5Setting(selectedInfos, 1);
+
+                    ToolStripMenuItem removeLayer5Item = new ToolStripMenuItem($"移除 {selectedInfos.Count} 個群組的 Layer5 設定");
+                    removeLayer5Item.Click += (s, ev) => RemoveGroupLayer5Setting(selectedInfos);
+
+                    menu.Items.Add(setTransparentItem);
+                    menu.Items.Add(setDisappearItem);
+                    menu.Items.Add(removeLayer5Item);
+                }
             }
 
             menu.Show(lvGroupThumbnails, e.Location);
@@ -11560,6 +11736,135 @@ namespace L1FlyMapViewer
             }
 
             this.toolStripStatusLabel1.Text = $"已刪除群組 {groupId}，共 {deletedCount} 個物件";
+        }
+
+        // 設定群組的 Layer5 設定（透明或消失）
+        private void SetGroupLayer5Setting(List<GroupThumbnailInfo> infos, byte type)
+        {
+            if (_editState.SelectedCells.Count == 0)
+            {
+                MessageBox.Show("請先選取格子", "提示", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            int addedCount = 0;
+            int updatedCount = 0;
+            var groupIds = infos.Select(i => i.GroupId).ToHashSet();
+
+            foreach (var cell in _editState.SelectedCells)
+            {
+                var s32Data = cell.S32Data;
+                // Layer5 的 X 是 0-127 (Layer1 座標)，Y 是 0-63
+                // 一個遊戲格子對應兩個 Layer1 X 座標（LocalX 和 LocalX+1）
+                int layer5X1 = cell.LocalX;
+                int layer5X2 = cell.LocalX + 1;
+                int layer5Y = cell.LocalY;
+
+                foreach (var groupId in groupIds)
+                {
+                    // 檢查兩個 X 座標是否已存在 Layer5 設定
+                    for (int layer5X = layer5X1; layer5X <= layer5X2 && layer5X < 128; layer5X++)
+                    {
+                        var existingItem = s32Data.Layer5.FirstOrDefault(l =>
+                            l.X == layer5X && l.Y == layer5Y && l.ObjectIndex == groupId);
+
+                        if (existingItem != null)
+                        {
+                            // 更新現有項目
+                            if (existingItem.Type != type)
+                            {
+                                existingItem.Type = type;
+                                updatedCount++;
+                                s32Data.IsModified = true;
+                            }
+                        }
+                        else
+                        {
+                            // 新增 Layer5 項目
+                            s32Data.Layer5.Add(new Layer5Item
+                            {
+                                X = (byte)layer5X,
+                                Y = (byte)layer5Y,
+                                ObjectIndex = (ushort)groupId,
+                                Type = type
+                            });
+                            addedCount++;
+                            s32Data.IsModified = true;
+                        }
+                    }
+                }
+            }
+
+            // 重新渲染
+            ClearS32BlockCache();
+            RenderS32Map();
+
+            // 更新 Layer5 異常檢查按鈕
+            UpdateLayer5InvalidButton();
+
+            // 更新群組縮圖列表（使用第一個選取格子的資訊）
+            if (_editState.SelectedCells.Count > 0)
+            {
+                var firstCell = _editState.SelectedCells[0];
+                UpdateNearbyGroupThumbnails(firstCell.S32Data, firstCell.LocalX, firstCell.LocalY, 10);
+            }
+
+            string typeStr = type == 0 ? "透明" : "消失";
+            string message = $"已設定 {infos.Count} 個群組為{typeStr}";
+            if (addedCount > 0) message += $"，新增 {addedCount} 筆";
+            if (updatedCount > 0) message += $"，更新 {updatedCount} 筆";
+            this.toolStripStatusLabel1.Text = message;
+        }
+
+        // 移除群組的 Layer5 設定
+        private void RemoveGroupLayer5Setting(List<GroupThumbnailInfo> infos)
+        {
+            if (_editState.SelectedCells.Count == 0)
+            {
+                MessageBox.Show("請先選取格子", "提示", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            int removedCount = 0;
+            var groupIds = infos.Select(i => i.GroupId).ToHashSet();
+
+            foreach (var cell in _editState.SelectedCells)
+            {
+                var s32Data = cell.S32Data;
+                // Layer5 的 X 是 0-127 (Layer1 座標)，Y 是 0-63
+                // 一個遊戲格子對應兩個 Layer1 X 座標（LocalX 和 LocalX+1）
+                int layer5X1 = cell.LocalX;
+                int layer5X2 = cell.LocalX + 1;
+                int layer5Y = cell.LocalY;
+
+                // 找出並移除符合條件的 Layer5 項目（兩個 X 座標都要檢查）
+                var itemsToRemove = s32Data.Layer5
+                    .Where(l => (l.X == layer5X1 || l.X == layer5X2) && l.Y == layer5Y && groupIds.Contains(l.ObjectIndex))
+                    .ToList();
+
+                foreach (var item in itemsToRemove)
+                {
+                    s32Data.Layer5.Remove(item);
+                    removedCount++;
+                    s32Data.IsModified = true;
+                }
+            }
+
+            // 重新渲染
+            ClearS32BlockCache();
+            RenderS32Map();
+
+            // 更新 Layer5 異常檢查按鈕
+            UpdateLayer5InvalidButton();
+
+            // 更新群組縮圖列表（使用第一個選取格子的資訊）
+            if (_editState.SelectedCells.Count > 0)
+            {
+                var firstCell = _editState.SelectedCells[0];
+                UpdateNearbyGroupThumbnails(firstCell.S32Data, firstCell.LocalX, firstCell.LocalY, 10);
+            }
+
+            this.toolStripStatusLabel1.Text = $"已移除 {removedCount} 筆 Layer5 設定";
         }
 
         // ===== 工具列按鈕事件處理 =====
@@ -12028,10 +12333,11 @@ namespace L1FlyMapViewer
                         modifiedS32s.Add(s32Data);
                     }
 
-                    // 清除第5層 - 只在偶數 X 時處理
+                    // 清除第5層 - Layer5.X 是 0-127 (Layer1 座標)
+                    // 一個遊戲格子對應兩個 Layer1 X 座標，只在偶數 X 時處理避免重複
                     if (chkL5.Checked && layer1X % 2 == 0)
                     {
-                        totalL5 += s32Data.Layer5.RemoveAll(item => item.X == layer3X && item.Y == localY);
+                        totalL5 += s32Data.Layer5.RemoveAll(item => (item.X == layer1X || item.X == layer1X + 1) && item.Y == localY);
                         modifiedS32s.Add(s32Data);
                     }
 
