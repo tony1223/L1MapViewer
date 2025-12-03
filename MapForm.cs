@@ -11795,6 +11795,10 @@ namespace L1FlyMapViewer
                 }
             }
 
+            // 清除群組篩選狀態，確保所有 Layer4 物件都能正常渲染
+            _editState.SelectedLayer4Groups.Clear();
+            _editState.IsFilteringLayer4Groups = false;
+
             // 重新渲染
             ClearS32BlockCache();
             RenderS32Map();
@@ -11849,6 +11853,10 @@ namespace L1FlyMapViewer
                     s32Data.IsModified = true;
                 }
             }
+
+            // 清除群組篩選狀態，確保所有 Layer4 物件都能正常渲染
+            _editState.SelectedLayer4Groups.Clear();
+            _editState.IsFilteringLayer4Groups = false;
 
             // 重新渲染
             ClearS32BlockCache();
