@@ -6618,8 +6618,17 @@ namespace L1FlyMapViewer
                             {
                                 // 重新渲染以顯示高亮
                                 RenderS32Map();
-                                // 更新 Layer4 群組清單
-                                UpdateLayer4GroupsList(s32Data, x, y);
+
+                                // 透明編輯模式下：顯示附近群組縮圖
+                                if (_editState.IsLayer5EditMode)
+                                {
+                                    UpdateNearbyGroupThumbnails(s32Data, x, y, 10);
+                                }
+                                else
+                                {
+                                    // 更新 Layer4 群組清單
+                                    UpdateLayer4GroupsList(s32Data, x, y);
+                                }
                             }
                             return;
                         }
@@ -7406,9 +7415,19 @@ namespace L1FlyMapViewer
                         this.toolStripStatusLabel1.Text = $"已選取區域 (遊戲座標: {gameX}, {gameY})，選中 {_editState.SelectedCells.Count} 格，按 Ctrl+C 複製";
                     }
 
-                    // 更新群組縮圖列表，顯示選取區域內的群組
+                    // 更新群組縮圖列表
                     var thumbSw = Stopwatch.StartNew();
-                    UpdateGroupThumbnailsList(_editState.SelectedCells);
+                    if (_editState.IsLayer5EditMode && _editState.SelectedCells.Count > 0)
+                    {
+                        // 透明編輯模式：使用選取區域第一格的位置顯示附近群組（有 L5 設定的排前面）
+                        var firstCell = _editState.SelectedCells[0];
+                        UpdateNearbyGroupThumbnails(firstCell.S32Data, firstCell.LocalX, firstCell.LocalY, 10);
+                    }
+                    else
+                    {
+                        // 一般模式：顯示選取區域內的群組
+                        UpdateGroupThumbnailsList(_editState.SelectedCells);
+                    }
                     thumbSw.Stop();
 
                     // 在透明編輯模式下，需要重新渲染以顯示 Layer5 群組覆蓋層
@@ -10246,6 +10265,188 @@ namespace L1FlyMapViewer
             }
         }
 
+        // 更新附近群組縮圖（透明編輯模式用）
+        private void UpdateNearbyGroupThumbnails(S32Data clickedS32Data, int cellX, int cellY, int radius)
+        {
+            // 計算點擊位置的遊戲座標
+            int clickedGameX = clickedS32Data.SegInfo.nLinBeginX + cellX / 2;
+            int clickedGameY = clickedS32Data.SegInfo.nLinBeginY + cellY;
+
+            // 先收集點擊格子的 Layer5 設定（用於判斷群組是否有設定）
+            var clickedCellLayer5 = new Dictionary<int, byte>();  // GroupId -> Type
+            foreach (var item in clickedS32Data.Layer5)
+            {
+                if (item.X == cellX && item.Y == cellY)
+                {
+                    if (!clickedCellLayer5.ContainsKey(item.ObjectIndex))
+                    {
+                        clickedCellLayer5[item.ObjectIndex] = item.Type;
+                    }
+                }
+            }
+
+            // 收集附近的群組，記錄距離和 Layer5 設定
+            var nearbyGroups = new Dictionary<int, (int distance, List<(S32Data s32, ObjectTile obj)> objects, bool hasLayer5, byte layer5Type)>();
+
+            // 遍歷所有 S32 檔案搜索附近的物件
+            foreach (var s32Data in _document.S32Files.Values)
+            {
+                int segStartX = s32Data.SegInfo.nLinBeginX;
+                int segStartY = s32Data.SegInfo.nLinBeginY;
+
+                foreach (var obj in s32Data.Layer4)
+                {
+                    // 計算物件的遊戲座標
+                    int objGameX = segStartX + obj.X / 2;
+                    int objGameY = segStartY + obj.Y;
+
+                    // 計算距離（曼哈頓距離）
+                    int distance = Math.Abs(objGameX - clickedGameX) + Math.Abs(objGameY - clickedGameY);
+
+                    if (distance <= radius)
+                    {
+                        if (!nearbyGroups.ContainsKey(obj.GroupId))
+                        {
+                            // 檢查該群組是否有 Layer5 設定（從點擊格子的 Layer5 中查找）
+                            bool hasLayer5 = clickedCellLayer5.TryGetValue(obj.GroupId, out byte layer5Type);
+                            nearbyGroups[obj.GroupId] = (distance, new List<(S32Data, ObjectTile)>(), hasLayer5, layer5Type);
+                        }
+
+                        // 更新最小距離
+                        var current = nearbyGroups[obj.GroupId];
+                        if (distance < current.distance)
+                        {
+                            nearbyGroups[obj.GroupId] = (distance, current.objects, current.hasLayer5, current.layer5Type);
+                        }
+                        nearbyGroups[obj.GroupId].objects.Add((s32Data, obj));
+                    }
+                }
+            }
+
+            if (nearbyGroups.Count == 0)
+            {
+                lblGroupThumbnails.Text = "附近群組 (0)";
+                lvGroupThumbnails.Items.Clear();
+                return;
+            }
+
+            // 排序：有 Layer5 設定的優先，然後按距離排序
+            var sortedGroups = nearbyGroups
+                .OrderByDescending(g => g.Value.hasLayer5)  // 有 Layer5 設定的排前面
+                .ThenBy(g => g.Value.distance)              // 距離近的排前面
+                .ThenBy(g => g.Key)                         // 相同時按 GroupId 排序
+                .ToList();
+
+            // Debug: 輸出排序結果
+            Console.WriteLine($"[Layer5Edit] clickedCellLayer5 count: {clickedCellLayer5.Count}");
+            foreach (var g in sortedGroups.Take(10))
+            {
+                Console.WriteLine($"  GroupId={g.Key}, hasL5={g.Value.hasLayer5}, dist={g.Value.distance}");
+            }
+
+            // 計算有 Layer5 設定的群組數量
+            int l5Count = sortedGroups.Count(g => g.Value.hasLayer5);
+
+            // 更新群組縮圖列表
+            lblGroupThumbnails.Text = $"附近群組 ({sortedGroups.Count}, L5:{l5Count}) 載入中...";
+
+            // 取消之前的縮圖產生任務
+            if (_groupThumbnailCts != null)
+            {
+                _groupThumbnailCts.Cancel();
+                _groupThumbnailCts.Dispose();
+            }
+            _groupThumbnailCts = new System.Threading.CancellationTokenSource();
+            var cancellationToken = _groupThumbnailCts.Token;
+
+            int totalGroups = sortedGroups.Count;
+
+            // 在背景執行緒並行產生縮圖
+            Task.Run(() =>
+            {
+                var stopwatch = Stopwatch.StartNew();
+                var thumbnailResults = new System.Collections.Concurrent.ConcurrentDictionary<int, (int groupId, int objectCount, Bitmap thumbnail, List<(S32Data s32, ObjectTile obj)> objects, bool hasLayer5, byte layer5Type, int distance)>();
+
+                Parallel.ForEach(sortedGroups, new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount }, (kvp, state) =>
+                {
+                    if (cancellationToken.IsCancellationRequested)
+                    {
+                        state.Stop();
+                        return;
+                    }
+
+                    int groupId = kvp.Key;
+                    var info = kvp.Value;
+
+                    // 生成群組縮圖（傳遞 Layer5 設定以繪製邊框）
+                    Bitmap thumbnail = GenerateGroupThumbnail(info.objects, 80, info.hasLayer5, info.layer5Type);
+
+                    if (thumbnail != null && !cancellationToken.IsCancellationRequested)
+                    {
+                        thumbnailResults[groupId] = (groupId, info.objects.Count, thumbnail, info.objects, info.hasLayer5, info.layer5Type, info.distance);
+                    }
+                });
+
+                stopwatch.Stop();
+                long elapsedMs = stopwatch.ElapsedMilliseconds;
+
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    foreach (var result in thumbnailResults.Values)
+                    {
+                        result.thumbnail?.Dispose();
+                    }
+                    return;
+                }
+
+                // 在 UI 執行緒更新 ListView（保持排序順序）
+                try
+                {
+                    this.BeginInvoke((MethodInvoker)delegate
+                    {
+                        if (cancellationToken.IsCancellationRequested) return;
+
+                        ImageList imageList = new ImageList();
+                        imageList.ImageSize = new Size(80, 80);
+                        imageList.ColorDepth = ColorDepth.Depth32Bit;
+
+                        lvGroupThumbnails.Items.Clear();
+                        if (lvGroupThumbnails.LargeImageList != null)
+                        {
+                            lvGroupThumbnails.LargeImageList.Dispose();
+                        }
+
+                        int thumbnailIndex = 0;
+                        // 按原始排序順序添加（有 Layer5 的優先，然後按距離）
+                        foreach (var kvp in sortedGroups)
+                        {
+                            if (!thumbnailResults.TryGetValue(kvp.Key, out var result)) continue;
+
+                            imageList.Images.Add(result.thumbnail);
+
+                            string distanceText = result.distance == 0 ? "●" : $"D{result.distance}";
+                            ListViewItem item = new ListViewItem($"{distanceText} G{result.groupId} ({result.objectCount})");
+                            item.ImageIndex = thumbnailIndex;
+                            item.Tag = new GroupThumbnailInfo
+                            {
+                                GroupId = result.groupId,
+                                Objects = result.objects,
+                                HasLayer5Setting = result.hasLayer5,
+                                Layer5Type = result.layer5Type
+                            };
+                            lvGroupThumbnails.Items.Add(item);
+
+                            thumbnailIndex++;
+                        }
+
+                        lvGroupThumbnails.LargeImageList = imageList;
+                        lblGroupThumbnails.Text = $"附近群組 ({totalGroups}) [{elapsedMs}ms]";
+                    });
+                }
+                catch { }
+            });
+        }
+
         // Layer4 群組勾選變更事件
         private void lvLayer4Groups_ItemChecked(object sender, ItemCheckedEventArgs e)
         {
@@ -10376,6 +10577,40 @@ namespace L1FlyMapViewer
             int totalGroups = allGroupsDict.Count;
             bool isSelectedMode = selectedCells != null && selectedCells.Count > 0;
 
+            // 收集所有 Layer5 的 GroupId -> Type 對應（用於顯示邊框顏色）
+            var groupLayer5Info = new Dictionary<int, byte>();
+            if (selectedCells != null && selectedCells.Count > 0)
+            {
+                // 只收集選取格子相關的 Layer5 設定
+                foreach (var cell in selectedCells)
+                {
+                    foreach (var item in cell.S32Data.Layer5)
+                    {
+                        if (item.X == cell.LocalX && item.Y == cell.LocalY)
+                        {
+                            if (!groupLayer5Info.ContainsKey(item.ObjectIndex))
+                            {
+                                groupLayer5Info[item.ObjectIndex] = item.Type;
+                            }
+                        }
+                    }
+                }
+            }
+            else
+            {
+                // 收集所有 S32 的 Layer5 設定
+                foreach (var s32Data in _document.S32Files.Values)
+                {
+                    foreach (var item in s32Data.Layer5)
+                    {
+                        if (!groupLayer5Info.ContainsKey(item.ObjectIndex))
+                        {
+                            groupLayer5Info[item.ObjectIndex] = item.Type;
+                        }
+                    }
+                }
+            }
+
             // 顯示載入中狀態
             lblGroupThumbnails.Text = isSelectedMode
                 ? $"選取區域群組 (載入中 0/{totalGroups})"
@@ -10390,7 +10625,7 @@ namespace L1FlyMapViewer
                 var stopwatch = Stopwatch.StartNew();
 
                 // 使用 Parallel.ForEach 並行產生縮圖
-                var thumbnailResults = new System.Collections.Concurrent.ConcurrentDictionary<int, (int groupId, int objectCount, Bitmap thumbnail, List<(S32Data s32, ObjectTile obj)> objects)>();
+                var thumbnailResults = new System.Collections.Concurrent.ConcurrentDictionary<int, (int groupId, int objectCount, Bitmap thumbnail, List<(S32Data s32, ObjectTile obj)> objects, bool hasLayer5, byte layer5Type)>();
 
                 int processedCount = 0;
                 int lastReportedCount = 0;
@@ -10406,12 +10641,15 @@ namespace L1FlyMapViewer
                     int groupId = kvp.Key;
                     var objects = kvp.Value;
 
-                    // 生成群組縮圖
-                    Bitmap thumbnail = GenerateGroupThumbnail(objects, 80);
+                    // 檢查該群組是否有 Layer5 設定
+                    bool hasLayer5 = groupLayer5Info.TryGetValue(groupId, out byte layer5Type);
+
+                    // 生成群組縮圖（傳遞 Layer5 設定以繪製邊框）
+                    Bitmap thumbnail = GenerateGroupThumbnail(objects, 80, hasLayer5, layer5Type);
 
                     if (thumbnail != null && !cancellationToken.IsCancellationRequested)
                     {
-                        thumbnailResults[groupId] = (groupId, objects.Count, thumbnail, objects);
+                        thumbnailResults[groupId] = (groupId, objects.Count, thumbnail, objects, hasLayer5, layer5Type);
                     }
 
                     // 更新進度（每處理 10 個或處理完成時更新 UI）
@@ -10482,7 +10720,13 @@ namespace L1FlyMapViewer
 
                             ListViewItem item = new ListViewItem($"G{result.groupId} ({result.objectCount})");
                             item.ImageIndex = thumbnailIndex;
-                            item.Tag = new GroupThumbnailInfo { GroupId = result.groupId, Objects = result.objects };
+                            item.Tag = new GroupThumbnailInfo
+                            {
+                                GroupId = result.groupId,
+                                Objects = result.objects,
+                                HasLayer5Setting = result.hasLayer5,
+                                Layer5Type = result.layer5Type
+                            };
                             lvGroupThumbnails.Items.Add(item);
 
                             thumbnailIndex++;
@@ -10528,9 +10772,11 @@ namespace L1FlyMapViewer
 
         // 縮圖邊框畫筆（重用避免重複建立）
         private static readonly Pen _thumbnailBorderPen = new Pen(Color.LightGray, 1);
+        private static readonly Pen _thumbnailBorderPenType0 = new Pen(Color.FromArgb(180, 0, 255), 3);  // 紫色 - Type=0
+        private static readonly Pen _thumbnailBorderPenType1 = new Pen(Color.FromArgb(255, 80, 80), 3);  // 紅色 - Type=1
 
         // 生成群組縮圖（將同 GroupId 的物件按相對位置組裝，使用與主畫布相同的繪製方式）
-        private Bitmap GenerateGroupThumbnail(List<(S32Data s32, ObjectTile obj)> objects, int thumbnailSize)
+        private Bitmap GenerateGroupThumbnail(List<(S32Data s32, ObjectTile obj)> objects, int thumbnailSize, bool hasLayer5Setting = false, byte layer5Type = 0)
         {
             if (objects == null || objects.Count == 0)
                 return null;
@@ -10654,8 +10900,16 @@ namespace L1FlyMapViewer
 
                     g.DrawImage(tempBitmap, drawX, drawY, scaledWidth, scaledHeight);
 
-                    // 加邊框（使用重用的 Pen）
-                    g.DrawRectangle(_thumbnailBorderPen, 0, 0, thumbnailSize - 1, thumbnailSize - 1);
+                    // 加邊框（根據 Layer5 設定使用不同顏色）
+                    if (hasLayer5Setting)
+                    {
+                        Pen borderPen = layer5Type == 0 ? _thumbnailBorderPenType0 : _thumbnailBorderPenType1;
+                        g.DrawRectangle(borderPen, 1, 1, thumbnailSize - 3, thumbnailSize - 3);
+                    }
+                    else
+                    {
+                        g.DrawRectangle(_thumbnailBorderPen, 0, 0, thumbnailSize - 1, thumbnailSize - 1);
+                    }
                 }
 
                 tempBitmap.Dispose();
