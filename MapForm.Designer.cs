@@ -446,7 +446,7 @@ namespace L1FlyMapViewer
             this.lstS32Files.Name = "lstS32Files";
             this.lstS32Files.Size = new Size(260, 300);
             this.lstS32Files.TabIndex = 3;
-            this.lstS32Files.CheckOnClick = true;
+            this.lstS32Files.CheckOnClick = false;  // 只有點擊 checkbox 才會切換勾選狀態
             this.lstS32Files.SelectedIndexChanged += new System.EventHandler(this.lstS32Files_SelectedIndexChanged);
             this.lstS32Files.ItemCheck += new ItemCheckEventHandler(this.lstS32Files_ItemCheck);
             this.lstS32Files.MouseUp += new MouseEventHandler(this.lstS32Files_MouseUp);
