@@ -96,8 +96,7 @@ namespace L1FlyMapViewer
         private PassableEditMode currentPassableEditMode = PassableEditMode.None;
         private Label lblPassabilityHelp; // 通行性編輯操作說明標籤
 
-        // Layer5 透明編輯模式
-        private bool isLayer5EditMode = false;
+        // Layer5 透明編輯模式（狀態存於 _editState.IsLayer5EditMode）
         private Label lblLayer5Help; // Layer5 編輯操作說明標籤
 
         // Undo 相關常數
@@ -4222,7 +4221,7 @@ namespace L1FlyMapViewer
                 btnSetPassable.BackColor = Color.LightGreen;
                 btnSetImpassable.BackColor = SystemColors.Control;
                 // 取消 Layer5 編輯模式
-                isLayer5EditMode = false;
+                _editState.IsLayer5EditMode = false;
                 btnEditLayer5.BackColor = SystemColors.Control;
                 UpdateLayer5HelpLabel();
                 // 自動顯示通行性覆蓋層
@@ -4250,7 +4249,7 @@ namespace L1FlyMapViewer
                 btnSetImpassable.BackColor = Color.LightCoral;
                 btnSetPassable.BackColor = SystemColors.Control;
                 // 取消 Layer5 編輯模式
-                isLayer5EditMode = false;
+                _editState.IsLayer5EditMode = false;
                 btnEditLayer5.BackColor = SystemColors.Control;
                 UpdateLayer5HelpLabel();
                 // 自動顯示通行性覆蓋層
@@ -4275,18 +4274,19 @@ namespace L1FlyMapViewer
         // 透明編輯按鈕點擊事件
         private void btnEditLayer5_Click(object sender, EventArgs e)
         {
-            if (isLayer5EditMode)
+            if (_editState.IsLayer5EditMode)
             {
                 // 取消模式
-                isLayer5EditMode = false;
+                _editState.IsLayer5EditMode = false;
                 btnEditLayer5.BackColor = SystemColors.Control;
                 this.toolStripStatusLabel1.Text = "已取消透明編輯模式";
                 UpdateLayer5HelpLabel();
+                RenderS32Map();  // 重新渲染以移除群組覆蓋層
             }
             else
             {
                 // 啟用透明編輯模式
-                isLayer5EditMode = true;
+                _editState.IsLayer5EditMode = true;
                 btnEditLayer5.BackColor = Color.FromArgb(100, 180, 255);
                 // 取消通行性編輯模式
                 currentPassableEditMode = PassableEditMode.None;
@@ -4297,6 +4297,7 @@ namespace L1FlyMapViewer
                 EnsureLayer5Visible();
                 this.toolStripStatusLabel1.Text = "透明編輯模式：左鍵添加/右鍵刪除透明設定";
                 UpdateLayer5HelpLabel();
+                RenderS32Map();  // 重新渲染以顯示群組覆蓋層
             }
         }
 
@@ -4328,7 +4329,7 @@ namespace L1FlyMapViewer
                 s32MapPanel.Controls.Add(lblLayer5Help);
             }
 
-            if (!isLayer5EditMode)
+            if (!_editState.IsLayer5EditMode)
             {
                 lblLayer5Help.Visible = false;
                 return;
@@ -4466,6 +4467,7 @@ namespace L1FlyMapViewer
             bool showGrid = chkShowGrid.Checked;
             bool showS32Boundary = chkShowS32Boundary.Checked;
             bool showLayer5 = chkShowLayer5.Checked;
+            bool isLayer5Edit = _editState.IsLayer5EditMode;
             bool hasHighlight = _editState.HighlightedS32Data != null && _editState.HighlightedCellX >= 0 && _editState.HighlightedCellY >= 0;
             int panelWidth = s32MapPanel.Width;
             int panelHeight = s32MapPanel.Height;
@@ -4615,7 +4617,7 @@ namespace L1FlyMapViewer
 
                 if (showLayer5)
                 {
-                    DrawLayer5OverlayViewport(viewportBitmap, currentMap, worldRect);
+                    DrawLayer5OverlayViewport(viewportBitmap, currentMap, worldRect, isLayer5Edit);
                 }
 
                 if (cancellationToken.IsCancellationRequested)
@@ -5504,7 +5506,7 @@ namespace L1FlyMapViewer
         }
 
         // 繪製 Layer5 覆蓋層（透明圖塊標記）
-        private void DrawLayer5OverlayViewport(Bitmap bitmap, Struct.L1Map currentMap, Rectangle worldRect)
+        private void DrawLayer5OverlayViewport(Bitmap bitmap, Struct.L1Map currentMap, Rectangle worldRect, bool isLayer5Edit)
         {
             using (Graphics g = Graphics.FromImage(bitmap))
             {
@@ -5580,6 +5582,89 @@ namespace L1FlyMapViewer
                                 g.DrawLine(borderPen, pBottom, pTop);
                             }
                         }
+                    }
+                }
+
+                // 在透明編輯模式下，繪製已設定 Layer5 的群組物件覆蓋層
+                if (isLayer5Edit)
+                {
+                    DrawLayer5GroupOverlay(g, worldRect);
+                }
+            }
+        }
+
+        // 繪製已設定 Layer5 的群組物件覆蓋層
+        private void DrawLayer5GroupOverlay(Graphics g, Rectangle worldRect)
+        {
+            // 只有在有選取格子時才顯示
+            if (_editState.SelectedCells.Count == 0) return;
+
+            // 從選取的格子收集 Layer5 的 GroupId 及其 Type
+            var groupLayer5Info = new Dictionary<int, byte>(); // GroupId -> Type
+            foreach (var selectedCell in _editState.SelectedCells)
+            {
+                var s32Data = selectedCell.S32Data;
+                int localX = selectedCell.LocalX;  // Layer1 座標 (0-127)
+                int localY = selectedCell.LocalY;  // Layer3 座標 (0-63)
+
+                // 查找該格子位置對應的 Layer5 設定
+                // Layer5 的 X 是 0-127，Y 是 0-63
+                // selectedCell.LocalX 是 Layer1 座標 (0-127)，LocalY 是 (0-63)
+                foreach (var item in s32Data.Layer5)
+                {
+                    if (item.X == localX && item.Y == localY)
+                    {
+                        // 如果同一個 GroupId 有多個設定，保留第一個
+                        if (!groupLayer5Info.ContainsKey(item.ObjectIndex))
+                        {
+                            groupLayer5Info[item.ObjectIndex] = item.Type;
+                        }
+                    }
+                }
+            }
+
+            if (groupLayer5Info.Count == 0) return;
+
+            // 半透明覆蓋色：Type=0 紫色（高對比），Type=1 紅色
+            using (SolidBrush type0Brush = new SolidBrush(Color.FromArgb(100, 180, 0, 255)))
+            using (SolidBrush type1Brush = new SolidBrush(Color.FromArgb(100, 255, 80, 80)))
+            {
+                foreach (var s32Data in _document.S32Files.Values)
+                {
+                    int[] loc = s32Data.SegInfo.GetLoc(1.0);
+                    int mx = loc[0];
+                    int my = loc[1];
+
+                    foreach (var obj in s32Data.Layer4)
+                    {
+                        // 檢查該群組是否有 Layer5 設定
+                        if (!groupLayer5Info.TryGetValue(obj.GroupId, out byte type))
+                            continue;
+
+                        // 使用與高亮格子相同的座標計算方式
+                        int x1 = obj.X;  // 0-127 (Layer1 座標系)
+                        int y = obj.Y;   // 0-63
+
+                        int localBaseX = 0 - 24 * (x1 / 2);
+                        int localBaseY = 63 * 12 - 12 * (x1 / 2);
+
+                        int X = mx + localBaseX + x1 * 24 + y * 24 - worldRect.X;
+                        int Y = my + localBaseY + y * 12 - worldRect.Y;
+
+                        // 跳過不在 Viewport 內的物件
+                        if (X + 24 < 0 || X > worldRect.Width || Y + 24 < 0 || Y > worldRect.Height)
+                            continue;
+
+                        // 繪製半格菱形覆蓋（與格子高亮相同大小）
+                        SolidBrush brush = type == 0 ? type0Brush : type1Brush;
+                        Point[] diamond = new Point[]
+                        {
+                            new Point(X + 0, Y + 12),   // 左
+                            new Point(X + 12, Y + 0),   // 上
+                            new Point(X + 24, Y + 12),  // 右
+                            new Point(X + 12, Y + 24)   // 下
+                        };
+                        g.FillPolygon(brush, diamond);
                     }
                 }
             }
@@ -7326,8 +7411,16 @@ namespace L1FlyMapViewer
                     UpdateGroupThumbnailsList(_editState.SelectedCells);
                     thumbSw.Stop();
 
-                    // 保留選取框顯示
-                    s32PictureBox.Invalidate();
+                    // 在透明編輯模式下，需要重新渲染以顯示 Layer5 群組覆蓋層
+                    if (_editState.IsLayer5EditMode)
+                    {
+                        RenderS32Map();
+                    }
+                    else
+                    {
+                        // 保留選取框顯示
+                        s32PictureBox.Invalidate();
+                    }
                     totalSw.Stop();
                     LogPerf($"[MOUSE-UP-SELECT] bounds={boundsSw.ElapsedMilliseconds}ms, origin={originSw.ElapsedMilliseconds}ms, thumb={thumbSw.ElapsedMilliseconds}ms, total={totalSw.ElapsedMilliseconds}ms, cells={_editState.SelectedCells.Count}");
                     return;
@@ -8397,7 +8490,7 @@ namespace L1FlyMapViewer
             return panel;
         }
 
-        // 創建第五層面板 - 可透明化的圖塊
+        // 創建第五層面板 - 可透明化的圖塊（只顯示該格子相關的項目）
         private Panel CreateLayer5Panel(int x, int y)
         {
             Panel panel = new Panel();
@@ -8412,14 +8505,26 @@ namespace L1FlyMapViewer
             title.TextAlign = ContentAlignment.MiddleCenter;
             panel.Controls.Add(title);
 
-            if (currentS32Data.Layer5.Count > 0)
+            // 只篩選該格子相關的 Layer5 項目
+            // x 是 Layer1 座標 (0-127)，y 是 Layer3 座標 (0-63)
+            // Layer5 的 X 是 0-127，Y 是 0-63
+            var cellLayer5Items = new List<(int index, Layer5Item item)>();
+            for (int i = 0; i < currentS32Data.Layer5.Count; i++)
+            {
+                var item5 = currentS32Data.Layer5[i];
+                if (item5.X == x && item5.Y == y)
+                {
+                    cellLayer5Items.Add((i, item5));
+                }
+            }
+
+            if (cellLayer5Items.Count > 0)
             {
                 Label countLabel = new Label();
-                countLabel.Text = $"數量: {currentS32Data.Layer5.Count}";
+                countLabel.Text = $"此格數量: {cellLayer5Items.Count}";
                 countLabel.Dock = DockStyle.Top;
                 countLabel.Height = 20;
                 countLabel.TextAlign = ContentAlignment.MiddleCenter;
-                panel.Controls.Add(countLabel);
 
                 ListView listView = new ListView();
                 listView.Dock = DockStyle.Fill;
@@ -8434,10 +8539,9 @@ namespace L1FlyMapViewer
                 listView.Columns.Add("ObjIdx", 60);
                 listView.Columns.Add("Type", 50);
 
-                for (int i = 0; i < currentS32Data.Layer5.Count; i++)
+                foreach (var (idx, item5) in cellLayer5Items)
                 {
-                    var item5 = currentS32Data.Layer5[i];
-                    var lvItem = new ListViewItem(i.ToString());
+                    var lvItem = new ListViewItem(idx.ToString());
                     lvItem.SubItems.Add(item5.X.ToString());
                     lvItem.SubItems.Add(item5.Y.ToString());
                     lvItem.SubItems.Add(item5.ObjectIndex.ToString());
@@ -8445,12 +8549,14 @@ namespace L1FlyMapViewer
                     listView.Items.Add(lvItem);
                 }
 
+                // 先加入 Fill 的控件，再加入 Top 的控件（Dock 順序）
                 panel.Controls.Add(listView);
+                panel.Controls.Add(countLabel);
             }
             else
             {
                 Label info = new Label();
-                info.Text = "無資料";
+                info.Text = "此格無資料";
                 info.Dock = DockStyle.Fill;
                 info.TextAlign = ContentAlignment.MiddleCenter;
                 panel.Controls.Add(info);
@@ -10410,6 +10516,8 @@ namespace L1FlyMapViewer
         {
             public int GroupId { get; set; }
             public List<(S32Data s32, ObjectTile obj)> Objects { get; set; }
+            public bool HasLayer5Setting { get; set; }  // 是否有 Layer5 設定
+            public byte Layer5Type { get; set; }        // Layer5 Type (0=半透明, 1=其他)
         }
 
         // 「全部」按鈕點擊事件 - 顯示全部群組
