@@ -4044,10 +4044,21 @@ namespace L1FlyMapViewer
                     {
                         int x = br.ReadByte();
                         int y = br.ReadByte();
-                        int layer = br.ReadByte();
-                        int indexId = br.ReadByte();
-                        int tileId = br.ReadInt16();
-                        int uk = br.ReadByte();
+
+                        // 檢查是否為 dummy 資料 (0xCD 0xCD)
+                        if (x == 0xCD && y == 0xCD)
+                        {
+                            // 跳過 5 bytes dummy 資料
+                            br.ReadBytes(5);
+                            j--;
+                            blockCount--;
+                            continue;
+                        }
+
+                        int layer = br.ReadByte();  // h (圖層高度)
+                        uint tileData = br.ReadUInt32();  // tiledata
+                        int indexId = (int)(tileData & 0xFF);
+                        int tileId = (int)((tileData >> 8) & 0xFFFFFF);
 
                         var objTile = new ObjectTile
                         {
@@ -4353,13 +4364,13 @@ namespace L1FlyMapViewer
             int startY = currentMap.nLinBeginY;
             int endY = currentMap.nLinEndY;
 
-            // 格式化為資料庫設定格式
-            string coordText = $"startX={startX}, endX={endX}, startY={startY}, endY={endY}";
+            // 格式化為 SQL UPDATE 語句
+            string coordText = $"UPDATE mapids SET startX={startX}, endX={endX}, startY={startY}, endY={endY} WHERE mapid = {_document.MapId}";
 
             // 複製到剪貼簿
             Clipboard.SetText(coordText);
 
-            this.toolStripStatusLabel1.Text = $"已複製地圖座標: {coordText}";
+            this.toolStripStatusLabel1.Text = $"已複製: {coordText}";
         }
 
         // 允許通行按鈕點擊事件
@@ -10111,17 +10122,18 @@ namespace L1FlyMapViewer
                     {
                         bw.Write((byte)obj.X);
                         bw.Write((byte)obj.Y);
-                        bw.Write((byte)obj.Layer);
-                        bw.Write((byte)obj.IndexId);
-                        bw.Write((short)obj.TileId);
-                        bw.Write((byte)0); // uk
+                        bw.Write((byte)obj.Layer);  // h (圖層高度)
+                        // tiledata = indexId | (tileId << 8)
+                        uint tileData = (uint)(obj.IndexId & 0xFF) | (uint)((obj.TileId & 0xFFFFFF) << 8);
+                        bw.Write(tileData);
                     }
                 }
 
                 // 第六步：寫入第5-8層數據（從解析後的資料重新生成）
-                // 第五層 - 事件
-                bw.Write(s32Data.Layer5.Count);
-                foreach (var item in s32Data.Layer5)
+                // 第五層 - 事件（只寫入 X 為偶數的項目）
+                var layer5EvenX = s32Data.Layer5.Where(item => item.X % 2 == 0).ToList();
+                bw.Write(layer5EvenX.Count);
+                foreach (var item in layer5EvenX)
                 {
                     bw.Write(item.X);
                     bw.Write(item.Y);
@@ -11497,11 +11509,15 @@ namespace L1FlyMapViewer
                 ToolStripMenuItem gotoItem = new ToolStripMenuItem("跳轉到位置");
                 gotoItem.Click += (s, ev) => JumpToGroupLocation(info);
 
+                ToolStripMenuItem detailItem = new ToolStripMenuItem($"列出 L4 明細 ({info.Objects.Count} 個物件)");
+                detailItem.Click += (s, ev) => ShowLayer4Details(info);
+
                 ToolStripMenuItem deleteItem = new ToolStripMenuItem($"刪除群組 {info.GroupId} ({info.Objects.Count} 個物件)");
                 deleteItem.Click += (s, ev) => DeleteGroupFromMap(info);
 
                 menu.Items.Add(copyItem);
                 menu.Items.Add(gotoItem);
+                menu.Items.Add(detailItem);
                 menu.Items.Add(new ToolStripSeparator());
                 menu.Items.Add(deleteItem);
 
@@ -12143,6 +12159,402 @@ namespace L1FlyMapViewer
 
                 string oldIdsStr = string.Join(", ", oldGroupIds);
                 this.toolStripStatusLabel1.Text = $"已將群組 {oldIdsStr} 變更為 {newGroupId}，共 {changedCount} 個物件";
+            }
+        }
+
+        // 顯示 Layer4 群組明細對話框
+        private void ShowLayer4Details(GroupThumbnailInfo info)
+        {
+            if (info == null || info.Objects.Count == 0)
+                return;
+
+            using (var form = new Form())
+            {
+                form.Text = $"群組 {info.GroupId} - L4 明細 ({info.Objects.Count} 個物件)";
+                form.Size = new Size(700, 500);
+                form.StartPosition = FormStartPosition.CenterParent;
+                form.MinimizeBox = false;
+
+                // ListView 顯示物件列表
+                var listView = new ListView
+                {
+                    Dock = DockStyle.Fill,
+                    View = View.Details,
+                    FullRowSelect = true,
+                    GridLines = true,
+                    CheckBoxes = true
+                };
+
+                listView.Columns.Add("", 30);  // 勾選欄
+                listView.Columns.Add("S32 檔案", 120);
+                listView.Columns.Add("X (L1)", 60);
+                listView.Columns.Add("Y (L1)", 60);
+                listView.Columns.Add("Layer", 50);
+                listView.Columns.Add("IndexId", 70);
+                listView.Columns.Add("TileId", 70);
+                listView.Columns.Add("遊戲座標", 120);
+
+                // 填充資料
+                foreach (var (s32, obj) in info.Objects)
+                {
+                    string fileName = System.IO.Path.GetFileName(s32.FilePath ?? "Unknown");
+
+                    // 計算遊戲座標
+                    string gameCoord = "";
+                    if (!string.IsNullOrEmpty(s32.FilePath))
+                    {
+                        string fileNameWithoutExt = System.IO.Path.GetFileNameWithoutExtension(s32.FilePath);
+                        if (fileNameWithoutExt.Length >= 8)
+                        {
+                            try
+                            {
+                                int blockX = Convert.ToInt32(fileNameWithoutExt.Substring(0, 4), 16);
+                                int blockY = Convert.ToInt32(fileNameWithoutExt.Substring(4, 4), 16);
+                                int nLinBeginX = (blockX - 0x7FFF) * 64 + 0x7FFF - 64 + 1;
+                                int nLinBeginY = (blockY - 0x7FFF) * 64 + 0x7FFF - 64 + 1;
+                                int gameX = nLinBeginX + obj.X / 2;
+                                int gameY = nLinBeginY + obj.Y;
+                                gameCoord = $"{gameX}, {gameY}";
+                            }
+                            catch { }
+                        }
+                    }
+
+                    var item = new ListViewItem("");
+                    item.SubItems.Add(fileName);
+                    item.SubItems.Add(obj.X.ToString());
+                    item.SubItems.Add(obj.Y.ToString());
+                    item.SubItems.Add(obj.Layer.ToString());
+                    item.SubItems.Add(obj.IndexId.ToString());
+                    item.SubItems.Add(obj.TileId.ToString());
+                    item.SubItems.Add(gameCoord);
+                    item.Tag = (s32, obj);
+                    listView.Items.Add(item);
+                }
+
+                // 雙擊編輯項目
+                listView.DoubleClick += (s, ev) =>
+                {
+                    if (listView.SelectedItems.Count == 0)
+                        return;
+
+                    var selectedItem = listView.SelectedItems[0];
+                    if (!(selectedItem.Tag is (S32Data s32, ObjectTile obj)))
+                        return;
+
+                    // 建立編輯對話框
+                    using (var editForm = new Form())
+                    {
+                        editForm.Text = $"編輯物件 - 群組 {info.GroupId}";
+                        editForm.Size = new Size(300, 290);
+                        editForm.FormBorderStyle = FormBorderStyle.FixedDialog;
+                        editForm.MaximizeBox = false;
+                        editForm.MinimizeBox = false;
+                        editForm.StartPosition = FormStartPosition.CenterParent;
+
+                        var lblX = new Label { Text = "X (L1):", Location = new Point(20, 25), Size = new Size(60, 20) };
+                        var txtX = new TextBox { Text = obj.X.ToString(), Location = new Point(90, 22), Size = new Size(160, 22) };
+
+                        var lblY = new Label { Text = "Y (L1):", Location = new Point(20, 60), Size = new Size(60, 20) };
+                        var txtY = new TextBox { Text = obj.Y.ToString(), Location = new Point(90, 57), Size = new Size(160, 22) };
+
+                        var lblLayer = new Label { Text = "Layer:", Location = new Point(20, 95), Size = new Size(60, 20) };
+                        var txtLayer = new TextBox { Text = obj.Layer.ToString(), Location = new Point(90, 92), Size = new Size(160, 22) };
+
+                        var lblIndexId = new Label { Text = "IndexId:", Location = new Point(20, 130), Size = new Size(60, 20) };
+                        var txtIndexId = new TextBox { Text = obj.IndexId.ToString(), Location = new Point(90, 127), Size = new Size(160, 22) };
+
+                        var lblTileId = new Label { Text = "TileId:", Location = new Point(20, 165), Size = new Size(60, 20) };
+                        var txtTileId = new TextBox { Text = obj.TileId.ToString(), Location = new Point(90, 162), Size = new Size(160, 22) };
+
+                        var btnOK = new Button { Text = "確定", Location = new Point(90, 205), Size = new Size(75, 28), DialogResult = DialogResult.OK };
+                        var btnCancel = new Button { Text = "取消", Location = new Point(175, 205), Size = new Size(75, 28), DialogResult = DialogResult.Cancel };
+
+                        editForm.Controls.AddRange(new Control[] { lblX, txtX, lblY, txtY, lblLayer, txtLayer, lblIndexId, txtIndexId, lblTileId, txtTileId, btnOK, btnCancel });
+                        editForm.AcceptButton = btnOK;
+                        editForm.CancelButton = btnCancel;
+
+                        if (editForm.ShowDialog(form) == DialogResult.OK)
+                        {
+                            if (!int.TryParse(txtX.Text, out int newX) ||
+                                !int.TryParse(txtY.Text, out int newY) ||
+                                !int.TryParse(txtLayer.Text, out int newLayer) ||
+                                !int.TryParse(txtIndexId.Text, out int newIndexId) ||
+                                !int.TryParse(txtTileId.Text, out int newTileId))
+                            {
+                                MessageBox.Show("請輸入有效的數字", "錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                                return;
+                            }
+
+                            // 驗證範圍
+                            if (newX < 0 || newX > 255 || newY < 0 || newY > 255)
+                            {
+                                MessageBox.Show("X 和 Y 必須在 0-255 之間", "錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                                return;
+                            }
+
+                            // 記錄 Undo
+                            var undoAction = new UndoAction { Description = $"編輯群組 {info.GroupId} 物件" };
+                            undoAction.RemovedObjects.Add(new UndoObjectInfo
+                            {
+                                S32FilePath = s32.FilePath,
+                                GroupId = obj.GroupId,
+                                LocalX = obj.X,
+                                LocalY = obj.Y,
+                                Layer = obj.Layer,
+                                IndexId = obj.IndexId,
+                                TileId = obj.TileId
+                            });
+
+                            // 更新物件
+                            obj.X = newX;
+                            obj.Y = newY;
+                            obj.Layer = newLayer;
+                            obj.IndexId = newIndexId;
+                            obj.TileId = newTileId;
+                            s32.IsModified = true;
+
+                            undoAction.AddedObjects.Add(new UndoObjectInfo
+                            {
+                                S32FilePath = s32.FilePath,
+                                GroupId = obj.GroupId,
+                                LocalX = newX,
+                                LocalY = newY,
+                                Layer = newLayer,
+                                IndexId = newIndexId,
+                                TileId = newTileId
+                            });
+
+                            _editState.PushUndoAction(undoAction);
+
+                            // 更新 ListView
+                            selectedItem.SubItems[2].Text = newX.ToString();
+                            selectedItem.SubItems[3].Text = newY.ToString();
+                            selectedItem.SubItems[4].Text = newLayer.ToString();
+                            selectedItem.SubItems[5].Text = newIndexId.ToString();
+                            selectedItem.SubItems[6].Text = newTileId.ToString();
+
+                            // 重新計算遊戲座標
+                            string gameCoord = "";
+                            if (!string.IsNullOrEmpty(s32.FilePath))
+                            {
+                                string fileNameWithoutExt = System.IO.Path.GetFileNameWithoutExtension(s32.FilePath);
+                                if (fileNameWithoutExt.Length >= 8)
+                                {
+                                    try
+                                    {
+                                        int blockX = Convert.ToInt32(fileNameWithoutExt.Substring(0, 4), 16);
+                                        int blockY = Convert.ToInt32(fileNameWithoutExt.Substring(4, 4), 16);
+                                        int nLinBeginX = (blockX - 0x7FFF) * 64 + 0x7FFF - 64 + 1;
+                                        int nLinBeginY = (blockY - 0x7FFF) * 64 + 0x7FFF - 64 + 1;
+                                        int gameX = nLinBeginX + newX / 2;
+                                        int gameY = nLinBeginY + newY;
+                                        gameCoord = $"{gameX}, {gameY}";
+                                    }
+                                    catch { }
+                                }
+                            }
+                            selectedItem.SubItems[7].Text = gameCoord;
+
+                            // 重新渲染
+                            ClearS32BlockCache();
+                            RenderS32Map();
+
+                            this.toolStripStatusLabel1.Text = $"已更新物件: X={newX}, Y={newY}, Layer={newLayer}, IndexId={newIndexId}, TileId={newTileId}";
+                        }
+                    }
+                };
+
+                // 底部面板
+                var bottomPanel = new Panel
+                {
+                    Dock = DockStyle.Bottom,
+                    Height = 50
+                };
+
+                var btnSelectAll = new Button
+                {
+                    Text = "全選",
+                    Location = new Point(10, 12),
+                    Size = new Size(75, 26)
+                };
+                btnSelectAll.Click += (s, ev) =>
+                {
+                    foreach (ListViewItem item in listView.Items)
+                        item.Checked = true;
+                };
+
+                var btnSelectNone = new Button
+                {
+                    Text = "取消全選",
+                    Location = new Point(95, 12),
+                    Size = new Size(75, 26)
+                };
+                btnSelectNone.Click += (s, ev) =>
+                {
+                    foreach (ListViewItem item in listView.Items)
+                        item.Checked = false;
+                };
+
+                var btnDeleteSelected = new Button
+                {
+                    Text = "刪除勾選項目",
+                    Location = new Point(200, 12),
+                    Size = new Size(100, 26),
+                    BackColor = Color.FromArgb(255, 200, 200)
+                };
+                btnDeleteSelected.Click += (s, ev) =>
+                {
+                    var checkedItems = listView.CheckedItems.Cast<ListViewItem>().ToList();
+                    if (checkedItems.Count == 0)
+                    {
+                        MessageBox.Show("請先勾選要刪除的項目", "提示", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        return;
+                    }
+
+                    if (MessageBox.Show($"確定要刪除勾選的 {checkedItems.Count} 個物件嗎？\n此操作支援 Undo。",
+                        "確認刪除", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
+                        return;
+
+                    // 收集要刪除的物件
+                    var objectsToDelete = new List<(S32Data s32, ObjectTile obj)>();
+                    foreach (ListViewItem item in checkedItems)
+                    {
+                        if (item.Tag is (S32Data s32, ObjectTile obj))
+                        {
+                            objectsToDelete.Add((s32, obj));
+                        }
+                    }
+
+                    if (objectsToDelete.Count == 0)
+                        return;
+
+                    // 建立 Undo 動作
+                    var undoAction = new UndoAction { Description = $"刪除群組 {info.GroupId} 中的 {checkedItems.Count} 個物件" };
+
+                    // 執行刪除
+                    int deletedCount = 0;
+                    foreach (var (s32, obj) in objectsToDelete)
+                    {
+                        // 記錄 Undo 資訊
+                        undoAction.RemovedObjects.Add(new UndoObjectInfo
+                        {
+                            S32FilePath = s32.FilePath,
+                            GroupId = obj.GroupId,
+                            LocalX = obj.X,
+                            LocalY = obj.Y,
+                            Layer = obj.Layer,
+                            IndexId = obj.IndexId,
+                            TileId = obj.TileId
+                        });
+
+                        // 從 Layer4 移除
+                        s32.Layer4.Remove(obj);
+                        s32.IsModified = true;
+                        deletedCount++;
+                    }
+
+                    _editState.PushUndoAction(undoAction);
+
+                    // 從 ListView 移除已刪除的項目
+                    foreach (ListViewItem item in checkedItems)
+                    {
+                        listView.Items.Remove(item);
+                    }
+
+                    // 更新標題
+                    form.Text = $"群組 {info.GroupId} - L4 明細 ({listView.Items.Count} 個物件)";
+
+                    // 重新渲染
+                    ClearS32BlockCache();
+                    RenderS32Map();
+
+                    // 更新群組列表
+                    if (_editState.SelectedCells.Count > 0)
+                    {
+                        var firstCell = _editState.SelectedCells[0];
+                        UpdateNearbyGroupThumbnails(firstCell.S32Data, firstCell.LocalX, firstCell.LocalY, 10);
+                    }
+
+                    this.toolStripStatusLabel1.Text = $"已刪除 {deletedCount} 個物件";
+
+                    // 如果全部刪除完畢，關閉對話框
+                    if (listView.Items.Count == 0)
+                    {
+                        MessageBox.Show("群組內所有物件已刪除", "提示", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        form.Close();
+                    }
+                };
+
+                var btnExportCsv = new Button
+                {
+                    Text = "匯出 CSV",
+                    Location = new Point(320, 12),
+                    Size = new Size(85, 26)
+                };
+                btnExportCsv.Click += (s, ev) =>
+                {
+                    using (var saveDialog = new SaveFileDialog())
+                    {
+                        saveDialog.Filter = "CSV 檔案|*.csv";
+                        saveDialog.FileName = $"Group_{info.GroupId}_L4.csv";
+                        saveDialog.Title = "匯出 Layer4 明細";
+
+                        if (saveDialog.ShowDialog() == DialogResult.OK)
+                        {
+                            try
+                            {
+                                using (var writer = new System.IO.StreamWriter(saveDialog.FileName, false, System.Text.Encoding.UTF8))
+                                {
+                                    // 寫入標題列
+                                    writer.WriteLine("GroupId,S32檔案,X(L1),Y(L1),Layer,IndexId,TileId,遊戲座標X,遊戲座標Y");
+
+                                    // 寫入資料
+                                    foreach (ListViewItem item in listView.Items)
+                                    {
+                                        string s32File = item.SubItems[1].Text;
+                                        string x = item.SubItems[2].Text;
+                                        string y = item.SubItems[3].Text;
+                                        string layer = item.SubItems[4].Text;
+                                        string indexId = item.SubItems[5].Text;
+                                        string tileId = item.SubItems[6].Text;
+                                        string gameCoord = item.SubItems[7].Text;
+                                        string gameX = "", gameY = "";
+                                        if (!string.IsNullOrEmpty(gameCoord) && gameCoord.Contains(","))
+                                        {
+                                            var parts = gameCoord.Split(',');
+                                            gameX = parts[0].Trim();
+                                            gameY = parts.Length > 1 ? parts[1].Trim() : "";
+                                        }
+
+                                        writer.WriteLine($"{info.GroupId},{s32File},{x},{y},{layer},{indexId},{tileId},{gameX},{gameY}");
+                                    }
+                                }
+
+                                MessageBox.Show($"已匯出 {listView.Items.Count} 筆資料到\n{saveDialog.FileName}", "匯出成功", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                            }
+                            catch (Exception ex)
+                            {
+                                MessageBox.Show($"匯出失敗: {ex.Message}", "錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                            }
+                        }
+                    }
+                };
+
+                var btnClose = new Button
+                {
+                    Text = "關閉",
+                    Location = new Point(580, 12),
+                    Size = new Size(75, 26)
+                };
+                btnClose.Click += (s, ev) => form.Close();
+
+                bottomPanel.Controls.AddRange(new Control[] { btnSelectAll, btnSelectNone, btnDeleteSelected, btnExportCsv, btnClose });
+
+                form.Controls.Add(listView);
+                form.Controls.Add(bottomPanel);
+
+                form.ShowDialog(this);
             }
         }
 
