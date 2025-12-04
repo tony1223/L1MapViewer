@@ -668,9 +668,6 @@ namespace L1MapViewer.Helper {
                         }
                         return;
                     }
-                    if (pMap.szMapId.Equals("4")) {
-                        MessageBox.Show("超大地圖第一次載入會比較久，請見諒");
-                    }
                 }
 
 
