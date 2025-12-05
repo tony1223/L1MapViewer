@@ -1804,8 +1804,21 @@ L1MapViewer CLI - S32 檔案解析工具
 
             if (allTileIds.Count <= keepCount)
             {
-                Console.WriteLine($"TileId 數量 ({allTileIds.Count}) 已小於等於保留數量 ({keepCount})，直接複製");
-                File.Copy(srcPath, dstPath, true);
+                Console.WriteLine($"TileId 數量 ({allTileIds.Count}) 已小於等於保留數量 ({keepCount})，保留所有 TileId");
+                // 仍需清空 Layer5, Layer7, Layer8
+                int l5Count = s32.Layer5.Count;
+                int l7Count = s32.Layer7.Count;
+                int l8Count = s32.Layer8.Count;
+                s32.Layer5.Clear();
+                s32.Layer7.Clear();
+                s32.Layer8.Clear();
+                Console.WriteLine($"Layer5 清空了 {l5Count} 個事件");
+                Console.WriteLine($"Layer7 清空了 {l7Count} 個傳送點");
+                Console.WriteLine($"Layer8 清空了 {l8Count} 個特效");
+
+                // 寫入目標檔案
+                S32Writer.Write(s32, dstPath);
+                Console.WriteLine($"已寫入: {dstPath}");
                 return 0;
             }
 
