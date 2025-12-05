@@ -54,18 +54,31 @@ namespace L1MapViewer.Converter {
                     int firstBlockSize = offset1 - offset0;
 
                     // 根據 block 大小判斷
-                    // 24x24: 2*12*13*2 + 1 = 625 bytes (容許範圍 400-1000)
+                    // 24x24: 2*12*13*2 + 1 = 625 bytes (容許範圍 10-1000)
                     // 48x48: 2*24*25*2 + 1 = 2401 bytes (容許範圍 1800-3500)
+                    // 混合格式的第一個 block 可能很小（壓縮格式）
                     if (firstBlockSize >= 1800 && firstBlockSize <= 3500)
                         return TileVersion.Remaster;
-                    else if (firstBlockSize >= 400 && firstBlockSize <= 1000)
+                    else if (firstBlockSize >= 10 && firstBlockSize <= 1800)
                     {
-                        // 檢查是否為混合格式：block 大小在 Classic 範圍，但座標在 48x48 範圍
-                        // 解析所有 blocks 檢查壓縮格式的座標
+                        // 解析所有 blocks 檢查格式
                         var blocks = Parse(tilData);
+
+                        // 先檢查是否有任何 block 的 xxLen 或 yLen 超過 24
+                        // 如果有，這是 Remaster（壓縮得很好的 48x48）
+                        if (HasRemasterPixelSize(blocks))
+                            return TileVersion.Remaster;
+
+                        // 檢查是否為混合格式：座標在 48x48 範圍
                         if (HasHybridCoordinates(blocks))
                             return TileVersion.Hybrid;
-                        return TileVersion.Classic;
+
+                        // 如果沒有超出範圍的座標，且 block 大小在 Classic 範圍內，則是 Classic
+                        if (firstBlockSize >= 400 && firstBlockSize <= 1000)
+                            return TileVersion.Classic;
+
+                        // 其他情況視為 Unknown
+                        return TileVersion.Unknown;
                     }
                     else
                         return TileVersion.Unknown;
@@ -78,12 +91,11 @@ namespace L1MapViewer.Converter {
         }
 
         /// <summary>
-        /// 檢查 block 列表是否包含混合格式（座標超過 24x24 範圍）
+        /// 檢查是否有 block 的像素尺寸超過 24x24（表示這是 Remaster）
         /// </summary>
-        private static bool HasHybridCoordinates(List<byte[]> blocks)
+        private static bool HasRemasterPixelSize(List<byte[]> blocks)
         {
-            // 壓縮格式的 block types
-            HashSet<byte> compressedTypes = new HashSet<byte> { 3, 6, 7, 34, 35 };
+            HashSet<byte> simpleDiamondTypes = new HashSet<byte> { 0, 1, 8, 9, 16, 17 };
 
             foreach (var block in blocks)
             {
@@ -92,25 +104,94 @@ namespace L1MapViewer.Converter {
 
                 byte type = block[0];
 
-                // 只檢查壓縮格式的 block
-                if (!compressedTypes.Contains(type))
+                // 簡單菱形格式：檢查資料大小
+                // 48x48 約 2400 bytes，24x24 約 624 bytes
+                if (simpleDiamondTypes.Contains(type))
+                {
+                    if (block.Length > 1200)
+                        return true;
+                    continue;
+                }
+
+                // 壓縮格式：檢查 xxLen 和 yLen
+                byte xxLen = block[3];
+                byte yLen = block[4];
+
+                if (xxLen > 24 || yLen > 24)
+                    return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// 檢查 block 列表是否為混合格式
+        /// Hybrid 的特徵：座標使用 48x48 系統（x_offset 或 y_offset 超過 24），
+        /// 但像素尺寸在 24x24 範圍內（xxLen 和 yLen 都不超過 24）
+        ///
+        /// Remaster 的特徵：xxLen 或 yLen 超過 24（實際有 48x48 像素）
+        /// </summary>
+        private static bool HasHybridCoordinates(List<byte[]> blocks)
+        {
+            // 簡單菱形格式: 0, 1, 8, 9, 16, 17 - 這些沒有座標欄位
+            HashSet<byte> simpleDiamondTypes = new HashSet<byte> { 0, 1, 8, 9, 16, 17 };
+
+            foreach (var block in blocks)
+            {
+                if (block == null || block.Length < 6)
                     continue;
 
-                // 讀取 x_offset, y_offset
+                byte type = block[0];
+
+                // 跳過簡單菱形格式
+                if (simpleDiamondTypes.Contains(type))
+                    continue;
+
+                // 壓縮格式
                 byte x_offset = block[1];
                 byte y_offset = block[2];
                 byte xxLen = block[3];
                 byte yLen = block[4];
 
-                // 如果任何座標超過 24，表示是混合格式 (48x48 座標系統)
+                // 如果 xxLen 或 yLen 超過 24，這是標準的 Remaster (48x48 像素)
+                // 不是 Hybrid
+                if (xxLen > 24 || yLen > 24)
+                    return false;
+
+                // 如果座標超過 24，但像素尺寸在 24x24 範圍內，這是 Hybrid
                 if (x_offset > 24 || y_offset > 24 ||
-                    x_offset + xxLen > 48 || y_offset + yLen > 48)
+                    x_offset + xxLen > 24 || y_offset + yLen > 24)
                 {
-                    return true;
+                    // 確認這不是 Remaster：繼續檢查其他 block
+                    // 只要有一個 block 的 xxLen 或 yLen 超過 24，就是 Remaster
                 }
             }
 
-            return false;
+            // 第二輪檢查：是否有座標超過 24 且所有 block 像素尺寸都在 24 以內
+            bool has48Coordinates = false;
+            foreach (var block in blocks)
+            {
+                if (block == null || block.Length < 6)
+                    continue;
+
+                byte type = block[0];
+                if (simpleDiamondTypes.Contains(type))
+                    continue;
+
+                byte x_offset = block[1];
+                byte y_offset = block[2];
+                byte xxLen = block[3];
+                byte yLen = block[4];
+
+                if (x_offset > 24 || y_offset > 24 ||
+                    x_offset + xxLen > 24 || y_offset + yLen > 24)
+                {
+                    has48Coordinates = true;
+                    break;
+                }
+            }
+
+            return has48Coordinates;
         }
 
         /// <summary>
