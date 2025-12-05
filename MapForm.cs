@@ -104,6 +104,8 @@ namespace L1FlyMapViewer
 
         // 小地圖拖拽
         private bool isMiniMapDragging = false;
+        // 小地圖是否有焦點（用於方向鍵導航）
+        private bool isMiniMapFocused = false;
 
         // 主地圖拖拽（中鍵拖拽移動視圖）
         private bool isMainMapDragging = false;
@@ -412,6 +414,13 @@ namespace L1FlyMapViewer
             {
                 e.Handled = true;
                 DeleteSelectedLayer4Objects();
+            }
+            // 方向鍵：小地圖焦點時移動視圖
+            else if (isMiniMapFocused && (e.KeyCode == Keys.Up || e.KeyCode == Keys.Down ||
+                                          e.KeyCode == Keys.Left || e.KeyCode == Keys.Right))
+            {
+                e.Handled = true;
+                MoveMiniMapByArrowKey(e.KeyCode);
             }
         }
 
@@ -3048,6 +3057,9 @@ namespace L1FlyMapViewer
         // 小地圖滑鼠按下 - 開始拖拽或點擊跳轉
         private void miniMapPictureBox_MouseDown(object sender, MouseEventArgs e)
         {
+            // 設定小地圖焦點標記，讓 Form 的 KeyDown 處理方向鍵
+            isMiniMapFocused = true;
+
             if (e.Button == MouseButtons.Left)
             {
                 isMiniMapDragging = true;
@@ -3197,6 +3209,60 @@ namespace L1FlyMapViewer
                 }
                 catch { }
             }
+        }
+
+        // 小地圖 PreviewKeyDown - 保留給未來使用（目前由 Form KeyDown 處理）
+        private void miniMapPictureBox_PreviewKeyDown(object sender, PreviewKeyDownEventArgs e)
+        {
+        }
+
+        // 小地圖鍵盤事件 - 保留給未來使用（目前由 Form KeyDown 處理）
+        private void miniMapPictureBox_KeyDown(object sender, KeyEventArgs e)
+        {
+        }
+
+        // 方向鍵移動小地圖視圖
+        private void MoveMiniMapByArrowKey(Keys keyCode)
+        {
+            if (_viewState.MapWidth <= 0 || _viewState.MapHeight <= 0)
+                return;
+
+            // 計算移動量（移動一個 viewport 的大小，考慮縮放）
+            var viewport = _viewState.GetViewportWorldRect();
+            int moveX = 0, moveY = 0;
+
+            switch (keyCode)
+            {
+                case Keys.Up:
+                    moveY = -viewport.Height;
+                    break;
+                case Keys.Down:
+                    moveY = viewport.Height;
+                    break;
+                case Keys.Left:
+                    moveX = -viewport.Width;
+                    break;
+                case Keys.Right:
+                    moveX = viewport.Width;
+                    break;
+                default:
+                    return;
+            }
+
+            // 計算新的捲動位置
+            int newScrollX = _viewState.ScrollX + moveX;
+            int newScrollY = _viewState.ScrollY + moveY;
+
+            // 限制在地圖範圍內
+            newScrollX = Math.Max(0, Math.Min(newScrollX, _viewState.MaxScrollX));
+            newScrollY = Math.Max(0, Math.Min(newScrollY, _viewState.MaxScrollY));
+
+            // 更新捲動位置
+            _viewState.SetScrollSilent(newScrollX, newScrollY);
+
+            // 重新渲染並更新小地圖
+            RenderS32Map();
+            UpdateMiniMap();
         }
 
         // ===== S32 編輯器功能 =====
@@ -7429,6 +7495,9 @@ namespace L1FlyMapViewer
         // S32 地圖鼠標按下事件 - 開始區域選擇或拖拽移動
         private void s32PictureBox_MouseDown(object sender, MouseEventArgs e)
         {
+            // 點擊主地圖時清除小地圖焦點
+            isMiniMapFocused = false;
+
             // 中鍵拖拽移動視圖
             if (e.Button == MouseButtons.Middle)
             {

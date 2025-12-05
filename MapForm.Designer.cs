@@ -402,12 +402,14 @@ namespace L1FlyMapViewer
             this.miniMapPictureBox.Size = new Size(270, 270);
             this.miniMapPictureBox.SizeMode = PictureBoxSizeMode.Normal;
             this.miniMapPictureBox.TabIndex = 1;
-            this.miniMapPictureBox.TabStop = false;
+            this.miniMapPictureBox.TabStop = true;
             this.miniMapPictureBox.Cursor = Cursors.Hand;
             this.miniMapPictureBox.MouseDown += new MouseEventHandler(this.miniMapPictureBox_MouseDown);
             this.miniMapPictureBox.MouseMove += new MouseEventHandler(this.miniMapPictureBox_MouseMove);
             this.miniMapPictureBox.MouseUp += new MouseEventHandler(this.miniMapPictureBox_MouseUp);
             this.miniMapPictureBox.MouseClick += new MouseEventHandler(this.miniMapPictureBox_MouseClick);
+            this.miniMapPictureBox.PreviewKeyDown += new PreviewKeyDownEventHandler(this.miniMapPictureBox_PreviewKeyDown);
+            this.miniMapPictureBox.KeyDown += new KeyEventHandler(this.miniMapPictureBox_KeyDown);
 
             //
             // lblS32Files
