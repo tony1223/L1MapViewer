@@ -1330,9 +1330,9 @@ L1MapViewer CLI - S32 檔案解析工具
                 int tileSize = L1Til.GetTileSize(version);
                 Console.WriteLine($"版本: {version} ({tileSize}x{tileSize})");
 
-                // 如果需要縮小且是 R 版
+                // 如果需要縮小且是 R 版或混合格式
                 byte[] outputTilData = tilData;
-                if (downscale && version == L1Til.TileVersion.Remaster)
+                if (downscale && (version == L1Til.TileVersion.Remaster || version == L1Til.TileVersion.Hybrid))
                 {
                     outputTilData = L1Til.DownscaleTil(tilData);
                     Console.WriteLine($"已縮小: {tilData.Length} -> {outputTilData.Length} bytes");

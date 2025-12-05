@@ -14,19 +14,22 @@ namespace L1MapViewer.Converter {
             Classic,
             /// <summary>48x48 R版 (Remaster)</summary>
             Remaster,
+            /// <summary>混合格式：block 大小在 Classic 範圍，但座標在 48x48 範圍</summary>
+            Hybrid,
             /// <summary>無法判斷</summary>
             Unknown
         }
 
         /// <summary>
-        /// 判斷 til 資料是否為 R 版 (48x48)
+        /// 判斷 til 資料是否為 R 版 (48x48) 或混合格式
         /// 根據第一個 block 的大小判斷：
         /// - 24x24: 約 625 bytes (2*12*13*2 + 1)
         /// - 48x48: 約 2401 bytes (2*24*25*2 + 1)
         /// </summary>
         public static bool IsRemaster(byte[] tilData)
         {
-            return GetVersion(tilData) == TileVersion.Remaster;
+            var version = GetVersion(tilData);
+            return version == TileVersion.Remaster || version == TileVersion.Hybrid;
         }
 
         /// <summary>
@@ -53,10 +56,17 @@ namespace L1MapViewer.Converter {
                     // 根據 block 大小判斷
                     // 24x24: 2*12*13*2 + 1 = 625 bytes (容許範圍 400-1000)
                     // 48x48: 2*24*25*2 + 1 = 2401 bytes (容許範圍 1800-3500)
-                    if (firstBlockSize >= 400 && firstBlockSize <= 1000)
-                        return TileVersion.Classic;
-                    else if (firstBlockSize >= 1800 && firstBlockSize <= 3500)
+                    if (firstBlockSize >= 1800 && firstBlockSize <= 3500)
                         return TileVersion.Remaster;
+                    else if (firstBlockSize >= 400 && firstBlockSize <= 1000)
+                    {
+                        // 檢查是否為混合格式：block 大小在 Classic 範圍，但座標在 48x48 範圍
+                        // 解析所有 blocks 檢查壓縮格式的座標
+                        var blocks = Parse(tilData);
+                        if (HasHybridCoordinates(blocks))
+                            return TileVersion.Hybrid;
+                        return TileVersion.Classic;
+                    }
                     else
                         return TileVersion.Unknown;
                 }
@@ -68,6 +78,42 @@ namespace L1MapViewer.Converter {
         }
 
         /// <summary>
+        /// 檢查 block 列表是否包含混合格式（座標超過 24x24 範圍）
+        /// </summary>
+        private static bool HasHybridCoordinates(List<byte[]> blocks)
+        {
+            // 壓縮格式的 block types
+            HashSet<byte> compressedTypes = new HashSet<byte> { 3, 6, 7, 34, 35 };
+
+            foreach (var block in blocks)
+            {
+                if (block == null || block.Length < 6)
+                    continue;
+
+                byte type = block[0];
+
+                // 只檢查壓縮格式的 block
+                if (!compressedTypes.Contains(type))
+                    continue;
+
+                // 讀取 x_offset, y_offset
+                byte x_offset = block[1];
+                byte y_offset = block[2];
+                byte xxLen = block[3];
+                byte yLen = block[4];
+
+                // 如果任何座標超過 24，表示是混合格式 (48x48 座標系統)
+                if (x_offset > 24 || y_offset > 24 ||
+                    x_offset + xxLen > 48 || y_offset + yLen > 48)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>
         /// 取得 til 版本對應的 tile 尺寸
         /// </summary>
         public static int GetTileSize(TileVersion version)
@@ -76,6 +122,7 @@ namespace L1MapViewer.Converter {
             {
                 case TileVersion.Classic: return 24;
                 case TileVersion.Remaster: return 48;
+                case TileVersion.Hybrid: return 48;  // 混合格式使用 48x48 座標系統
                 default: return 24;
             }
         }
@@ -218,8 +265,12 @@ namespace L1MapViewer.Converter {
         }
 
         /// <summary>
-        /// 降採樣壓縮格式的 block (type 3, 34, 35 等)
+        /// 降採樣壓縮格式的 block (type 3, 6, 7, 34, 35 等)
         /// 這些格式有 x_offset, y_offset, xxLen, yLen 和 segment 結構
+        /// 支援三種情況：
+        /// 1. 標準 R 版 (48x48)：完整的 48x48 像素，需要降採樣像素
+        /// 2. 混合格式：block 大小在 Classic 範圍，但座標在 48x48 範圍，只需縮放座標
+        /// 3. Classic 版：不需處理
         /// </summary>
         private static byte[] DownscaleCompressedBlock(byte[] blockData, byte type)
         {
@@ -233,14 +284,24 @@ namespace L1MapViewer.Converter {
             byte xxLen = blockData[idx++];
             byte yLen = blockData[idx++];
 
-            // 判斷是否為 R 版 (48x48)
-            // R 版的 yLen 通常會大於 24，或者 y_offset + yLen > 24
-            if (yLen <= 24 && y_offset + yLen <= 24 && xxLen <= 48)
+            // 檢查是否為混合格式：座標超過 24x24 範圍
+            bool isHybrid = (x_offset > 24 || y_offset > 24 ||
+                             x_offset + xxLen > 48 || y_offset + yLen > 48);
+
+            // 如果座標在 24x24 範圍內，可能已經是 Classic 版
+            if (!isHybrid && yLen <= 24 && y_offset + yLen <= 24 && xxLen <= 48 && x_offset + xxLen <= 48)
             {
-                // 可能已經是 Classic 版
                 return blockData;
             }
 
+            // 混合格式：只需縮放座標，不需降採樣像素
+            // 這種格式的像素已經是 24x24 尺寸，但座標使用 48x48 系統
+            if (isHybrid)
+            {
+                return DownscaleHybridBlock(blockData, type);
+            }
+
+            // 標準 R 版：需要完整的 2x2 降採樣
             // 解碼到 48x48 像素陣列 (使用 -1 表示透明)
             const int srcSize = 48;
             const int dstSize = 24;
@@ -317,6 +378,68 @@ namespace L1MapViewer.Converter {
                         g /= count;
                         b /= count;
                         dstPixels[dstY, dstX] = (r << 10) | (g << 5) | b;
+                    }
+                }
+            }
+
+            // 重新編碼回壓縮格式
+            return EncodeCompressedBlock(dstPixels, type, dstSize);
+        }
+
+        /// <summary>
+        /// 處理混合格式的 block：像素已經是 24x24 尺寸，但座標使用 48x48 系統
+        /// 只需要將座標除以 2 即可
+        /// </summary>
+        private static byte[] DownscaleHybridBlock(byte[] blockData, byte type)
+        {
+            if (blockData.Length < 6)
+                return blockData;
+
+            // 讀取原始 header
+            byte x_offset = blockData[1];
+            byte y_offset = blockData[2];
+            byte xxLen = blockData[3];
+            byte yLen = blockData[4];
+
+            // 將座標縮放到 24x24 系統
+            byte new_x_offset = (byte)(x_offset / 2);
+            byte new_y_offset = (byte)(y_offset / 2);
+            // xxLen 和 yLen 保持不變（表示像素數量，不是座標）
+
+            // 解碼像素到陣列，使用新座標系統
+            const int dstSize = 24;
+            int[,] dstPixels = new int[dstSize, dstSize];
+            for (int y = 0; y < dstSize; y++)
+                for (int x = 0; x < dstSize; x++)
+                    dstPixels[y, x] = -1;
+
+            int idx = 5;  // 跳過 header
+
+            for (int ty = 0; ty < yLen && idx < blockData.Length - 1; ty++)
+            {
+                int tx = x_offset;  // 使用原始座標來讀取
+                byte xSegmentCount = blockData[idx++];
+
+                for (int nx = 0; nx < xSegmentCount && idx < blockData.Length - 2; nx++)
+                {
+                    int skip = blockData[idx++] / 2;
+                    tx += skip;
+                    int xLen = blockData[idx++];
+
+                    for (int p = 0; p < xLen && idx + 1 < blockData.Length; p++)
+                    {
+                        ushort color = (ushort)(blockData[idx] | (blockData[idx + 1] << 8));
+                        idx += 2;
+
+                        // 將座標從 48x48 系統轉換到 24x24 系統
+                        int pixY = (ty + y_offset) / 2;
+                        int pixX = tx / 2;
+
+                        if (pixY >= 0 && pixY < dstSize && pixX >= 0 && pixX < dstSize)
+                        {
+                            dstPixels[pixY, pixX] = color;
+                        }
+                        tx++;
                     }
                 }
             }
