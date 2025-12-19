@@ -4070,29 +4070,53 @@ namespace L1FlyMapViewer
         // 跳轉至指定 S32 區塊
         private void JumpToS32Block(S32FileItem item)
         {
-            // 計算該 S32 區塊的中心世界座標
+            // 使用 S32 區塊中心位置的 Layer3 座標
             var segInfo = item.SegInfo;
-            int centerX = (segInfo.nLinBeginX + segInfo.nLinEndX) / 2;
-            int centerY = (segInfo.nLinBeginY + segInfo.nLinEndY) / 2;
+            int globalX = segInfo.nLinBeginX + 32;  // S32 中心 (64x64 的中心)
+            int globalY = segInfo.nLinBeginY + 32;
 
-            // 轉換為世界像素座標（每格 24x24 像素）
-            int worldPixelX = centerX * 24;
-            int worldPixelY = centerY * 24;
+            // 使用與 JumpToGameCoordinate 相同的座標計算邏輯
+            // Layer3 的本地座標
+            int layer3LocalX = 32;  // 中心位置
+            int localY = 32;
 
-            // 計算目標捲動位置（讓該區塊置中）
-            int targetScrollX = worldPixelX - _viewState.ViewportWidth / 2;
-            int targetScrollY = worldPixelY - _viewState.ViewportHeight / 2;
+            // 轉換為 Layer1 座標
+            int localX = layer3LocalX * 2;
 
-            // 設定捲動位置
-            _viewState.ScrollX = Math.Max(0, Math.Min(targetScrollX, _viewState.MaxScrollX));
-            _viewState.ScrollY = Math.Max(0, Math.Min(targetScrollY, _viewState.MaxScrollY));
+            // 計算螢幕座標
+            int[] loc = segInfo.GetLoc(1.0);
+            int mx = loc[0];
+            int my = loc[1];
+
+            int localBaseX = 0;
+            int localBaseY = 63 * 12;
+            localBaseX -= 24 * (localX / 2);
+            localBaseY -= 12 * (localX / 2);
+
+            // 計算世界座標
+            int worldX = mx + localBaseX + localX * 24 + localY * 24;
+            int worldY = my + localBaseY + localY * 12;
+
+            // 捲動到該位置（世界座標）
+            int viewportWidthWorld = (int)(s32MapPanel.Width / s32ZoomLevel);
+            int viewportHeightWorld = (int)(s32MapPanel.Height / s32ZoomLevel);
+            int scrollX = worldX - viewportWidthWorld / 2;
+            int scrollY = worldY - viewportHeightWorld / 2;
+
+            int maxScrollX = Math.Max(0, _viewState.MapWidth - viewportWidthWorld);
+            int maxScrollY = Math.Max(0, _viewState.MapHeight - viewportHeightWorld);
+            scrollX = Math.Max(0, Math.Min(scrollX, maxScrollX));
+            scrollY = Math.Max(0, Math.Min(scrollY, maxScrollY));
+
+            _viewState.SetScrollSilent(scrollX, scrollY);
 
             // 更新捲軸
-            hScrollBar1.Value = Math.Min(_viewState.ScrollX, hScrollBar1.Maximum);
-            vScrollBar1.Value = Math.Min(_viewState.ScrollY, vScrollBar1.Maximum);
+            hScrollBar1.Value = Math.Min(scrollX, hScrollBar1.Maximum);
+            vScrollBar1.Value = Math.Min(scrollY, vScrollBar1.Maximum);
 
             // 重新渲染
-            RenderS32Map();
+            CheckAndRerenderIfNeeded();
+            UpdateMiniMap();
 
             this.toolStripStatusLabel1.Text = $"跳轉至 {item.DisplayName}";
         }
@@ -5631,50 +5655,38 @@ namespace L1FlyMapViewer
             _viewState.ViewportWidth = s32MapPanel.Width;
             _viewState.ViewportHeight = s32MapPanel.Height;
             _viewState.ZoomLevel = s32ZoomLevel;
+            _viewState.UpdateScrollLimits(mapWidth, mapHeight);
 
-            // 計算實際 S32 block 的範圍（而不是假設從 0,0 開始）
-            int minX = int.MaxValue, minY = int.MaxValue;
-            int maxX = int.MinValue, maxY = int.MinValue;
+            if (_document.S32Files.Count == 0)
+            {
+                _viewState.SetScrollSilent(0, 0);
+                return;
+            }
+
+            // 取得所有 S32 的遊戲座標範圍
+            int minGameX = int.MaxValue, minGameY = int.MaxValue;
+            int maxGameX = int.MinValue, maxGameY = int.MinValue;
             foreach (var s32Data in _document.S32Files.Values)
             {
-                int[] loc = s32Data.SegInfo.GetLoc(1.0);
-                int bx = loc[0];
-                int by = loc[1];
-                minX = Math.Min(minX, bx);
-                minY = Math.Min(minY, by);
-                maxX = Math.Max(maxX, bx + blockWidth);
-                maxY = Math.Max(maxY, by + blockHeight);
+                int beginX = s32Data.SegInfo.nLinBeginX;
+                int beginY = s32Data.SegInfo.nLinBeginY;
+                int endX = beginX + 64;
+                int endY = beginY + 64;
+
+                minGameX = Math.Min(minGameX, beginX);
+                minGameY = Math.Min(minGameY, beginY);
+                maxGameX = Math.Max(maxGameX, endX);
+                maxGameY = Math.Max(maxGameY, endY);
             }
 
-            // 如果沒有 S32 檔案，使用地圖中央
-            if (minX == int.MaxValue)
-            {
-                minX = 0; minY = 0;
-                maxX = mapWidth; maxY = mapHeight;
-            }
+            // 計算遊戲座標中心點
+            int centerGameX = (minGameX + maxGameX) / 2;
+            int centerGameY = (minGameY + maxGameY) / 2;
 
-            // 計算 S32 實際範圍的中央位置
-            int actualCenterX = (minX + maxX) / 2;
-            int actualCenterY = (minY + maxY) / 2;
+            LogPerf($"[SCROLL-CENTER] GameCoord range=({minGameX},{minGameY})-({maxGameX},{maxGameY}), center=({centerGameX},{centerGameY})");
 
-            // 計算中央位置（世界座標）- viewport 中央對準 S32 範圍中央
-            int viewportWidthWorld = (int)(s32MapPanel.Width / s32ZoomLevel);
-            int viewportHeightWorld = (int)(s32MapPanel.Height / s32ZoomLevel);
-            int centerX = actualCenterX - viewportWidthWorld / 2;
-            int centerY = actualCenterY - viewportHeightWorld / 2;
-
-            // 限制在有效範圍內
-            int maxScrollX = Math.Max(0, mapWidth - viewportWidthWorld);
-            int maxScrollY = Math.Max(0, mapHeight - viewportHeightWorld);
-            centerX = Math.Max(0, Math.Min(centerX, maxScrollX));
-            centerY = Math.Max(0, Math.Min(centerY, maxScrollY));
-
-            LogPerf($"[SCROLL-CENTER] S32 range=({minX},{minY})-({maxX},{maxY}), center=({actualCenterX},{actualCenterY}), scroll=({centerX},{centerY}), mapSize=({mapWidth},{mapHeight}), zoom={s32ZoomLevel}");
-
-            // 只設定捲動位置，不觸發渲染
-            _viewState.SetScrollSilent(centerX, centerY);
-            _viewState.UpdateScrollLimits(mapWidth, mapHeight);
-            LogPerf($"[SCROLL-AFTER] ScrollX={_viewState.ScrollX}, ScrollY={_viewState.ScrollY}, MaxScrollX={_viewState.MaxScrollX}, MaxScrollY={_viewState.MaxScrollY}");
+            // 直接跳轉到遊戲座標中心點
+            JumpToGameCoordinate(centerGameX, centerGameY);
         }
 
         // 捲動到地圖中央（含重新渲染）
