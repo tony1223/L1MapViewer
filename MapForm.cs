@@ -8777,6 +8777,9 @@ namespace L1FlyMapViewer
             }
         }
 
+        // 素材列表的 ImageList
+        private ImageList _materialsImageList;
+
         // 刷新素材列表
         private void RefreshMaterialsList()
         {
@@ -8786,10 +8789,50 @@ namespace L1FlyMapViewer
                 var recentMaterials = library.GetRecentMaterials();
 
                 lvMaterials.Items.Clear();
+
+                // 初始化或清空 ImageList
+                if (_materialsImageList == null)
+                {
+                    _materialsImageList = new ImageList
+                    {
+                        ImageSize = new Size(48, 48),
+                        ColorDepth = ColorDepth.Depth32Bit
+                    };
+                    lvMaterials.LargeImageList = _materialsImageList;
+                }
+                else
+                {
+                    _materialsImageList.Images.Clear();
+                }
+
+                int imageIndex = 0;
                 foreach (var info in recentMaterials.Take(5))
                 {
                     var item = new ListViewItem(info.Name ?? "未命名");
                     item.Tag = info.FilePath;
+
+                    // 加入縮圖
+                    if (info.ThumbnailPng != null && info.ThumbnailPng.Length > 0)
+                    {
+                        try
+                        {
+                            using (var ms = new MemoryStream(info.ThumbnailPng))
+                            {
+                                var thumb = new Bitmap(ms);
+                                _materialsImageList.Images.Add(thumb);
+                                item.ImageIndex = imageIndex++;
+                            }
+                        }
+                        catch
+                        {
+                            item.ImageIndex = -1;
+                        }
+                    }
+                    else
+                    {
+                        item.ImageIndex = -1;
+                    }
+
                     lvMaterials.Items.Add(item);
                 }
             }
@@ -12348,6 +12391,27 @@ namespace L1FlyMapViewer
 
             menu.Items.Add(new ToolStripSeparator());
 
+            // 重新命名
+            var renameItem = new ToolStripMenuItem("重新命名...");
+            renameItem.Click += (s, ev) => RenameMaterial(filePath, item);
+            menu.Items.Add(renameItem);
+
+            // 複製檔案路徑
+            var copyPathItem = new ToolStripMenuItem("複製檔案路徑");
+            copyPathItem.Click += (s, ev) =>
+            {
+                Clipboard.SetText(filePath);
+                toolStripStatusLabel1.Text = "已複製路徑到剪貼簿";
+            };
+            menu.Items.Add(copyPathItem);
+
+            // 匯出（另存新檔）
+            var exportItem = new ToolStripMenuItem("匯出素材...");
+            exportItem.Click += (s, ev) => ExportMaterial(filePath);
+            menu.Items.Add(exportItem);
+
+            menu.Items.Add(new ToolStripSeparator());
+
             // 刪除素材
             var deleteItem = new ToolStripMenuItem("刪除素材");
             deleteItem.Click += (s, ev) =>
@@ -12366,6 +12430,89 @@ namespace L1FlyMapViewer
             menu.Items.Add(deleteItem);
 
             menu.Show(lvMaterials, e.Location);
+        }
+
+        // 重新命名素材
+        private void RenameMaterial(string filePath, ListViewItem listItem)
+        {
+            try
+            {
+                var material = L1MapViewer.CLI.Fs3pParser.ParseFile(filePath);
+                if (material == null)
+                {
+                    MessageBox.Show("無法載入素材", "錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+
+                string currentName = material.Name ?? "未命名";
+                string newName = ShowInputDialog("重新命名素材", "請輸入新的素材名稱:", currentName);
+
+                if (string.IsNullOrWhiteSpace(newName) || newName == currentName)
+                    return;
+
+                // 更新素材名稱
+                material.Name = newName;
+
+                // 重新寫入檔案
+                L1MapViewer.CLI.Fs3pWriter.Write(material, filePath);
+
+                // 更新列表顯示
+                listItem.Text = newName;
+                toolStripStatusLabel1.Text = $"素材已重新命名為: {newName}";
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"重新命名失敗: {ex.Message}", "錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        // 簡易輸入對話框
+        private string ShowInputDialog(string title, string prompt, string defaultValue)
+        {
+            using (var form = new Form())
+            {
+                form.Text = title;
+                form.Size = new Size(350, 150);
+                form.FormBorderStyle = FormBorderStyle.FixedDialog;
+                form.StartPosition = FormStartPosition.CenterParent;
+                form.MaximizeBox = false;
+                form.MinimizeBox = false;
+
+                var label = new Label { Text = prompt, Left = 10, Top = 15, Width = 310 };
+                var textBox = new TextBox { Text = defaultValue, Left = 10, Top = 40, Width = 310 };
+                var okButton = new Button { Text = "確定", Left = 150, Top = 75, Width = 80, DialogResult = DialogResult.OK };
+                var cancelButton = new Button { Text = "取消", Left = 240, Top = 75, Width = 80, DialogResult = DialogResult.Cancel };
+
+                form.Controls.AddRange(new Control[] { label, textBox, okButton, cancelButton });
+                form.AcceptButton = okButton;
+                form.CancelButton = cancelButton;
+
+                return form.ShowDialog() == DialogResult.OK ? textBox.Text : defaultValue;
+            }
+        }
+
+        // 匯出素材
+        private void ExportMaterial(string filePath)
+        {
+            try
+            {
+                using (var sfd = new SaveFileDialog())
+                {
+                    sfd.Filter = "素材檔案|*.fs3p";
+                    sfd.Title = "匯出素材";
+                    sfd.FileName = Path.GetFileName(filePath);
+
+                    if (sfd.ShowDialog() == DialogResult.OK)
+                    {
+                        File.Copy(filePath, sfd.FileName, true);
+                        toolStripStatusLabel1.Text = $"素材已匯出至: {sfd.FileName}";
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"匯出失敗: {ex.Message}", "錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
         }
 
         // 顯示素材詳細資料
@@ -12800,8 +12947,9 @@ namespace L1FlyMapViewer
             // 提示用戶
             toolStripStatusLabel1.Text = $"素材貼上模式：點擊地圖選擇貼上位置，ESC 取消 | {material.Name} ({material.Width}x{material.Height})";
 
-            // 更新素材列表
+            // 更新素材列表並高亮選中項目
             RefreshMaterialsList();
+            HighlightPendingMaterial();
         }
 
         // 取消素材貼上模式
@@ -12810,6 +12958,39 @@ namespace L1FlyMapViewer
             _pendingMaterial = null;
             _pendingMaterialPath = null;
             toolStripStatusLabel1.Text = "";
+
+            // 清除高亮
+            ClearMaterialHighlight();
+        }
+
+        // 高亮目前選中的素材
+        private void HighlightPendingMaterial()
+        {
+            if (_pendingMaterialPath == null) return;
+
+            foreach (ListViewItem item in lvMaterials.Items)
+            {
+                if (item.Tag is string path && path == _pendingMaterialPath)
+                {
+                    item.BackColor = Color.LightBlue;
+                    item.ForeColor = Color.Black;
+                }
+                else
+                {
+                    item.BackColor = lvMaterials.BackColor;
+                    item.ForeColor = lvMaterials.ForeColor;
+                }
+            }
+        }
+
+        // 清除素材高亮
+        private void ClearMaterialHighlight()
+        {
+            foreach (ListViewItem item in lvMaterials.Items)
+            {
+                item.BackColor = lvMaterials.BackColor;
+                item.ForeColor = lvMaterials.ForeColor;
+            }
         }
 
         // 更新群組縮圖列表（顯示所有已載入 S32 的群組）

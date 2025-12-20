@@ -3,8 +3,10 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.IO;
+using System.IO.Compression;
 using System.Linq;
 using System.Text;
+using System.Text.Json;
 using L1MapViewer.Helper;
 using L1MapViewer.Models;
 using L1MapViewer.Reader;
@@ -12,132 +14,150 @@ using L1MapViewer.Reader;
 namespace L1MapViewer.CLI
 {
     /// <summary>
-    /// fs3p 格式寫入器
+    /// fs3p 格式寫入器 (ZIP 格式)
     /// </summary>
     public static class Fs3pWriter
     {
         /// <summary>
-        /// 寫入 fs3p 到檔案
+        /// 寫入 fs3p 到檔案 (ZIP 格式)
         /// </summary>
         public static void Write(Fs3pData fs3p, string filePath)
         {
-            byte[] data = ToBytes(fs3p);
-            File.WriteAllBytes(filePath, data);
+            WriteZipFormat(fs3p, filePath);
         }
 
         /// <summary>
-        /// 轉換為二進位資料
+        /// 寫入 ZIP 格式
         /// </summary>
-        public static byte[] ToBytes(Fs3pData fs3p)
+        private static void WriteZipFormat(Fs3pData fs3p, string filePath)
         {
-            using (var ms = new MemoryStream())
-            using (var bw = new BinaryWriter(ms, Encoding.UTF8))
+            // 刪除已存在的檔案
+            if (File.Exists(filePath))
             {
-                // 寫入 Header
-                bw.Write(Fs3pData.MAGIC);
-                bw.Write(fs3p.Version);
-                bw.Write(fs3p.LayerFlags);
+                File.Delete(filePath);
+            }
 
-                // 寫入名稱
-                byte[] nameBytes = Encoding.UTF8.GetBytes(fs3p.Name ?? string.Empty);
-                bw.Write(nameBytes.Length);
-                if (nameBytes.Length > 0)
+            using (var archive = ZipFile.Open(filePath, ZipArchiveMode.Create))
+            {
+                // 寫入 metadata.json
+                var metadata = new Fs3pMetadata
                 {
-                    bw.Write(nameBytes);
+                    Version = fs3p.Version,
+                    LayerFlags = fs3p.LayerFlags,
+                    Name = fs3p.Name,
+                    OriginOffsetX = fs3p.OriginOffsetX,
+                    OriginOffsetY = fs3p.OriginOffsetY,
+                    Width = fs3p.Width,
+                    Height = fs3p.Height,
+                    CreatedTime = fs3p.CreatedTime,
+                    ModifiedTime = fs3p.ModifiedTime,
+                    Tags = fs3p.Tags
+                };
+
+                var metadataEntry = archive.CreateEntry("metadata.json");
+                using (var stream = metadataEntry.Open())
+                using (var writer = new StreamWriter(stream, Encoding.UTF8))
+                {
+                    var options = new JsonSerializerOptions { WriteIndented = true };
+                    string json = JsonSerializer.Serialize(metadata, options);
+                    writer.Write(json);
                 }
 
                 // 寫入縮圖
-                bw.Write(fs3p.ThumbnailPng?.Length ?? 0);
                 if (fs3p.ThumbnailPng != null && fs3p.ThumbnailPng.Length > 0)
                 {
-                    bw.Write(fs3p.ThumbnailPng);
+                    var thumbnailEntry = archive.CreateEntry("thumbnail.png");
+                    using (var stream = thumbnailEntry.Open())
+                    {
+                        stream.Write(fs3p.ThumbnailPng, 0, fs3p.ThumbnailPng.Length);
+                    }
                 }
 
-                // 寫入範圍資訊
-                bw.Write(fs3p.OriginOffsetX);
-                bw.Write(fs3p.OriginOffsetY);
-                bw.Write(fs3p.Width);
-                bw.Write(fs3p.Height);
-
                 // 寫入 Layer1
-                if (fs3p.HasLayer1)
+                if (fs3p.HasLayer1 && fs3p.Layer1Items.Count > 0)
                 {
-                    bw.Write(fs3p.Layer1Items.Count);
-                    foreach (var item in fs3p.Layer1Items)
+                    var entry = archive.CreateEntry("layers/layer1.bin");
+                    using (var stream = entry.Open())
+                    using (var bw = new BinaryWriter(stream))
                     {
-                        bw.Write(item.RelativeX);
-                        bw.Write(item.RelativeY);
-                        bw.Write(item.IndexId);
-                        bw.Write(item.TileId);
-                        bw.Write((byte)0); // Reserved
+                        bw.Write(fs3p.Layer1Items.Count);
+                        foreach (var item in fs3p.Layer1Items)
+                        {
+                            bw.Write(item.RelativeX);
+                            bw.Write(item.RelativeY);
+                            bw.Write(item.IndexId);
+                            bw.Write(item.TileId);
+                            bw.Write((byte)0); // Reserved
+                        }
                     }
                 }
 
                 // 寫入 Layer2
-                if (fs3p.HasLayer2)
+                if (fs3p.HasLayer2 && fs3p.Layer2Items.Count > 0)
                 {
-                    bw.Write(fs3p.Layer2Items.Count);
-                    foreach (var item in fs3p.Layer2Items)
+                    var entry = archive.CreateEntry("layers/layer2.bin");
+                    using (var stream = entry.Open())
+                    using (var bw = new BinaryWriter(stream))
                     {
-                        bw.Write(item.RelativeX);
-                        bw.Write(item.RelativeY);
-                        bw.Write(item.IndexId);
-                        bw.Write(item.TileId);
-                        bw.Write(item.UK);
+                        bw.Write(fs3p.Layer2Items.Count);
+                        foreach (var item in fs3p.Layer2Items)
+                        {
+                            bw.Write(item.RelativeX);
+                            bw.Write(item.RelativeY);
+                            bw.Write(item.IndexId);
+                            bw.Write(item.TileId);
+                            bw.Write(item.UK);
+                        }
                     }
                 }
 
                 // 寫入 Layer3
-                if (fs3p.HasLayer3)
+                if (fs3p.HasLayer3 && fs3p.Layer3Items.Count > 0)
                 {
-                    bw.Write(fs3p.Layer3Items.Count);
-                    foreach (var item in fs3p.Layer3Items)
+                    var entry = archive.CreateEntry("layers/layer3.bin");
+                    using (var stream = entry.Open())
+                    using (var bw = new BinaryWriter(stream))
                     {
-                        bw.Write(item.RelativeX);
-                        bw.Write(item.RelativeY);
-                        bw.Write(item.Attribute1);
-                        bw.Write(item.Attribute2);
+                        bw.Write(fs3p.Layer3Items.Count);
+                        foreach (var item in fs3p.Layer3Items)
+                        {
+                            bw.Write(item.RelativeX);
+                            bw.Write(item.RelativeY);
+                            bw.Write(item.Attribute1);
+                            bw.Write(item.Attribute2);
+                        }
                     }
                 }
 
                 // 寫入 Layer4
-                if (fs3p.HasLayer4)
+                if (fs3p.HasLayer4 && fs3p.Layer4Items.Count > 0)
                 {
-                    bw.Write(fs3p.Layer4Items.Count);
-                    foreach (var item in fs3p.Layer4Items)
+                    var entry = archive.CreateEntry("layers/layer4.bin");
+                    using (var stream = entry.Open())
+                    using (var bw = new BinaryWriter(stream))
                     {
-                        bw.Write(item.RelativeX);
-                        bw.Write(item.RelativeY);
-                        bw.Write(item.GroupId);
-                        bw.Write(item.Layer);
-                        bw.Write(item.IndexId);
-                        bw.Write(item.TileId);
+                        bw.Write(fs3p.Layer4Items.Count);
+                        foreach (var item in fs3p.Layer4Items)
+                        {
+                            bw.Write(item.RelativeX);
+                            bw.Write(item.RelativeY);
+                            bw.Write(item.GroupId);
+                            bw.Write(item.Layer);
+                            bw.Write(item.IndexId);
+                            bw.Write(item.TileId);
+                        }
                     }
                 }
 
-                // 寫入 Tile 資料
-                bw.Write(fs3p.Tiles.Count);
+                // 寫入 Tiles
                 foreach (var tile in fs3p.Tiles.Values)
                 {
-                    bw.Write(tile.OriginalTileId);
-                    bw.Write(tile.Md5Hash);
-                    bw.Write(tile.TilData.Length);
-                    bw.Write(tile.TilData);
+                    var entry = archive.CreateEntry($"tiles/{tile.OriginalTileId}.til");
+                    using (var stream = entry.Open())
+                    {
+                        stream.Write(tile.TilData, 0, tile.TilData.Length);
+                    }
                 }
-
-                // 寫入 Metadata
-                bw.Write(fs3p.CreatedTime);
-                bw.Write(fs3p.ModifiedTime);
-
-                bw.Write(fs3p.Tags.Count);
-                foreach (var tag in fs3p.Tags)
-                {
-                    byte[] tagBytes = Encoding.UTF8.GetBytes(tag);
-                    bw.Write(tagBytes.Length);
-                    bw.Write(tagBytes);
-                }
-
-                return ms.ToArray();
             }
         }
 
