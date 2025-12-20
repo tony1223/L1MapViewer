@@ -2348,6 +2348,7 @@ namespace L1FlyMapViewer
             _tilRemasterCache.Clear();
             tileDataCache.Clear();
             Share.IdxDataList.Clear();  // 清除 idx 快取，強制重新讀取新資料夾的 idx
+            TileHashManager.ClearCache();  // 清除 Tile MD5 快取
             _listTilMaxId = null;       // 清除 list.til 快取
             LogPerf("[LOADMAP] Cache cleared");
 
@@ -13199,14 +13200,14 @@ namespace L1FlyMapViewer
                 {
                     Text = "起始編號：",
                     Location = new Point(15, 125),
-                    AutoSize = true
+                    Size = new Size(75, 20)
                 };
                 dialog.Controls.Add(lblStartId);
 
                 var txtStartId = new TextBox
                 {
                     Text = "10000",
-                    Location = new Point(90, 122),
+                    Location = new Point(95, 122),
                     Size = new Size(100, 23)
                 };
                 dialog.Controls.Add(txtStartId);
@@ -13252,6 +13253,40 @@ namespace L1FlyMapViewer
                 if (MessageBox.Show(confirmMessage, "確認匯入", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
                     return null;
 
+                // 檢查起始編號是否會超過上限
+                int currentLimit = TileHashManager.GetTileLimit();
+                if (currentLimit > 0)
+                {
+                    // 估算最大可能使用的 ID (起始ID + 需匯入數量)
+                    int estimatedMaxId = startId + totalNewTiles;
+                    if (estimatedMaxId > currentLimit)
+                    {
+                        string limitWarning = $"預計 Tile ID 將超過上限！\n\n" +
+                                              $"目前上限: {currentLimit}\n" +
+                                              $"預計最大 ID: ~{estimatedMaxId}\n\n" +
+                                              $"超過上限的 Tile 將顯示為三角形圖案。\n" +
+                                              $"是否先將上限擴充 +5000？\n" +
+                                              $"(新上限: {currentLimit + 5000})";
+
+                        var limitResult = MessageBox.Show(limitWarning, "Tile 上限警告", MessageBoxButtons.YesNoCancel, MessageBoxIcon.Warning);
+                        if (limitResult == DialogResult.Cancel)
+                            return null;
+
+                        if (limitResult == DialogResult.Yes)
+                        {
+                            int newLimit = currentLimit + 5000;
+                            if (TileHashManager.UpdateTileLimit(newLimit))
+                            {
+                                toolStripStatusLabel1.Text = $"已將 Tile 上限擴充至 {newLimit}";
+                            }
+                            else
+                            {
+                                MessageBox.Show("擴充 Tile 上限失敗，繼續匯入", "警告", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                            }
+                        }
+                    }
+                }
+
                 // 執行實際匯入
                 var importer = new TileImportManager { StartSearchId = startId };
                 var result = importer.ProcessTilesBatch(material.Tiles);
@@ -13262,7 +13297,49 @@ namespace L1FlyMapViewer
                     toolStripStatusLabel1.Text = $"已匯入 {result.ImportedCount} 個新圖塊，重新編號 {result.RemappedCount} 個，重用 {result.ReuseCount} 個";
                 }
 
+                // 檢查是否有 Tile ID 超過上限
+                CheckAndExpandTileLimit(result);
+
                 return result;
+            }
+        }
+
+        // 檢查並擴充 Tile 上限
+        private void CheckAndExpandTileLimit(TileMappingResult result)
+        {
+            if (result == null)
+                return;
+
+            // 收集所有新的 Tile ID
+            var newTileIds = new List<int>(result.IdMapping.Values);
+
+            if (newTileIds.Count == 0)
+                return;
+
+            // 檢查是否超過上限
+            var checkResult = TileHashManager.CheckTileIdsOverLimit(newTileIds);
+            if (!checkResult.IsOver)
+                return;
+
+            // 超過上限，詢問用戶是否擴充
+            string message = $"Tile ID 已達上限！\n\n" +
+                             $"目前上限: {checkResult.CurrentLimit}\n" +
+                             $"最大 Tile ID: {checkResult.MaxTileId}\n\n" +
+                             $"超過上限的 Tile 將顯示為三角形圖案。\n" +
+                             $"是否將上限擴充 +5000？\n" +
+                             $"(新上限: {checkResult.CurrentLimit + 5000})";
+
+            if (MessageBox.Show(message, "Tile 上限警告", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes)
+            {
+                int newLimit = checkResult.CurrentLimit + 5000;
+                if (TileHashManager.UpdateTileLimit(newLimit))
+                {
+                    MessageBox.Show($"已將 Tile 上限擴充至 {newLimit}", "成功", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
+                else
+                {
+                    MessageBox.Show("擴充 Tile 上限失敗", "錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
             }
         }
 
@@ -13290,7 +13367,16 @@ namespace L1FlyMapViewer
                     }
                     else
                     {
-                        needRemapCount++; // ID 存在但 MD5 不同，需重新編號
+                        // ID 存在但 MD5 不同，搜尋是否有其他 tile 的 MD5 相符
+                        int? existingIdByMd5 = TileHashManager.FindTileByMd5(packageMd5);
+                        if (existingIdByMd5.HasValue)
+                        {
+                            reuseCount++; // 找到相同 MD5 的其他 tile，可重映射
+                        }
+                        else
+                        {
+                            needImportCount++; // 完全不存在，需新增
+                        }
                     }
                 }
                 else
@@ -13328,11 +13414,22 @@ namespace L1FlyMapViewer
                     byte[] existingMd5 = TileHashManager.CalculateMd5(existingTilData);
                     if (TileHashManager.CompareMd5(existingMd5, packageMd5))
                     {
+                        // 原 ID 存在且 MD5 相符，直接使用
                         result.AddMapping(originalId, originalId, TileMatchType.Exact);
+                    }
+                    else
+                    {
+                        // ID 存在但 MD5 不同，搜尋其他匹配的 tile
+                        int? existingIdByMd5 = TileHashManager.FindTileByMd5(packageMd5);
+                        if (existingIdByMd5.HasValue)
+                        {
+                            result.AddMapping(originalId, existingIdByMd5.Value, TileMatchType.MergedByMd5);
+                        }
                     }
                 }
                 else
                 {
+                    // 原 ID 不存在，搜尋 MD5 匹配的 tile
                     int? existingIdByMd5 = TileHashManager.FindTileByMd5(packageMd5);
                     if (existingIdByMd5.HasValue)
                     {
@@ -18785,10 +18882,14 @@ namespace L1FlyMapViewer
                 var layer8ExtendedS32 = GetLayer8ExtendedS32Files();
                 sw3.Stop();
 
+                var sw4 = Stopwatch.StartNew();
+                var (overLimitTileIds, tileLimit, maxTileId) = GetAllOverLimitTileIds();
+                sw4.Stop();
+
                 totalSw.Stop();
 
-                int totalInvalid = invalidL5Items.Count + invalidTileItems.Count + layer8ExtendedS32.Count;
-                Console.WriteLine($"[L5CHECK] Total: {totalSw.ElapsedMilliseconds}ms | L5Check: {sw1.ElapsedMilliseconds}ms ({invalidL5Items.Count}) | TileValidate: {sw2.ElapsedMilliseconds}ms ({invalidTileItems.Count}) | L8Ext: {sw3.ElapsedMilliseconds}ms ({layer8ExtendedS32.Count})");
+                int totalInvalid = invalidL5Items.Count + invalidTileItems.Count + layer8ExtendedS32.Count + overLimitTileIds.Count;
+                Console.WriteLine($"[L5CHECK] Total: {totalSw.ElapsedMilliseconds}ms | L5Check: {sw1.ElapsedMilliseconds}ms ({invalidL5Items.Count}) | TileValidate: {sw2.ElapsedMilliseconds}ms ({invalidTileItems.Count}) | L8Ext: {sw3.ElapsedMilliseconds}ms ({layer8ExtendedS32.Count}) | OverLimit: {sw4.ElapsedMilliseconds}ms ({overLimitTileIds.Count})");
 
                 // 回到 UI 執行緒更新按鈕
                 this.BeginInvoke((MethodInvoker)delegate
@@ -18803,6 +18904,8 @@ namespace L1FlyMapViewer
                             tooltipParts.Add($"無效TileId: {invalidTileItems.Count}");
                         if (layer8ExtendedS32.Count > 0)
                             tooltipParts.Add($"L8擴展: {layer8ExtendedS32.Count}");
+                        if (overLimitTileIds.Count > 0)
+                            tooltipParts.Add($"Tile超上限: {overLimitTileIds.Count}");
                         toolTip1.SetToolTip(btnToolCheckL5Invalid, $"發現異常: {string.Join(", ", tooltipParts)}");
                     }
                 });
@@ -19005,14 +19108,52 @@ namespace L1FlyMapViewer
             return invalidTiles;
         }
 
+        // 取得 Tile.idx 中超過 list.til 上限的所有 TileId
+        private (List<int> overLimitTileIds, int tileLimit, int maxTileId) GetAllOverLimitTileIds()
+        {
+            var overLimitIds = new List<int>();
+            int maxId = 0;
+
+            // 取得 list.til 上限
+            int tileLimit = TileHashManager.GetTileLimit();
+            if (tileLimit <= 0)
+                return (overLimitIds, tileLimit, maxId);  // 無法讀取上限，不檢查
+
+            // 取得所有 Tile 索引
+            var tileIdx = L1IdxReader.GetAll("Tile");
+            if (tileIdx == null || tileIdx.Count == 0)
+                return (overLimitIds, tileLimit, maxId);
+
+            foreach (var key in tileIdx.Keys)
+            {
+                // key 格式是 "123.til"
+                if (key.EndsWith(".til") && key != "list.til")
+                {
+                    string numStr = key.Substring(0, key.Length - 4);
+                    if (int.TryParse(numStr, out int tileId))
+                    {
+                        if (tileId > maxId) maxId = tileId;
+                        if (tileId > tileLimit)
+                        {
+                            overLimitIds.Add(tileId);
+                        }
+                    }
+                }
+            }
+
+            overLimitIds.Sort();
+            return (overLimitIds, tileLimit, maxId);
+        }
+
         // 檢查 Layer5 異常和無效 TileId
         private void btnToolCheckL5Invalid_Click(object sender, EventArgs e)
         {
             var invalidL5Items = GetInvalidLayer5Items();
             var invalidTileItems = GetInvalidTileIds();
             var layer8ExtendedS32 = GetLayer8ExtendedS32Files();
+            var (overLimitTileIds, tileLimit, maxTileId) = GetAllOverLimitTileIds();
 
-            if (invalidL5Items.Count == 0 && invalidTileItems.Count == 0 && layer8ExtendedS32.Count == 0)
+            if (invalidL5Items.Count == 0 && invalidTileItems.Count == 0 && layer8ExtendedS32.Count == 0 && overLimitTileIds.Count == 0)
             {
                 MessageBox.Show("檢查完成，沒有發現任何異常。",
                     "檢查完成", MessageBoxButtons.OK, MessageBoxIcon.Information);
@@ -19047,6 +19188,10 @@ namespace L1FlyMapViewer
             {
                 int totalL8Items = layer8ExtendedS32.Sum(x => x.layer8Count);
                 msgParts.Add($"• {layer8ExtendedS32.Count} 個 S32 使用 Layer8 擴展格式（共 {totalL8Items} 個項目，可能導致閃退）");
+            }
+            if (overLimitTileIds.Count > 0)
+            {
+                msgParts.Add($"• {overLimitTileIds.Count} 個 Tile 超過上限 (上限={tileLimit}, 最大={maxTileId})，將無法顯示或導致閃退");
             }
 
             // 顯示確認對話框
@@ -19399,6 +19544,95 @@ namespace L1FlyMapViewer
                     resultForm.Close();
                 };
                 pnlL8Buttons.Controls.Add(btnL8ResetAll);
+            }
+
+            // ===== Tab 4: Tile 超過上限 =====
+            if (overLimitTileIds.Count > 0)
+            {
+                TabPage tabOverLimit = new TabPage($"Tile超上限 ({overLimitTileIds.Count})");
+                tabControl.TabPages.Add(tabOverLimit);
+
+                Label lblOverLimitSummary = new Label();
+                lblOverLimitSummary.Text = $"Tile.idx 中有 {overLimitTileIds.Count} 個 Tile ID 超過 list.til 上限 ({tileLimit})。\n" +
+                                           $"最大 Tile ID: {maxTileId}。這些 Tile 將無法顯示或導致閃退：";
+                lblOverLimitSummary.Location = new Point(5, 5);
+                lblOverLimitSummary.Size = new Size(tabOverLimit.ClientSize.Width - 10, 40);
+                lblOverLimitSummary.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+                tabOverLimit.Controls.Add(lblOverLimitSummary);
+
+                ListBox lbOverLimitItems = new ListBox();
+                lbOverLimitItems.Location = new Point(5, 50);
+                lbOverLimitItems.Size = new Size(tabOverLimit.ClientSize.Width - 10, tabOverLimit.ClientSize.Height - 130);
+                lbOverLimitItems.Font = new Font("Consolas", 9);
+                lbOverLimitItems.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
+
+                foreach (var tileId in overLimitTileIds)
+                {
+                    lbOverLimitItems.Items.Add($"Tile ID: {tileId}");
+                }
+                tabOverLimit.Controls.Add(lbOverLimitItems);
+
+                // 按鈕面板
+                Panel pnlOverLimitButtons = new Panel();
+                pnlOverLimitButtons.Location = new Point(5, tabOverLimit.ClientSize.Height - 75);
+                pnlOverLimitButtons.Size = new Size(tabOverLimit.ClientSize.Width - 10, 70);
+                pnlOverLimitButtons.Anchor = AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
+                tabOverLimit.Controls.Add(pnlOverLimitButtons);
+
+                // 計算建議的新上限（最大值 + 5000）
+                int suggestedLimit = maxTileId + 5000;
+
+                Label lblSuggestion = new Label();
+                lblSuggestion.Text = $"建議將上限擴充至: {suggestedLimit}";
+                lblSuggestion.Location = new Point(0, 5);
+                lblSuggestion.Size = new Size(300, 20);
+                pnlOverLimitButtons.Controls.Add(lblSuggestion);
+
+                Button btnExpandLimit = new Button { Text = $"擴充上限至 {suggestedLimit}", Location = new Point(0, 30), Size = new Size(180, 30), BackColor = Color.LightGreen };
+                btnExpandLimit.Click += (s, args) =>
+                {
+                    if (MessageBox.Show($"確定要將 list.til 上限從 {tileLimit} 擴充至 {suggestedLimit} 嗎？",
+                        "確認擴充上限", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
+
+                    if (TileHashManager.UpdateTileLimit(suggestedLimit))
+                    {
+                        _listTilMaxId = null;  // 清除快取
+                        MessageBox.Show($"已將 list.til 上限擴充至 {suggestedLimit}。", "擴充成功", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        UpdateLayer5InvalidButton();
+                        resultForm.Close();
+                    }
+                    else
+                    {
+                        MessageBox.Show("擴充失敗，請檢查 Tile.pak 是否可寫入。", "錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    }
+                };
+                pnlOverLimitButtons.Controls.Add(btnExpandLimit);
+
+                Button btnExpandCustom = new Button { Text = "自訂上限...", Location = new Point(190, 30), Size = new Size(100, 30) };
+                btnExpandCustom.Click += (s, args) =>
+                {
+                    string input = Microsoft.VisualBasic.Interaction.InputBox(
+                        $"請輸入新的上限值（目前上限: {tileLimit}，最大Tile: {maxTileId}）：",
+                        "自訂上限", suggestedLimit.ToString());
+                    if (string.IsNullOrEmpty(input)) return;
+                    if (!int.TryParse(input, out int newLimit) || newLimit < maxTileId)
+                    {
+                        MessageBox.Show($"無效的數值。新上限必須大於或等於最大 Tile ID ({maxTileId})。", "錯誤", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                        return;
+                    }
+                    if (TileHashManager.UpdateTileLimit(newLimit))
+                    {
+                        _listTilMaxId = null;
+                        MessageBox.Show($"已將 list.til 上限設為 {newLimit}。", "設定成功", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                        UpdateLayer5InvalidButton();
+                        resultForm.Close();
+                    }
+                    else
+                    {
+                        MessageBox.Show("設定失敗，請檢查 Tile.pak 是否可寫入。", "錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    }
+                };
+                pnlOverLimitButtons.Controls.Add(btnExpandCustom);
             }
 
             // 關閉按鈕

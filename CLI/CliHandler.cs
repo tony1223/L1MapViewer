@@ -101,6 +101,10 @@ namespace L1MapViewer.CLI
                         return Commands.BenchmarkCommands.RenderAdjacent(cmdArgs);
                     case "render-material":
                         return Commands.MaterialCommands.RenderMaterial(cmdArgs);
+                    case "verify-material-tiles":
+                        return Commands.MaterialCommands.VerifyMaterialTiles(cmdArgs);
+                    case "list-til":
+                        return CmdListTil(cmdArgs);
                     case "help":
                     case "-h":
                     case "--help":
@@ -159,6 +163,130 @@ L1MapViewer CLI - S32 檔案解析工具
   L1MapViewer.exe -cli l4 map.s32 --groups
   L1MapViewer.exe -cli export map.s32 output.json
 ");
+        }
+
+        /// <summary>
+        /// list-til 命令 - 讀取 list.til 並顯示數字
+        /// </summary>
+        private static int CmdListTil(string[] args)
+        {
+            if (args.Length < 1)
+            {
+                Console.WriteLine("用法: -cli list-til <client_path>");
+                Console.WriteLine();
+                Console.WriteLine("讀取 Tile.pak 中的 list.til 並顯示內容");
+                return 1;
+            }
+
+            string clientPath = args[0];
+
+            if (!Directory.Exists(clientPath))
+            {
+                Console.WriteLine($"錯誤: 路徑不存在: {clientPath}");
+                return 1;
+            }
+
+            string tileIdxPath = Path.Combine(clientPath, "Tile.idx");
+            string tilePakPath = Path.Combine(clientPath, "Tile.pak");
+
+            if (!File.Exists(tileIdxPath))
+            {
+                Console.WriteLine($"錯誤: Tile.idx 不存在: {tileIdxPath}");
+                return 1;
+            }
+
+            if (!File.Exists(tilePakPath))
+            {
+                Console.WriteLine($"錯誤: Tile.pak 不存在: {tilePakPath}");
+                return 1;
+            }
+
+            Console.WriteLine($"客戶端路徑: {clientPath}");
+            Console.WriteLine($"Tile.idx: {tileIdxPath}");
+
+            // 設定路徑
+            Share.LineagePath = clientPath;
+
+            // 清除快取
+            if (Share.IdxDataList.ContainsKey("Tile"))
+            {
+                Share.IdxDataList.Remove("Tile");
+            }
+
+            // 讀取 list.til
+            byte[] listTilData = L1PakReader.UnPack("Tile", "list.til");
+
+            if (listTilData == null)
+            {
+                Console.WriteLine("錯誤: 找不到 list.til");
+                return 1;
+            }
+
+            Console.WriteLine($"list.til 大小: {listTilData.Length} bytes");
+            Console.WriteLine();
+
+            // 解析 list.til - 通常是一系列的數字
+            // 嘗試不同的解析方式
+            Console.WriteLine("=== 原始資料 (前 100 bytes hex) ===");
+            for (int i = 0; i < Math.Min(100, listTilData.Length); i++)
+            {
+                Console.Write($"{listTilData[i]:X2} ");
+                if ((i + 1) % 16 == 0) Console.WriteLine();
+            }
+            Console.WriteLine();
+            Console.WriteLine();
+
+            // 嘗試解析為文字
+            Console.WriteLine("=== 嘗試解析為文字 (前 500 字元) ===");
+            try
+            {
+                string text = Encoding.Default.GetString(listTilData);
+                Console.WriteLine(text.Substring(0, Math.Min(500, text.Length)));
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"無法解析為文字: {ex.Message}");
+            }
+            Console.WriteLine();
+
+            // 嘗試解析為 int32 陣列
+            Console.WriteLine("=== 嘗試解析為 Int32 陣列 (前 50 個) ===");
+            if (listTilData.Length >= 4)
+            {
+                using (var br = new BinaryReader(new MemoryStream(listTilData)))
+                {
+                    int count = 0;
+                    while (br.BaseStream.Position + 4 <= listTilData.Length && count < 50)
+                    {
+                        int value = br.ReadInt32();
+                        Console.Write($"{value} ");
+                        count++;
+                        if (count % 10 == 0) Console.WriteLine();
+                    }
+                }
+            }
+            Console.WriteLine();
+
+            // 嘗試解析為 int16 陣列
+            Console.WriteLine();
+            Console.WriteLine("=== 嘗試解析為 Int16 陣列 (前 50 個) ===");
+            if (listTilData.Length >= 2)
+            {
+                using (var br = new BinaryReader(new MemoryStream(listTilData)))
+                {
+                    int count = 0;
+                    while (br.BaseStream.Position + 2 <= listTilData.Length && count < 50)
+                    {
+                        short value = br.ReadInt16();
+                        Console.Write($"{value} ");
+                        count++;
+                        if (count % 10 == 0) Console.WriteLine();
+                    }
+                }
+            }
+            Console.WriteLine();
+
+            return 0;
         }
 
         /// <summary>

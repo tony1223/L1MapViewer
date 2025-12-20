@@ -115,6 +115,23 @@ namespace L1MapViewer.Forms
             };
             lvMaterials.SelectedIndexChanged += LvMaterials_SelectedIndexChanged;
             lvMaterials.DoubleClick += LvMaterials_DoubleClick;
+
+            // 右鍵選單
+            var contextMenu = new ContextMenuStrip();
+            var menuUse = new ToolStripMenuItem("使用此素材", null, (s, e) => BtnOK_Click(s, e));
+            var menuDelete = new ToolStripMenuItem("刪除", null, (s, e) => BtnDelete_Click(s, e));
+            var menuOpenFolder = new ToolStripMenuItem("開啟所在資料夾", null, (s, e) => OpenContainingFolder());
+            var menuRefresh = new ToolStripMenuItem("重新整理", null, (s, e) => { _library.ClearCache(); LoadMaterials(); });
+            contextMenu.Items.AddRange(new ToolStripItem[] { menuUse, new ToolStripSeparator(), menuDelete, menuOpenFolder, new ToolStripSeparator(), menuRefresh });
+            contextMenu.Opening += (s, e) =>
+            {
+                bool hasSelection = lvMaterials.SelectedItems.Count > 0;
+                menuUse.Enabled = hasSelection;
+                menuDelete.Enabled = hasSelection;
+                menuOpenFolder.Enabled = hasSelection;
+            };
+            lvMaterials.ContextMenuStrip = contextMenu;
+
             contentPanel.Panel1.Controls.Add(lvMaterials);
 
             imageList = new ImageList
@@ -463,6 +480,21 @@ namespace L1MapViewer.Forms
                     _library.ClearCache();
                     LoadMaterials();
                 }
+            }
+        }
+
+        private void OpenContainingFolder()
+        {
+            if (string.IsNullOrEmpty(SelectedFilePath) || !File.Exists(SelectedFilePath))
+                return;
+
+            try
+            {
+                System.Diagnostics.Process.Start("explorer.exe", $"/select,\"{SelectedFilePath}\"");
+            }
+            catch
+            {
+                // 忽略錯誤
             }
         }
 

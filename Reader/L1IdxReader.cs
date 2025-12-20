@@ -23,6 +23,11 @@ namespace L1MapViewer.Reader {
             return result[szFileName.ToLower()];
         }
 
+        //取得指定類型的所有idx資料
+        public static Dictionary<string, L1Idx> GetAll(string szIdxType) {
+            return Load(szIdxType);
+        }
+
         //讀取idx資料 並放入緩存
         private static Dictionary<string, L1Idx> Load(string szIdxType) {
             Dictionary<string, L1Idx> result = new Dictionary<string, L1Idx>();

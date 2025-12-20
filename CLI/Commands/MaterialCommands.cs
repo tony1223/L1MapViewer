@@ -6,6 +6,8 @@ using System.IO;
 using System.Linq;
 using L1MapViewer.Helper;
 using L1MapViewer.Models;
+using L1MapViewer.Reader;
+using static L1MapViewer.Other.Struct;
 
 namespace L1MapViewer.CLI.Commands
 {
@@ -14,6 +16,193 @@ namespace L1MapViewer.CLI.Commands
     /// </summary>
     public static class MaterialCommands
     {
+        /// <summary>
+        /// 驗證素材中的 Tile MD5
+        /// </summary>
+        public static int VerifyMaterialTiles(string[] args)
+        {
+            if (args.Length < 2)
+            {
+                Console.WriteLine("用法: verify-material-tiles <client_path> <material.fs32p>");
+                Console.WriteLine();
+                Console.WriteLine("參數:");
+                Console.WriteLine("  client_path     客戶端路徑 (包含 Tile.idx/Tile.pak)");
+                Console.WriteLine("  material.fs32p  素材檔案路徑");
+                Console.WriteLine();
+                Console.WriteLine("此命令會檢查素材中每個 Tile 的 MD5 是否能在客戶端 Tile.pak 中找到匹配");
+                return 1;
+            }
+
+            string clientPath = args[0];
+            string materialPath = args[1];
+
+            // 設定客戶端路徑
+            if (!Directory.Exists(clientPath))
+            {
+                Console.WriteLine($"錯誤: 客戶端路徑不存在: {clientPath}");
+                return 1;
+            }
+
+            string tileIdxPath = Path.Combine(clientPath, "Tile.idx");
+            string tilePakPath = Path.Combine(clientPath, "Tile.pak");
+            if (!File.Exists(tileIdxPath) || !File.Exists(tilePakPath))
+            {
+                Console.WriteLine($"錯誤: 找不到 Tile.idx 或 Tile.pak");
+                return 1;
+            }
+
+            Share.LineagePath = clientPath;
+            Console.WriteLine($"客戶端路徑: {clientPath}");
+
+            // 清除快取，強制重新載入
+            TileHashManager.ClearCache();
+            if (Share.IdxDataList.ContainsKey("Tile"))
+            {
+                Share.IdxDataList.Remove("Tile");
+            }
+
+            // 載入素材
+            if (!File.Exists(materialPath))
+            {
+                Console.WriteLine($"錯誤: 素材檔案不存在: {materialPath}");
+                return 1;
+            }
+
+            Console.WriteLine($"載入素材: {materialPath}");
+            Fs3pData material;
+            try
+            {
+                material = Fs3pParser.ParseFile(materialPath);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"錯誤: 無法解析素材檔案: {ex.Message}");
+                return 1;
+            }
+
+            Console.WriteLine($"  名稱: {material.Name}");
+            Console.WriteLine($"  尺寸: {material.Width} x {material.Height}");
+            Console.WriteLine($"  Tiles: {material.Tiles?.Count ?? 0} 個");
+            Console.WriteLine();
+
+            if (material.Tiles == null || material.Tiles.Count == 0)
+            {
+                Console.WriteLine("素材不包含任何 Tile 資料");
+                return 0;
+            }
+
+            // 取得客戶端所有 Tile
+            Console.WriteLine("載入客戶端 Tile.idx...");
+            var idxData = L1IdxReader.GetAll("Tile");
+            Console.WriteLine($"  共 {idxData.Count} 個 Tile 記錄");
+            Console.WriteLine();
+
+            // 逐一檢查素材中的 Tile
+            Console.WriteLine("驗證 Tile MD5...");
+            Console.WriteLine(new string('-', 80));
+
+            int reuseCount = 0;
+            int remapCount = 0;
+            int newCount = 0;
+
+            foreach (var kvp in material.Tiles)
+            {
+                int originalId = kvp.Key;
+                byte[] packageMd5 = kvp.Value.Md5Hash;
+                string packageMd5Hex = TileHashManager.Md5ToHex(packageMd5);
+
+                Console.Write($"Tile {originalId,5}: MD5={packageMd5Hex.Substring(0, 16)}... ");
+
+                // 檢查原始 ID 是否存在
+                byte[] existingTilData = L1PakReader.UnPack("Tile", $"{originalId}.til");
+
+                if (existingTilData != null)
+                {
+                    byte[] existingMd5 = TileHashManager.CalculateMd5(existingTilData);
+                    string existingMd5Hex = TileHashManager.Md5ToHex(existingMd5);
+
+                    if (TileHashManager.CompareMd5(existingMd5, packageMd5))
+                    {
+                        Console.WriteLine($"[重用] ID {originalId} 存在且 MD5 相符");
+                        reuseCount++;
+                    }
+                    else
+                    {
+                        // ID 存在但 MD5 不同，需要尋找其他匹配
+                        Console.Write($"[衝突] ID {originalId} 存在但 MD5 不同 (現有={existingMd5Hex.Substring(0, 16)}...)");
+
+                        // 搜尋所有 Tile 找匹配的 MD5
+                        int? foundId = FindTileByMd5Full(idxData, packageMd5);
+                        if (foundId.HasValue)
+                        {
+                            Console.WriteLine($" -> 可重映射到 ID {foundId.Value}");
+                            remapCount++;
+                        }
+                        else
+                        {
+                            Console.WriteLine(" -> 需新增匯入");
+                            newCount++;
+                        }
+                    }
+                }
+                else
+                {
+                    // 原始 ID 不存在，搜尋 MD5 匹配
+                    Console.Write($"[不存在] ID {originalId} 不存在");
+
+                    int? foundId = FindTileByMd5Full(idxData, packageMd5);
+                    if (foundId.HasValue)
+                    {
+                        Console.WriteLine($" -> 可重映射到 ID {foundId.Value}");
+                        remapCount++;
+                    }
+                    else
+                    {
+                        Console.WriteLine(" -> 需新增匯入");
+                        newCount++;
+                    }
+                }
+            }
+
+            Console.WriteLine(new string('-', 80));
+            Console.WriteLine();
+            Console.WriteLine("統計結果:");
+            Console.WriteLine($"  可重用 (MD5 相符): {reuseCount} 個");
+            Console.WriteLine($"  可重映射 (找到其他 ID): {remapCount} 個");
+            Console.WriteLine($"  需新增匯入: {newCount} 個");
+            Console.WriteLine($"  總計: {material.Tiles.Count} 個");
+
+            return 0;
+        }
+
+        /// <summary>
+        /// 完整掃描所有 Tile 尋找 MD5 匹配
+        /// </summary>
+        private static int? FindTileByMd5Full(Dictionary<string, L1Idx> idxData, byte[] targetMd5)
+        {
+            foreach (var entry in idxData)
+            {
+                string fileName = entry.Key;
+                if (!fileName.EndsWith(".til", StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                string idStr = fileName.Substring(0, fileName.Length - 4);
+                if (!int.TryParse(idStr, out int id))
+                    continue;
+
+                byte[] tilData = L1PakReader.UnPack("Tile", fileName);
+                if (tilData == null)
+                    continue;
+
+                byte[] md5 = TileHashManager.CalculateMd5(tilData);
+                if (TileHashManager.CompareMd5(md5, targetMd5))
+                {
+                    return id;
+                }
+            }
+            return null;
+        }
+
         /// <summary>
         /// 渲染素材到指定地圖位置並存成圖片
         /// </summary>

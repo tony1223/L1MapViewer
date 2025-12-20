@@ -247,6 +247,124 @@ namespace L1MapViewer.Reader
         }
 
         /// <summary>
+        /// 更新 pak 中已存在的檔案（將新資料追加到 pak 末尾，更新 idx 記錄）
+        /// </summary>
+        /// <param name="idxType">Tile, Text, etc.</param>
+        /// <param name="fileName">檔案名稱 (如 list.til)</param>
+        /// <param name="data">新的檔案資料</param>
+        /// <returns>是否成功</returns>
+        public static bool UpdateFile(string idxType, string fileName, byte[] data)
+        {
+            string idxFilePath = Path.Combine(Share.LineagePath, $"{idxType}.idx");
+            string pakFilePath = Path.Combine(Share.LineagePath, $"{idxType}.pak");
+
+            if (!File.Exists(idxFilePath) || !File.Exists(pakFilePath))
+                return false;
+
+            // 檢查檔案是否存在
+            var existingRecord = L1IdxReader.Find(idxType, fileName);
+            if (existingRecord == null)
+            {
+                // 檔案不存在，使用 AppendFile 新增
+                return AppendFile(idxType, fileName, data);
+            }
+
+            IdxType structType = GetIdxType(idxFilePath);
+
+            // 建立備份
+            string pakBackup = pakFilePath + ".bak";
+            string idxBackup = idxFilePath + ".bak";
+
+            try
+            {
+                if (File.Exists(pakBackup)) File.Delete(pakBackup);
+                if (File.Exists(idxBackup)) File.Delete(idxBackup);
+
+                File.Copy(pakFilePath, pakBackup);
+                File.Copy(idxFilePath, idxBackup);
+            }
+            catch
+            {
+                // 備份失敗，繼續執行
+            }
+
+            try
+            {
+                // 讀取現有記錄
+                var records = ReadIdxRecords(idxFilePath, structType);
+
+                // 找到要更新的記錄
+                int targetIndex = -1;
+                for (int i = 0; i < records.Count; i++)
+                {
+                    if (string.Equals(records[i].FileName, fileName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        targetIndex = i;
+                        break;
+                    }
+                }
+
+                if (targetIndex < 0)
+                    return false;
+
+                // 取得 pak 檔案目前大小作為新偏移
+                var pakFileInfo = new FileInfo(pakFilePath);
+                int newOffset = (int)pakFileInfo.Length;
+
+                // 附加新資料到 pak 末尾
+                using (var pakFs = new FileStream(pakFilePath, FileMode.Append, FileAccess.Write, FileShare.Read))
+                {
+                    pakFs.Write(data, 0, data.Length);
+                }
+
+                // 更新記錄（指向新位置）
+                records[targetIndex].Position = newOffset;
+                records[targetIndex].Size = data.Length;
+                records[targetIndex].CompressSize = 0;
+                records[targetIndex].CompressType = 0;
+
+                // 重建 idx
+                RebuildIdx(idxFilePath, structType, records);
+
+                // 成功後刪除備份
+                try
+                {
+                    if (File.Exists(pakBackup)) File.Delete(pakBackup);
+                    if (File.Exists(idxBackup)) File.Delete(idxBackup);
+                }
+                catch { }
+
+                // 清除緩存
+                if (Share.IdxDataList.ContainsKey(idxType))
+                {
+                    Share.IdxDataList.Remove(idxType);
+                }
+
+                return true;
+            }
+            catch
+            {
+                // 發生錯誤，從備份還原
+                try
+                {
+                    if (File.Exists(pakBackup))
+                    {
+                        File.Copy(pakBackup, pakFilePath, true);
+                        File.Delete(pakBackup);
+                    }
+                    if (File.Exists(idxBackup))
+                    {
+                        File.Copy(idxBackup, idxFilePath, true);
+                        File.Delete(idxBackup);
+                    }
+                }
+                catch { }
+
+                return false;
+            }
+        }
+
+        /// <summary>
         /// 將檔案附加到 pak 並更新 idx
         /// </summary>
         /// <param name="idxType">Tile, Text, etc.</param>

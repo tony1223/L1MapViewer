@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Security.Cryptography;
 using L1MapViewer.Reader;
 
@@ -77,14 +78,64 @@ namespace L1MapViewer.Helper
 
         /// <summary>
         /// 根據 MD5 查找現有的 TileId
+        /// 策略：先查快取，快取沒有再掃描整個 tile.idx
         /// </summary>
-        public static int? FindTileByMd5(byte[] md5Hash)
+        public static int? FindTileByMd5(byte[] md5Hash, string idxType = "Tile")
         {
             string hexHash = Md5ToHex(md5Hash);
-            if (_md5ToTileId.TryGetValue(hexHash, out int tileId))
+
+            // 1. 先檢查快取（快速路徑）
+            if (_md5ToTileId.TryGetValue(hexHash, out int cachedId))
             {
-                return tileId;
+                return cachedId;
             }
+
+            // 2. 快取沒有，掃描整個 tile.idx
+            try
+            {
+                var idxData = L1IdxReader.GetAll(idxType);
+                if (idxData == null || idxData.Count == 0)
+                    return null;
+
+                foreach (var entry in idxData)
+                {
+                    string fileName = entry.Key;
+                    if (fileName.EndsWith(".til", StringComparison.OrdinalIgnoreCase) && fileName != "list.til")
+                    {
+                        string idStr = fileName.Substring(0, fileName.Length - 4);
+                        if (int.TryParse(idStr, out int id))
+                        {
+                            // 跳過已經在快取中的 tile
+                            if (_tileHashCache.ContainsKey(id))
+                                continue;
+
+                            // 讀取此 tile 並計算 MD5
+                            byte[] tilData = L1PakReader.UnPack(idxType, fileName);
+                            if (tilData != null)
+                            {
+                                byte[] tileMd5 = CalculateMd5(tilData);
+
+                                // 更新快取
+                                _tileHashCache[id] = tileMd5;
+                                string tileHex = Md5ToHex(tileMd5);
+                                _md5ToTileId.TryAdd(tileHex, id);
+
+                                // 比對 MD5
+                                if (tileHex == hexHash)
+                                {
+                                    return id;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            catch
+            {
+                // 忽略錯誤
+            }
+
+            // 3. 掃描完全部還是沒有，返回 null（需要新增）
             return null;
         }
 
@@ -134,6 +185,83 @@ namespace L1MapViewer.Helper
             {
                 GetTileMd5(tileId, idxType);
             }
+        }
+
+        /// <summary>
+        /// 讀取 list.til 中的 Tile 上限值
+        /// </summary>
+        /// <returns>上限值，若無法讀取則返回 -1</returns>
+        public static int GetTileLimit()
+        {
+            try
+            {
+                byte[] data = L1PakReader.UnPack("Tile", "list.til");
+                if (data == null || data.Length == 0)
+                    return -1;
+
+                string text = System.Text.Encoding.ASCII.GetString(data).Trim();
+                if (int.TryParse(text, out int limit))
+                    return limit;
+
+                return -1;
+            }
+            catch
+            {
+                return -1;
+            }
+        }
+
+        /// <summary>
+        /// 更新 list.til 中的 Tile 上限值
+        /// </summary>
+        /// <param name="newLimit">新的上限值</param>
+        /// <returns>是否成功</returns>
+        public static bool UpdateTileLimit(int newLimit)
+        {
+            try
+            {
+                string text = newLimit.ToString();
+                byte[] data = System.Text.Encoding.ASCII.GetBytes(text);
+                return L1PakWriter.UpdateFile("Tile", "list.til", data);
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// 檢查 Tile ID 是否超過上限
+        /// </summary>
+        /// <param name="tileId">要檢查的 Tile ID</param>
+        /// <returns>是否超過上限</returns>
+        public static bool IsTileIdOverLimit(int tileId)
+        {
+            int limit = GetTileLimit();
+            if (limit <= 0)
+                return false; // 無法讀取上限，不檢查
+
+            return tileId > limit;
+        }
+
+        /// <summary>
+        /// 檢查多個 Tile ID 中最大值是否超過上限
+        /// </summary>
+        /// <param name="tileIds">要檢查的 Tile ID 列表</param>
+        /// <returns>(是否超過, 最大TileId, 目前上限)</returns>
+        public static (bool IsOver, int MaxTileId, int CurrentLimit) CheckTileIdsOverLimit(IEnumerable<int> tileIds)
+        {
+            int limit = GetTileLimit();
+            if (limit <= 0)
+                return (false, 0, limit);
+
+            int maxId = 0;
+            foreach (int id in tileIds)
+            {
+                if (id > maxId) maxId = id;
+            }
+
+            return (maxId > limit, maxId, limit);
         }
     }
 }
