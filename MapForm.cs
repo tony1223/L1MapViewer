@@ -120,6 +120,9 @@ namespace L1FlyMapViewer
         // Layer5 透明編輯模式（狀態存於 _editState.IsLayer5EditMode）
         private Label lblLayer5Help; // Layer5 編輯操作說明標籤
 
+        // 預設操作提示標籤
+        private Label lblDefaultHint;
+
         // Undo 相關常數
         private const int MAX_UNDO_HISTORY = 5;
 
@@ -359,6 +362,10 @@ namespace L1FlyMapViewer
         {
             LogPerf("[FORM-CTOR] Start");
             InitializeComponent();
+            this.AllowDrop = true;  // 允許從 Explorer 拖放檔案
+            this.DragEnter += lvMaterials_DragEnter;
+            this.DragOver += lvMaterials_DragOver;
+            this.DragDrop += lvMaterials_DragDrop;
             LogPerf("[FORM-CTOR] InitializeComponent done");
 
             // 初始化渲染防抖Timer（300ms延遲）
@@ -455,6 +462,22 @@ namespace L1FlyMapViewer
             this.s32MapPanel.Controls.Add(lblRegionHelp);
             lblRegionHelp.BringToFront();
             lblRegionHelp.Location = new Point(10, 10);
+
+            // 建立預設操作提示標籤
+            lblDefaultHint = new Label
+            {
+                AutoSize = true,
+                BackColor = Color.FromArgb(180, 50, 50, 50),
+                ForeColor = Color.White,
+                Font = new Font("Microsoft JhengHei", 9, FontStyle.Regular),
+                Padding = new Padding(8),
+                Text = "滑鼠中鍵拖移 | Ctrl+滾輪縮放 | 左鍵選取格子",
+                Visible = true,
+                BorderStyle = BorderStyle.FixedSingle
+            };
+            this.s32MapPanel.Controls.Add(lblDefaultHint);
+            lblDefaultHint.BringToFront();
+            lblDefaultHint.Location = new Point(10, 10);
 
             // 建立區域類型切換按鈕
             btnRegionNormal = new Button
@@ -5001,6 +5024,7 @@ namespace L1FlyMapViewer
             if (!_editState.IsLayer5EditMode)
             {
                 lblLayer5Help.Visible = false;
+                UpdateDefaultHintVisibility();
                 return;
             }
 
@@ -5011,6 +5035,7 @@ namespace L1FlyMapViewer
             lblLayer5Help.Location = new Point(s32MapPanel.Width - lblLayer5Help.Width - 20, 200);
             lblLayer5Help.Visible = true;
             lblLayer5Help.BringToFront();
+            lblDefaultHint.Visible = false;
         }
 
         // 更新通行性編輯操作說明標籤
@@ -5019,6 +5044,7 @@ namespace L1FlyMapViewer
             if (currentPassableEditMode == PassableEditMode.None)
             {
                 lblPassabilityHelp.Visible = false;
+                UpdateDefaultHintVisibility();
                 return;
             }
 
@@ -5033,6 +5059,7 @@ namespace L1FlyMapViewer
             lblPassabilityHelp.ForeColor = borderColor;
             lblPassabilityHelp.Visible = true;
             lblPassabilityHelp.BringToFront();
+            lblDefaultHint.Visible = false;
         }
 
         // 更新區域編輯操作說明標籤
@@ -5044,6 +5071,7 @@ namespace L1FlyMapViewer
                 btnRegionNormal.Visible = false;
                 btnRegionSafe.Visible = false;
                 btnRegionCombat.Visible = false;
+                UpdateDefaultHintVisibility();
                 return;
             }
 
@@ -5056,6 +5084,7 @@ namespace L1FlyMapViewer
             lblRegionHelp.ForeColor = regionColor;
             lblRegionHelp.Visible = true;
             lblRegionHelp.BringToFront();
+            lblDefaultHint.Visible = false;
 
             // 顯示區域類型按鈕並更新狀態
             btnRegionNormal.Visible = true;
@@ -5073,6 +5102,21 @@ namespace L1FlyMapViewer
             btnRegionNormal.ForeColor = currentRegionType == RegionType.Normal ? Color.Black : Color.White;
             btnRegionSafe.ForeColor = Color.White;
             btnRegionCombat.ForeColor = Color.White;
+        }
+
+        // 更新預設操作提示的顯示狀態
+        private void UpdateDefaultHintVisibility()
+        {
+            // 如果沒有任何編輯模式啟動，顯示預設提示
+            bool anyModeActive = currentPassableEditMode != PassableEditMode.None ||
+                                 currentRegionEditMode != RegionEditMode.None ||
+                                 _editState.IsLayer5EditMode;
+
+            lblDefaultHint.Visible = !anyModeActive;
+            if (lblDefaultHint.Visible)
+            {
+                lblDefaultHint.BringToFront();
+            }
         }
 
         // 重新載入按鈕點擊事件
@@ -8683,6 +8727,38 @@ namespace L1FlyMapViewer
                     {
                         MessageBox.Show("建立素材失敗", "錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error);
                         return;
+                    }
+
+                    // 檢查並處理 R版 tiles
+                    if (dialog.IncludeTiles && fs3p.Tiles.Count > 0)
+                    {
+                        int remasterCount = fs3p.Tiles.Values.Count(t => L1MapViewer.Converter.L1Til.IsRemaster(t.TilData));
+                        if (remasterCount > 0)
+                        {
+                            var result = MessageBox.Show(
+                                $"素材中有 {remasterCount} 個 R版 (48x48) 圖塊。\n\n" +
+                                "是否要轉換為天1格式 (24x24)？\n\n" +
+                                "• 是 - 轉換為天1格式 (檔案較小，相容舊版)\n" +
+                                "• 否 - 保留 R版格式",
+                                "R版圖塊偵測",
+                                MessageBoxButtons.YesNo,
+                                MessageBoxIcon.Question,
+                                MessageBoxDefaultButton.Button1);  // 預設選「是」
+
+                            if (result == DialogResult.Yes)
+                            {
+                                // 轉換所有 R版 tiles 為 天1 格式
+                                foreach (var tileId in fs3p.Tiles.Keys.ToList())
+                                {
+                                    var tile = fs3p.Tiles[tileId];
+                                    if (L1MapViewer.Converter.L1Til.IsRemaster(tile.TilData))
+                                    {
+                                        tile.TilData = L1MapViewer.Converter.L1Til.DownscaleTil(tile.TilData);
+                                        tile.Md5Hash = TileHashManager.CalculateMd5(tile.TilData);
+                                    }
+                                }
+                            }
+                        }
                     }
 
                     // 儲存到素材庫
@@ -12448,6 +12524,21 @@ namespace L1FlyMapViewer
             e.Effect = DragDropEffects.None;
         }
 
+        // 拖放經過事件（必須持續設定 Effect 才能允許放下）
+        private void lvMaterials_DragOver(object sender, DragEventArgs e)
+        {
+            if (e.Data.GetDataPresent(DataFormats.FileDrop))
+            {
+                string[] files = (string[])e.Data.GetData(DataFormats.FileDrop);
+                if (files.Any(f => f.EndsWith(".fs32p", StringComparison.OrdinalIgnoreCase)))
+                {
+                    e.Effect = DragDropEffects.Copy;
+                    return;
+                }
+            }
+            e.Effect = DragDropEffects.None;
+        }
+
         // 拖放放下事件
         private void lvMaterials_DragDrop(object sender, DragEventArgs e)
         {
@@ -12486,6 +12577,48 @@ namespace L1FlyMapViewer
             {
                 RefreshMaterialsList();
                 toolStripStatusLabel1.Text = $"已匯入 {imported} 個素材";
+            }
+        }
+
+        // 匯入素材選單點擊事件
+        private void importMaterialToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            using (var ofd = new OpenFileDialog())
+            {
+                ofd.Filter = "素材檔案|*.fs32p|所有檔案|*.*";
+                ofd.Title = "匯入素材";
+                ofd.Multiselect = true;
+
+                if (ofd.ShowDialog() != DialogResult.OK)
+                    return;
+
+                var library = new L1MapViewer.Helper.MaterialLibrary();
+                int imported = 0;
+
+                foreach (var file in ofd.FileNames)
+                {
+                    try
+                    {
+                        if (!L1MapViewer.CLI.Fs3pParser.IsValidFs3pFile(file))
+                        {
+                            MessageBox.Show($"無效的素材檔案: {Path.GetFileName(file)}", "錯誤", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                            continue;
+                        }
+
+                        library.AddToRecent(file);
+                        imported++;
+                    }
+                    catch (Exception ex)
+                    {
+                        MessageBox.Show($"匯入失敗: {Path.GetFileName(file)}\n{ex.Message}", "錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    }
+                }
+
+                if (imported > 0)
+                {
+                    RefreshMaterialsList();
+                    toolStripStatusLabel1.Text = $"已匯入 {imported} 個素材";
+                }
             }
         }
 
@@ -14359,6 +14492,38 @@ namespace L1FlyMapViewer
                                     Md5Hash = TileHashManager.CalculateMd5(tilData),
                                     TilData = tilData
                                 };
+                            }
+                        }
+
+                        // 檢查並處理 R版 tiles
+                        if (fs3p.Tiles.Count > 0)
+                        {
+                            int remasterCount = fs3p.Tiles.Values.Count(t => L1MapViewer.Converter.L1Til.IsRemaster(t.TilData));
+                            if (remasterCount > 0)
+                            {
+                                var result = MessageBox.Show(
+                                    $"素材中有 {remasterCount} 個 R版 (48x48) 圖塊。\n\n" +
+                                    "是否要轉換為天1格式 (24x24)？\n\n" +
+                                    "• 是 - 轉換為天1格式 (檔案較小，相容舊版)\n" +
+                                    "• 否 - 保留 R版格式",
+                                    "R版圖塊偵測",
+                                    MessageBoxButtons.YesNo,
+                                    MessageBoxIcon.Question,
+                                    MessageBoxDefaultButton.Button1);  // 預設選「是」
+
+                                if (result == DialogResult.Yes)
+                                {
+                                    // 轉換所有 R版 tiles 為 天1 格式
+                                    foreach (var tileId in fs3p.Tiles.Keys.ToList())
+                                    {
+                                        var tile = fs3p.Tiles[tileId];
+                                        if (L1MapViewer.Converter.L1Til.IsRemaster(tile.TilData))
+                                        {
+                                            tile.TilData = L1MapViewer.Converter.L1Til.DownscaleTil(tile.TilData);
+                                            tile.Md5Hash = TileHashManager.CalculateMd5(tile.TilData);
+                                        }
+                                    }
+                                }
                             }
                         }
                     }

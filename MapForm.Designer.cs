@@ -11,6 +11,7 @@ namespace L1FlyMapViewer
         private MenuStrip menuStrip1;
         private ToolStripMenuItem openToolStripMenuItem;
         private ToolStripMenuItem exportToolStripMenuItem;
+        private ToolStripMenuItem importMaterialToolStripMenuItem;
         private StatusStrip statusStrip1;
         public ToolStripStatusLabel toolStripStatusLabel1;
         public ToolStripProgressBar toolStripProgressBar1;
@@ -143,6 +144,7 @@ namespace L1FlyMapViewer
             this.menuStrip1 = new MenuStrip();
             this.openToolStripMenuItem = new ToolStripMenuItem();
             this.exportToolStripMenuItem = new ToolStripMenuItem();
+            this.importMaterialToolStripMenuItem = new ToolStripMenuItem();
 
             // StatusStrip
             this.statusStrip1 = new StatusStrip();
@@ -288,6 +290,7 @@ namespace L1FlyMapViewer
             //
             this.menuStrip1.Items.AddRange(new ToolStripItem[] {
                 this.openToolStripMenuItem,
+                this.importMaterialToolStripMenuItem,
                 this.exportToolStripMenuItem
             });
             this.menuStrip1.Location = new Point(0, 0);
@@ -304,11 +307,20 @@ namespace L1FlyMapViewer
             this.openToolStripMenuItem.Click += new System.EventHandler(this.openToolStripMenuItem_Click);
 
             //
+            // importMaterialToolStripMenuItem
+            //
+            this.importMaterialToolStripMenuItem.Name = "importMaterialToolStripMenuItem";
+            this.importMaterialToolStripMenuItem.Size = new Size(86, 20);
+            this.importMaterialToolStripMenuItem.Text = "匯入素材...";
+            this.importMaterialToolStripMenuItem.Click += new System.EventHandler(this.importMaterialToolStripMenuItem_Click);
+
+            //
             // exportToolStripMenuItem
             //
             this.exportToolStripMenuItem.Name = "exportToolStripMenuItem";
             this.exportToolStripMenuItem.Size = new Size(122, 20);
             this.exportToolStripMenuItem.Text = "匯出地圖通行資料";
+            this.exportToolStripMenuItem.Visible = false;
             this.exportToolStripMenuItem.Click += new System.EventHandler(this.exportToolStripMenuItem_Click);
 
             //
@@ -1109,6 +1121,10 @@ namespace L1FlyMapViewer
             this.rightPanel.Name = "rightPanel";
             this.rightPanel.Size = new Size(220, 654);
             this.rightPanel.TabIndex = 6;
+            this.rightPanel.AllowDrop = true;
+            this.rightPanel.DragEnter += new DragEventHandler(this.lvMaterials_DragEnter);
+            this.rightPanel.DragOver += new DragEventHandler(this.lvMaterials_DragOver);
+            this.rightPanel.DragDrop += new DragEventHandler(this.lvMaterials_DragDrop);
 
             //
             // lblTileList
@@ -1164,6 +1180,7 @@ namespace L1FlyMapViewer
             this.lvMaterials.DoubleClick += new System.EventHandler(this.lvMaterials_DoubleClick);
             this.lvMaterials.MouseUp += new MouseEventHandler(this.lvMaterials_MouseUp);
             this.lvMaterials.DragEnter += new DragEventHandler(this.lvMaterials_DragEnter);
+            this.lvMaterials.DragOver += new DragEventHandler(this.lvMaterials_DragOver);
             this.lvMaterials.DragDrop += new DragEventHandler(this.lvMaterials_DragDrop);
 
             //
