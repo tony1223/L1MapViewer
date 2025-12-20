@@ -2530,14 +2530,10 @@ namespace L1FlyMapViewer
             try
             {
                 var swMapSelect = Stopwatch.StartNew();
-                L1MapHelper.doPaintEvent(szSelectName, this);
-                LogPerf($"[MAP-SELECT] doPaintEvent: {swMapSelect.ElapsedMilliseconds}ms");
 
-                // 等待地圖繪製完成後更新小地圖
-                Application.DoEvents();
-                LogPerf($"[MAP-SELECT] DoEvents: {swMapSelect.ElapsedMilliseconds}ms");
-                UpdateMiniMap();
-                LogPerf($"[MAP-SELECT] UpdateMiniMap: {swMapSelect.ElapsedMilliseconds}ms");
+                // 跳過 doPaintEvent - S32 編輯器有自己的 viewport 渲染，不需要舊版地圖縮圖
+                // 這可以節省 6+ 秒（原本會讀取所有 S32 檔案計算 SHA1）
+                LogPerf($"[MAP-SELECT] Skipping doPaintEvent (S32 editor mode)");
 
                 // 載入該地圖的 s32 檔案清單
                 LoadS32FileList(szSelectName);
@@ -2582,15 +2578,9 @@ namespace L1FlyMapViewer
             if (szSelectName.Contains("-"))
                 szSelectName = szSelectName.Split('-')[0].Trim();
 
-            LogPerf($"[COMBOBOX-CHANGED] Calling doPaintEvent for map={szSelectName}");
-            L1MapHelper.doPaintEvent(szSelectName, this);
-            LogPerf($"[COMBOBOX-CHANGED] doPaintEvent done: {swCombo.ElapsedMilliseconds}ms");
-
-            // 等待地圖繪製完成後更新小地圖
-            Application.DoEvents();
-            LogPerf($"[COMBOBOX-CHANGED] DoEvents done: {swCombo.ElapsedMilliseconds}ms");
-            UpdateMiniMap();
-            LogPerf($"[COMBOBOX-CHANGED] UpdateMiniMap done: {swCombo.ElapsedMilliseconds}ms");
+            // 跳過 doPaintEvent - S32 編輯器有自己的 viewport 渲染，不需要舊版地圖縮圖
+            // 這可以節省 6+ 秒（原本會讀取所有 S32 檔案計算 SHA1）
+            LogPerf($"[COMBOBOX-CHANGED] Skipping doPaintEvent (S32 editor mode)");
 
             // 載入該地圖的 s32 檔案清單
             LoadS32FileList(szSelectName);
