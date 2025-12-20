@@ -9,6 +9,7 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using L1MapViewer;
+using L1MapViewer.CLI;
 using L1MapViewer.Converter;
 using L1MapViewer.Helper;
 using L1MapViewer.Models;
@@ -7696,8 +7697,7 @@ namespace L1FlyMapViewer
                     }
                     else
                     {
-                        // 更新 Layer4 群組清單
-                        UpdateLayer4GroupsList(s32Data, x, y);
+                        // 非透明編輯模式，不需要更新群組清單
                     }
                 }
                 sw.Stop();
@@ -8545,6 +8545,238 @@ namespace L1FlyMapViewer
                 // 清除選擇框
                 selectedRegion = new Rectangle();
                 s32PictureBox.Invalidate();
+            }
+
+            // 右鍵顯示選取區域操作選單
+            if (e.Button == MouseButtons.Right && isLayer4CopyMode && _editState.SelectedCells.Count > 0)
+            {
+                ShowSelectionContextMenu(e.Location);
+                return;
+            }
+        }
+
+        // 顯示選取區域右鍵選單
+        private void ShowSelectionContextMenu(Point location)
+        {
+            var menu = new ContextMenuStrip();
+
+            var exportFs32Item = new ToolStripMenuItem("匯出為 fs32...");
+            exportFs32Item.Click += (s, e) => ExportSelectionAsFs32();
+            menu.Items.Add(exportFs32Item);
+
+            var saveAsFs3pItem = new ToolStripMenuItem("儲存為素材 (fs3p)...");
+            saveAsFs3pItem.Click += (s, e) => SaveSelectionAsMaterial();
+            menu.Items.Add(saveAsFs3pItem);
+
+            menu.Items.Add(new ToolStripSeparator());
+
+            var copyItem = new ToolStripMenuItem("複製 (Ctrl+C)");
+            copyItem.Click += (s, e) => CopySelectedCells();
+            menu.Items.Add(copyItem);
+
+            var clearItem = new ToolStripMenuItem("清除選取區域資料...");
+            clearItem.Click += (s, e) => ClearSelectedCellsWithDialog();
+            menu.Items.Add(clearItem);
+
+            menu.Show(s32PictureBox, location);
+        }
+
+        // 匯出選取區域為 fs32
+        private void ExportSelectionAsFs32()
+        {
+            if (_editState.SelectedCells.Count == 0)
+            {
+                MessageBox.Show("請先選取區域", "提示", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            using (var dialog = new L1MapViewer.Forms.ExportOptionsDialog(isFs3p: false, hasSelection: true))
+            {
+                if (dialog.ShowDialog() != DialogResult.OK)
+                    return;
+
+                using (var saveDialog = new SaveFileDialog())
+                {
+                    saveDialog.Filter = "FS32 檔案|*.fs32";
+                    saveDialog.FileName = $"{_document.MapId}_export.fs32";
+
+                    if (saveDialog.ShowDialog() != DialogResult.OK)
+                        return;
+
+                    try
+                    {
+                        // 收集選取區域涉及的 S32 檔案
+                        var involvedS32s = _editState.SelectedCells
+                            .Select(c => c.S32Data)
+                            .Distinct()
+                            .ToList();
+
+                        Fs32Data fs32;
+                        if (dialog.SelectedMode == L1MapViewer.Forms.ExportOptionsDialog.ExportMode.WholeMap)
+                        {
+                            fs32 = Fs32Writer.CreateFromMap(_document, dialog.LayerFlags, dialog.IncludeTiles);
+                        }
+                        else
+                        {
+                            fs32 = Fs32Writer.CreateFromS32List(involvedS32s, _document.MapId, dialog.LayerFlags, dialog.IncludeTiles);
+                        }
+
+                        Fs32Writer.Write(fs32, saveDialog.FileName);
+                        toolStripStatusLabel1.Text = $"已匯出至 {saveDialog.FileName} ({fs32.Blocks.Count} 區塊, {fs32.Tiles.Count} 圖塊)";
+                    }
+                    catch (Exception ex)
+                    {
+                        MessageBox.Show($"匯出失敗: {ex.Message}", "錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    }
+                }
+            }
+        }
+
+        // 儲存選取區域為素材 (fs3p)
+        private void SaveSelectionAsMaterial()
+        {
+            if (_editState.SelectedCells.Count == 0)
+            {
+                MessageBox.Show("請先選取區域", "提示", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            using (var dialog = new L1MapViewer.Forms.ExportOptionsDialog(isFs3p: true, hasSelection: true))
+            {
+                if (dialog.ShowDialog() != DialogResult.OK)
+                    return;
+
+                try
+                {
+                    // 產生縮圖
+                    Bitmap thumbnail = GenerateSelectionThumbnail(_editState.SelectedCells, 128);
+
+                    // 建立 fs3p
+                    var fs3p = Fs3pWriter.CreateFromSelection(
+                        _editState.SelectedCells,
+                        _document.S32Files,
+                        dialog.MaterialName,
+                        dialog.LayerFlags,
+                        dialog.IncludeTiles,
+                        thumbnail);
+
+                    if (fs3p == null)
+                    {
+                        MessageBox.Show("建立素材失敗", "錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        return;
+                    }
+
+                    // 儲存到素材庫
+                    var library = new MaterialLibrary();
+                    string savedPath = library.SaveMaterial(fs3p);
+
+                    thumbnail?.Dispose();
+
+                    toolStripStatusLabel1.Text = $"已儲存素材: {dialog.MaterialName} ({fs3p.Layer1Items.Count + fs3p.Layer2Items.Count + fs3p.Layer4Items.Count} 項目, {fs3p.Tiles.Count} 圖塊)";
+
+                    // 更新素材面板
+                    RefreshMaterialsList();
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"儲存素材失敗: {ex.Message}", "錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+            }
+        }
+
+        // 產生選取區域縮圖
+        private Bitmap GenerateSelectionThumbnail(List<SelectedCell> cells, int maxSize)
+        {
+            if (cells == null || cells.Count == 0)
+                return null;
+
+            try
+            {
+                // 計算選取範圍的世界座標邊界
+                int minWorldX = int.MaxValue, minWorldY = int.MaxValue;
+                int maxWorldX = int.MinValue, maxWorldY = int.MinValue;
+
+                foreach (var cell in cells)
+                {
+                    int worldX = cell.S32Data.SegInfo.nLinBeginX * 2 + cell.LocalX;
+                    int worldY = cell.S32Data.SegInfo.nLinBeginY + cell.LocalY;
+                    // 轉換為像素座標
+                    int pixelX = worldX * 24;
+                    int pixelY = worldY * 24;
+
+                    if (pixelX < minWorldX) minWorldX = pixelX;
+                    if (pixelY < minWorldY) minWorldY = pixelY;
+                    if (pixelX + 48 > maxWorldX) maxWorldX = pixelX + 48;
+                    if (pixelY + 24 > maxWorldY) maxWorldY = pixelY + 24;
+                }
+
+                int width = maxWorldX - minWorldX;
+                int height = maxWorldY - minWorldY;
+
+                if (width <= 0 || height <= 0)
+                    return null;
+
+                // 計算縮放比例
+                float scale = Math.Min((float)maxSize / width, (float)maxSize / height);
+                scale = Math.Min(scale, 1.0f);
+
+                int thumbWidth = (int)(width * scale);
+                int thumbHeight = (int)(height * scale);
+
+                if (thumbWidth <= 0) thumbWidth = 1;
+                if (thumbHeight <= 0) thumbHeight = 1;
+
+                // 從現有的 viewport bitmap 截取
+                var thumbnail = new Bitmap(thumbWidth, thumbHeight);
+                using (var g = Graphics.FromImage(thumbnail))
+                {
+                    g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBilinear;
+                    g.Clear(Color.Transparent);
+
+                    // 如果有 viewport bitmap，從中截取
+                    lock (_viewportBitmapLock)
+                    {
+                        if (_viewportBitmap != null)
+                        {
+                            // 計算源區域在 viewport bitmap 中的位置
+                            int srcX = minWorldX - _viewState.RenderOriginX;
+                            int srcY = minWorldY - _viewState.RenderOriginY;
+
+                            var srcRect = new Rectangle(srcX, srcY, width, height);
+                            var destRect = new Rectangle(0, 0, thumbWidth, thumbHeight);
+
+                            g.DrawImage(_viewportBitmap, destRect, srcRect, GraphicsUnit.Pixel);
+                        }
+                    }
+                }
+
+                return thumbnail;
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        // 刷新素材列表
+        private void RefreshMaterialsList()
+        {
+            try
+            {
+                var library = new MaterialLibrary();
+                var recentMaterials = library.GetRecentMaterials();
+
+                lvMaterials.Items.Clear();
+                foreach (var info in recentMaterials.Take(5))
+                {
+                    var item = new ListViewItem(info.Name ?? "未命名");
+                    item.Tag = info.FilePath;
+                    lvMaterials.Items.Add(item);
+                }
+            }
+            catch
+            {
+                // 忽略錯誤
             }
         }
 
@@ -11858,61 +12090,6 @@ namespace L1FlyMapViewer
             }
          }
 
-        // 更新 Layer4 群組清單
-        private void UpdateLayer4GroupsList(S32Data s32Data, int cellX, int cellY)
-        {
-            lvLayer4Groups.Items.Clear();
-            _editState.SelectedLayer4Groups.Clear();
-
-            if (s32Data == null || s32Data.Layer4 == null)
-                return;
-
-            // 找出該格子的所有 Layer4 物件，按 GroupId 分組
-            var objectsAtCell = s32Data.Layer4
-                .Where(o => o.X == cellX && o.Y == cellY)
-                .GroupBy(o => o.GroupId)
-                .OrderBy(g => g.Key)
-                .ToList();
-
-            // 另外收集整個 S32 中所有 Group 的統計
-            var allGroups = s32Data.Layer4
-                .GroupBy(o => o.GroupId)
-                .OrderBy(g => g.Key)
-                .ToDictionary(g => g.Key, g => g.ToList());
-
-            // 顯示該格子有的群組
-            foreach (var group in objectsAtCell)
-            {
-                int groupId = group.Key;
-                int countAtCell = group.Count();
-                int totalCount = allGroups.ContainsKey(groupId) ? allGroups[groupId].Count : countAtCell;
-
-                // 取得該群組物件的位置範圍
-                var groupObjects = allGroups.ContainsKey(groupId) ? allGroups[groupId] : group.ToList();
-                int minX = groupObjects.Min(o => o.X);
-                int maxX = groupObjects.Max(o => o.X);
-                int minY = groupObjects.Min(o => o.Y);
-                int maxY = groupObjects.Max(o => o.Y);
-                string posRange = $"{minX}-{maxX},{minY}-{maxY}";
-
-                ListViewItem item = new ListViewItem(groupId.ToString());
-                item.SubItems.Add(totalCount.ToString());
-                item.SubItems.Add(posRange);
-                item.Tag = groupId;
-                item.Checked = false;  // 預設不勾選
-                lvLayer4Groups.Items.Add(item);
-            }
-
-            // 更新標籤顯示
-            if (objectsAtCell.Count > 0)
-            {
-                lblLayer4Groups.Text = $"Layer4 群組 ({objectsAtCell.Count})";
-            }
-            else
-            {
-                lblLayer4Groups.Text = "Layer4 物件群組";
-            }
-        }
 
         // 更新附近群組縮圖（透明編輯模式用）
         private void UpdateNearbyGroupThumbnails(S32Data clickedS32Data, int cellX, int cellY, int radius)
@@ -12083,22 +12260,69 @@ namespace L1FlyMapViewer
             });
         }
 
-        // Layer4 群組勾選變更事件
-        private void lvLayer4Groups_ItemChecked(object sender, ItemCheckedEventArgs e)
+        // 素材面板 - 雙擊選擇素材
+        private void lvMaterials_DoubleClick(object sender, EventArgs e)
         {
-            if (e.Item.Tag == null)
+            if (lvMaterials.SelectedItems.Count == 0)
                 return;
 
-            int groupId = (int)e.Item.Tag;
+            var item = lvMaterials.SelectedItems[0];
+            if (item.Tag is string filePath)
+            {
+                // TODO: 進入素材貼上預覽模式
+                toolStripStatusLabel1.Text = $"選擇素材: {item.Text}";
+            }
+        }
 
-            if (e.Item.Checked)
+        // 素材面板 - 右鍵選單
+        private void lvMaterials_MouseUp(object sender, MouseEventArgs e)
+        {
+            if (e.Button != MouseButtons.Right)
+                return;
+
+            // TODO: 顯示素材操作選單（使用、刪除等）
+        }
+
+        // 素材面板 - 更多按鈕
+        private void btnMoreMaterials_Click(object sender, EventArgs e)
+        {
+            using (var browser = new L1MapViewer.Forms.MaterialBrowserForm())
             {
-                _editState.SelectedLayer4Groups.Add(groupId);
+                if (browser.ShowDialog() == DialogResult.OK && browser.SelectedMaterial != null)
+                {
+                    // 進入素材貼上預覽模式
+                    StartMaterialPasteMode(browser.SelectedMaterial, browser.SelectedFilePath);
+                }
             }
-            else
-            {
-                _editState.SelectedLayer4Groups.Remove(groupId);
-            }
+        }
+
+        // 素材貼上預覽狀態
+        private Fs3pData _pendingMaterial = null;
+        private string _pendingMaterialPath = null;
+
+        // 開始素材貼上預覽模式
+        private void StartMaterialPasteMode(Fs3pData material, string filePath)
+        {
+            _pendingMaterial = material;
+            _pendingMaterialPath = filePath;
+
+            // 進入複製模式以便選取貼上位置
+            isLayer4CopyMode = true;
+            _editState.CellClipboard.Clear();
+
+            // 提示用戶
+            toolStripStatusLabel1.Text = $"素材預覽模式：點擊地圖選擇貼上位置 | {material.Name} ({material.Width}x{material.Height})";
+
+            // 更新素材列表
+            RefreshMaterialsList();
+        }
+
+        // 取消素材貼上模式
+        private void CancelMaterialPasteMode()
+        {
+            _pendingMaterial = null;
+            _pendingMaterialPath = null;
+            toolStripStatusLabel1.Text = "";
         }
 
         // 更新群組縮圖列表（顯示所有已載入 S32 的群組）

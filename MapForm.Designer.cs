@@ -44,8 +44,9 @@ namespace L1FlyMapViewer
         private Label lblTileList;
         private TextBox txtTileSearch;
         private ListView lvTiles;
-        private Label lblLayer4Groups;
-        private ListView lvLayer4Groups;
+        private Label lblMaterials;
+        private ListView lvMaterials;
+        private Button btnMoreMaterials;
         private Label lblGroupThumbnails;
         private Button btnShowAllGroups;
         private ListView lvGroupThumbnails;
@@ -177,8 +178,9 @@ namespace L1FlyMapViewer
             this.lblTileList = new Label();
             this.txtTileSearch = new TextBox();
             this.lvTiles = new ListView();
-            this.lblLayer4Groups = new Label();
-            this.lvLayer4Groups = new ListView();
+            this.lblMaterials = new Label();
+            this.lvMaterials = new ListView();
+            this.btnMoreMaterials = new Button();
             this.lblGroupThumbnails = new Label();
             this.btnShowAllGroups = new Button();
             this.lvGroupThumbnails = new ListView();
@@ -1096,8 +1098,9 @@ namespace L1FlyMapViewer
             this.rightPanel.Controls.Add(this.lblTileList);
             this.rightPanel.Controls.Add(this.txtTileSearch);
             this.rightPanel.Controls.Add(this.lvTiles);
-            this.rightPanel.Controls.Add(this.lblLayer4Groups);
-            this.rightPanel.Controls.Add(this.lvLayer4Groups);
+            this.rightPanel.Controls.Add(this.lblMaterials);
+            this.rightPanel.Controls.Add(this.lvMaterials);
+            this.rightPanel.Controls.Add(this.btnMoreMaterials);
             this.rightPanel.Controls.Add(this.lblGroupThumbnails);
             this.rightPanel.Controls.Add(this.btnShowAllGroups);
             this.rightPanel.Controls.Add(this.lvGroupThumbnails);
@@ -1139,29 +1142,37 @@ namespace L1FlyMapViewer
             this.lvTiles.MouseUp += new MouseEventHandler(this.lvTiles_MouseUp);
 
             //
-            // lblLayer4Groups
+            // lblMaterials
             //
-            this.lblLayer4Groups.Location = new Point(5, 185);
-            this.lblLayer4Groups.Name = "lblLayer4Groups";
-            this.lblLayer4Groups.Size = new Size(210, 20);
-            this.lblLayer4Groups.TabIndex = 2;
-            this.lblLayer4Groups.Text = "Layer4 群組篩選";
-            this.lblLayer4Groups.TextAlign = ContentAlignment.MiddleLeft;
+            this.lblMaterials.Location = new Point(5, 185);
+            this.lblMaterials.Name = "lblMaterials";
+            this.lblMaterials.Size = new Size(210, 20);
+            this.lblMaterials.TabIndex = 2;
+            this.lblMaterials.Text = "最近使用的素材";
+            this.lblMaterials.TextAlign = ContentAlignment.MiddleLeft;
 
             //
-            // lvLayer4Groups
+            // lvMaterials
             //
-            this.lvLayer4Groups.Location = new Point(5, 210);
-            this.lvLayer4Groups.Name = "lvLayer4Groups";
-            this.lvLayer4Groups.Size = new Size(210, 120);
-            this.lvLayer4Groups.TabIndex = 3;
-            this.lvLayer4Groups.View = View.Details;
-            this.lvLayer4Groups.FullRowSelect = true;
-            this.lvLayer4Groups.CheckBoxes = true;
-            this.lvLayer4Groups.Columns.Add("GroupId", 60);
-            this.lvLayer4Groups.Columns.Add("數量", 50);
-            this.lvLayer4Groups.Columns.Add("位置", 65);
-            this.lvLayer4Groups.ItemChecked += new ItemCheckedEventHandler(this.lvLayer4Groups_ItemChecked);
+            this.lvMaterials.Location = new Point(5, 210);
+            this.lvMaterials.Name = "lvMaterials";
+            this.lvMaterials.Size = new Size(210, 95);
+            this.lvMaterials.TabIndex = 3;
+            this.lvMaterials.View = View.LargeIcon;
+            this.lvMaterials.MultiSelect = false;
+            this.lvMaterials.DoubleClick += new System.EventHandler(this.lvMaterials_DoubleClick);
+            this.lvMaterials.MouseUp += new MouseEventHandler(this.lvMaterials_MouseUp);
+
+            //
+            // btnMoreMaterials
+            //
+            this.btnMoreMaterials.Location = new Point(5, 308);
+            this.btnMoreMaterials.Name = "btnMoreMaterials";
+            this.btnMoreMaterials.Size = new Size(210, 23);
+            this.btnMoreMaterials.TabIndex = 8;
+            this.btnMoreMaterials.Text = "更多...";
+            this.btnMoreMaterials.UseVisualStyleBackColor = true;
+            this.btnMoreMaterials.Click += new System.EventHandler(this.btnMoreMaterials_Click);
 
             //
             // lblGroupThumbnails
