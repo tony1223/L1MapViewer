@@ -7693,9 +7693,8 @@ namespace L1FlyMapViewer
                 // 素材貼上模式：點擊貼上素材
                 if (_pendingMaterial != null && e.Button == MouseButtons.Left)
                 {
-                    // 計算遊戲座標
-                    int gameX = s32Data.SegInfo.nLinBeginX + x;
-                    int gameY = s32Data.SegInfo.nLinBeginY + y;
+                    // 使用 CoordinateHelper 轉換 Layer1 本地座標為遊戲座標
+                    var (gameX, gameY) = CoordinateHelper.LocalToGameCoords(s32Data, x, y);
                     PasteMaterialAtPosition(gameX, gameY);
                     return;
                 }

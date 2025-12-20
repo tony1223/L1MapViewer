@@ -328,6 +328,34 @@ namespace L1MapViewer.Helper
         }
 
         /// <summary>
+        /// Layer1 本地座標轉換為遊戲座標
+        /// </summary>
+        /// <param name="s32Data">S32 資料</param>
+        /// <param name="localX">Layer1 本地 X (0-127)</param>
+        /// <param name="localY">Layer1 本地 Y (0-63)</param>
+        /// <returns>遊戲座標 (gameX, gameY)</returns>
+        public static (int gameX, int gameY) LocalToGameCoords(S32Data s32Data, int localX, int localY)
+        {
+            int gameX = s32Data.SegInfo.nLinBeginX + (localX / 2);
+            int gameY = s32Data.SegInfo.nLinBeginY + localY;
+            return (gameX, gameY);
+        }
+
+        /// <summary>
+        /// 遊戲座標轉換為 Layer1 本地座標
+        /// </summary>
+        /// <param name="s32Data">S32 資料</param>
+        /// <param name="gameX">遊戲座標 X</param>
+        /// <param name="gameY">遊戲座標 Y</param>
+        /// <returns>Layer1 本地座標 (localX, localY)，localX 為偶數</returns>
+        public static (int localX, int localY) GameToLocalCoords(S32Data s32Data, int gameX, int gameY)
+        {
+            int localX = (gameX - s32Data.SegInfo.nLinBeginX) * 2;
+            int localY = gameY - s32Data.SegInfo.nLinBeginY;
+            return (localX, localY);
+        }
+
+        /// <summary>
         /// 計算格子的螢幕位置
         /// </summary>
         public static (int X, int Y) GetCellScreenPosition(S32Data s32Data, int localX, int localY)
