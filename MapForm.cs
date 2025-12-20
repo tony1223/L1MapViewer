@@ -1974,6 +1974,10 @@ namespace L1FlyMapViewer
             layerFloatPanel.BringToFront();
             LogPerf("[FORM-LOAD] Panel setup done");
 
+            // 載入最近使用的素材
+            RefreshMaterialsList();
+            LogPerf("[FORM-LOAD] Materials list loaded");
+
             string iniPath = Path.GetTempPath() + "mapviewer.ini";
 
             // 檢查是否有保存的天堂路徑，如果有就自動載入
