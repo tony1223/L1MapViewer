@@ -111,6 +111,8 @@ namespace L1MapViewer.CLI
                         return CmdExportFs32(cmdArgs);
                     case "import-fs32":
                         return CmdImportFs32(cmdArgs);
+                    case "check-fs32":
+                        return CmdCheckFs32(cmdArgs);
                     case "help":
                     case "-h":
                     case "--help":
@@ -167,6 +169,7 @@ L1MapViewer CLI - S32 檔案解析工具
                               匯出地圖為 fs32 格式（--downscale 將 R 版 Tile 降級為 24x24）
   import-fs32 <fs32檔案> <目標地圖資料夾> [--replace]
                               匯入 fs32 到指定地圖（--replace 全部取代模式）
+  check-fs32 <fs32檔案>       檢查 fs32 完整性（Tile 索引、Remaster/Classic 版本）
   help                        顯示此幫助資訊
 
 範例:
@@ -1112,6 +1115,241 @@ L1MapViewer CLI - S32 檔案解析工具
             Console.WriteLine($"耗時: {sw.ElapsedMilliseconds}ms");
 
             return errorBlocks > 0 ? 1 : 0;
+        }
+
+        /// <summary>
+        /// check-fs32 命令 - 檢查 fs32 完整性
+        /// </summary>
+        private static int CmdCheckFs32(string[] args)
+        {
+            if (args.Length < 1)
+            {
+                Console.WriteLine("用法: -cli check-fs32 <fs32檔案>");
+                Console.WriteLine();
+                Console.WriteLine("檢查 fs32 檔案的完整性：");
+                Console.WriteLine("  - S32 區塊使用的 TileId 是否都包含在 fs32 中");
+                Console.WriteLine("  - IndexId 是否在對應 Tile 的 block 數量範圍內");
+                Console.WriteLine("  - 各 Tile 是 Remaster (48x48) 還是 Classic (24x24) 版本");
+                Console.WriteLine();
+                Console.WriteLine("範例:");
+                Console.WriteLine("  check-fs32 C:\\100002.fs32");
+                return 1;
+            }
+
+            string fs32Path = args[0];
+
+            if (!File.Exists(fs32Path))
+            {
+                Console.WriteLine($"錯誤: fs32 檔案不存在: {fs32Path}");
+                return 1;
+            }
+
+            Console.WriteLine("=== 檢查 fs32 ===");
+            Console.WriteLine($"檔案: {fs32Path}");
+            Console.WriteLine();
+
+            var sw = Stopwatch.StartNew();
+
+            // 載入 fs32
+            Console.WriteLine("載入 fs32...");
+            var fs32 = Fs32Parser.ParseFile(fs32Path);
+            if (fs32 == null)
+            {
+                Console.WriteLine("錯誤: 無法解析 fs32 檔案");
+                return 1;
+            }
+
+            Console.WriteLine($"來源地圖: {fs32.SourceMapId}");
+            Console.WriteLine($"區塊數量: {fs32.Blocks.Count}");
+            Console.WriteLine($"包含 Tile 數量: {fs32.Tiles.Count}");
+            Console.WriteLine();
+
+            // 建立 fs32 內 Tile 的 block 數量索引
+            Console.WriteLine("解析 Tile 資訊...");
+            var tileBlockCounts = new Dictionary<int, int>();
+            var tileVersions = new Dictionary<int, L1Til.TileVersion>();
+
+            int remasterCount = 0;
+            int classicCount = 0;
+            int hybridCount = 0;
+            int unknownCount = 0;
+
+            foreach (var kvp in fs32.Tiles)
+            {
+                int tileId = kvp.Key;
+                byte[] tilData = kvp.Value.TilData;
+
+                // 取得 block 數量 (第一個 int32 是 block count)
+                int blockCount = tilData.Length >= 4 ? BitConverter.ToInt32(tilData, 0) : 0;
+                tileBlockCounts[tileId] = blockCount;
+
+                // 取得版本
+                var version = L1Til.GetVersion(tilData);
+                tileVersions[tileId] = version;
+
+                switch (version)
+                {
+                    case L1Til.TileVersion.Remaster:
+                        remasterCount++;
+                        break;
+                    case L1Til.TileVersion.Classic:
+                        classicCount++;
+                        break;
+                    case L1Til.TileVersion.Hybrid:
+                        hybridCount++;
+                        break;
+                    default:
+                        unknownCount++;
+                        break;
+                }
+            }
+
+            Console.WriteLine();
+            Console.WriteLine("=== Tile 版本統計 ===");
+            Console.WriteLine($"  Remaster (48x48): {remasterCount}");
+            Console.WriteLine($"  Classic (24x24):  {classicCount}");
+            if (hybridCount > 0)
+                Console.WriteLine($"  Hybrid (混合):    {hybridCount}");
+            if (unknownCount > 0)
+                Console.WriteLine($"  Unknown (未知):   {unknownCount}");
+            Console.WriteLine();
+
+            // 解析 S32 區塊，收集使用的 TileId 和 IndexId
+            Console.WriteLine("檢查 S32 區塊的 Tile 參照...");
+            var usedTileIndexes = new Dictionary<int, HashSet<int>>(); // TileId -> 使用的 IndexIds
+            int totalCells = 0;
+
+            foreach (var block in fs32.Blocks)
+            {
+                var s32Data = S32Parser.Parse(block.S32Data);
+                if (s32Data == null)
+                {
+                    Console.WriteLine($"警告: 無法解析區塊 {block.BlockX:X4}{block.BlockY:X4}");
+                    continue;
+                }
+
+                // Layer1
+                if (s32Data.Layer1 != null)
+                {
+                    for (int y = 0; y < 64; y++)
+                    {
+                        for (int x = 0; x < 128; x++)
+                        {
+                            var cell = s32Data.Layer1[y, x];
+                            if (cell?.TileId > 0)
+                            {
+                                if (!usedTileIndexes.TryGetValue(cell.TileId, out var indexes))
+                                {
+                                    indexes = new HashSet<int>();
+                                    usedTileIndexes[cell.TileId] = indexes;
+                                }
+                                indexes.Add(cell.IndexId);
+                                totalCells++;
+                            }
+                        }
+                    }
+                }
+
+                // Layer2
+                foreach (var item in s32Data.Layer2)
+                {
+                    if (item.TileId > 0)
+                    {
+                        if (!usedTileIndexes.TryGetValue(item.TileId, out var indexes))
+                        {
+                            indexes = new HashSet<int>();
+                            usedTileIndexes[item.TileId] = indexes;
+                        }
+                        indexes.Add(item.IndexId);
+                        totalCells++;
+                    }
+                }
+
+                // Layer4
+                foreach (var obj in s32Data.Layer4)
+                {
+                    if (obj.TileId > 0)
+                    {
+                        if (!usedTileIndexes.TryGetValue(obj.TileId, out var indexes))
+                        {
+                            indexes = new HashSet<int>();
+                            usedTileIndexes[obj.TileId] = indexes;
+                        }
+                        indexes.Add(obj.IndexId);
+                        totalCells++;
+                    }
+                }
+            }
+
+            Console.WriteLine($"S32 使用的不同 Tile 數量: {usedTileIndexes.Count}");
+            Console.WriteLine($"總共 {totalCells} 個 Tile 參照");
+            Console.WriteLine();
+
+            // 檢查 TileId 是否存在於 fs32 中
+            Console.WriteLine("=== 驗證結果 ===");
+            var missingTiles = new List<int>();
+            var invalidIndexes = new List<(int TileId, int IndexId, int MaxIndex)>();
+
+            foreach (var kvp in usedTileIndexes)
+            {
+                int tileId = kvp.Key;
+                var usedIndexes = kvp.Value;
+
+                if (!fs32.Tiles.ContainsKey(tileId))
+                {
+                    missingTiles.Add(tileId);
+                }
+                else
+                {
+                    int blockCount = tileBlockCounts[tileId];
+                    foreach (int indexId in usedIndexes)
+                    {
+                        if (indexId < 0 || indexId >= blockCount)
+                        {
+                            invalidIndexes.Add((tileId, indexId, blockCount));
+                        }
+                    }
+                }
+            }
+
+            if (missingTiles.Count == 0 && invalidIndexes.Count == 0)
+            {
+                Console.WriteLine("✓ 所有 TileId 和 IndexId 都有效，fs32 完整！");
+            }
+            else
+            {
+                if (missingTiles.Count > 0)
+                {
+                    Console.WriteLine($"✗ 缺少 {missingTiles.Count} 個 Tile:");
+                    foreach (int tileId in missingTiles.OrderBy(t => t).Take(20))
+                    {
+                        Console.WriteLine($"    TileId {tileId}");
+                    }
+                    if (missingTiles.Count > 20)
+                    {
+                        Console.WriteLine($"    ... 還有 {missingTiles.Count - 20} 個");
+                    }
+                }
+
+                if (invalidIndexes.Count > 0)
+                {
+                    Console.WriteLine($"✗ {invalidIndexes.Count} 個 IndexId 超出範圍:");
+                    foreach (var (tileId, indexId, maxIndex) in invalidIndexes.Take(20))
+                    {
+                        Console.WriteLine($"    TileId {tileId}: IndexId {indexId} >= {maxIndex}");
+                    }
+                    if (invalidIndexes.Count > 20)
+                    {
+                        Console.WriteLine($"    ... 還有 {invalidIndexes.Count - 20} 個");
+                    }
+                }
+            }
+
+            sw.Stop();
+            Console.WriteLine();
+            Console.WriteLine($"耗時: {sw.ElapsedMilliseconds}ms");
+
+            return (missingTiles.Count > 0 || invalidIndexes.Count > 0) ? 1 : 0;
         }
 
         /// <summary>
