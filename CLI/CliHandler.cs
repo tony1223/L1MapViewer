@@ -107,6 +107,10 @@ namespace L1MapViewer.CLI
                         return CmdListTil(cmdArgs);
                     case "validate-tiles":
                         return CmdValidateTiles(cmdArgs);
+                    case "export-fs32":
+                        return CmdExportFs32(cmdArgs);
+                    case "import-fs32":
+                        return CmdImportFs32(cmdArgs);
                     case "help":
                     case "-h":
                     case "--help":
@@ -159,6 +163,10 @@ L1MapViewer CLI - S32 檔案解析工具
                               渲染素材到指定地圖位置並存成圖片
   validate-tiles <s32檔案或地圖資料夾> [--client <路徑>]
                               驗證 S32 中使用的 TileId 是否存在於 Tile.idx 中
+  export-fs32 <地圖資料夾> <輸出.fs32> [--downscale]
+                              匯出地圖為 fs32 格式（--downscale 將 R 版 Tile 降級為 24x24）
+  import-fs32 <fs32檔案> <目標地圖資料夾> [--replace]
+                              匯入 fs32 到指定地圖（--replace 全部取代模式）
   help                        顯示此幫助資訊
 
 範例:
@@ -627,6 +635,483 @@ L1MapViewer CLI - S32 檔案解析工具
             }
 
             return invalidTiles.Count > 0 ? 1 : 0;
+        }
+
+        /// <summary>
+        /// export-fs32 命令 - 匯出地圖為 fs32 格式
+        /// </summary>
+        private static int CmdExportFs32(string[] args)
+        {
+            if (args.Length < 2)
+            {
+                Console.WriteLine("用法: -cli export-fs32 <地圖資料夾> <輸出.fs32> [--downscale]");
+                Console.WriteLine();
+                Console.WriteLine("將地圖匯出為 fs32 格式");
+                Console.WriteLine();
+                Console.WriteLine("參數:");
+                Console.WriteLine("  <地圖資料夾>    包含 S32 檔案的地圖資料夾");
+                Console.WriteLine("  <輸出.fs32>     輸出的 fs32 檔案路徑");
+                Console.WriteLine("  --downscale     將 Remaster 版 Tile (48x48) 降級為 Classic 版 (24x24)");
+                Console.WriteLine();
+                Console.WriteLine("範例:");
+                Console.WriteLine("  export-fs32 C:\\client\\map\\100002 C:\\output\\100002.fs32");
+                Console.WriteLine("  export-fs32 C:\\client\\map\\100002 C:\\output\\100002.fs32 --downscale");
+                return 1;
+            }
+
+            string mapPath = args[0];
+            string outputPath = args[1];
+            bool downscale = args.Contains("--downscale");
+
+            if (!Directory.Exists(mapPath))
+            {
+                Console.WriteLine($"錯誤: 地圖資料夾不存在: {mapPath}");
+                return 1;
+            }
+
+            var s32Files = Directory.GetFiles(mapPath, "*.s32");
+            if (s32Files.Length == 0)
+            {
+                Console.WriteLine($"錯誤: 找不到任何 S32 檔案: {mapPath}");
+                return 1;
+            }
+
+            // 確保輸出路徑有 .fs32 副檔名
+            if (!outputPath.EndsWith(".fs32", StringComparison.OrdinalIgnoreCase))
+            {
+                outputPath += ".fs32";
+            }
+
+            // 嘗試找到 client 路徑
+            string clientPath = mapPath;
+            while (!string.IsNullOrEmpty(clientPath))
+            {
+                string tileIdxPath = Path.Combine(clientPath, "Tile.idx");
+                if (File.Exists(tileIdxPath))
+                {
+                    Share.LineagePath = clientPath;
+                    break;
+                }
+                clientPath = Path.GetDirectoryName(clientPath);
+            }
+
+            if (string.IsNullOrEmpty(Share.LineagePath))
+            {
+                Console.WriteLine("警告: 找不到 Tile.idx，將不會打包 Tile 檔案");
+            }
+
+            string mapId = Path.GetFileName(mapPath);
+
+            Console.WriteLine("=== 匯出 fs32 ===");
+            Console.WriteLine($"地圖資料夾: {mapPath}");
+            Console.WriteLine($"地圖 ID: {mapId}");
+            Console.WriteLine($"S32 檔案數: {s32Files.Length}");
+            Console.WriteLine($"輸出路徑: {outputPath}");
+            Console.WriteLine($"Tile 降級: {(downscale ? "是" : "否")}");
+            Console.WriteLine();
+
+            var sw = Stopwatch.StartNew();
+
+            // 解析所有 S32 檔案
+            Console.WriteLine("解析 S32 檔案...");
+            var s32DataList = new List<S32Data>();
+            foreach (var filePath in s32Files)
+            {
+                try
+                {
+                    var s32Data = S32Parser.ParseFile(filePath);
+                    s32DataList.Add(s32Data);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"警告: 無法解析 {Path.GetFileName(filePath)}: {ex.Message}");
+                }
+            }
+            Console.WriteLine($"成功解析 {s32DataList.Count} 個 S32 檔案");
+
+            // 建立 fs32
+            Console.WriteLine("建立 fs32 資料...");
+            var fs32 = new Fs32Data
+            {
+                Mode = Fs32Mode.WholeMap,
+                SourceMapId = mapId,
+                LayerFlags = 0xFF
+            };
+
+            // 收集所有使用的 TileIds
+            var allTileIds = new HashSet<int>();
+
+            foreach (var s32Data in s32DataList)
+            {
+                if (s32Data == null) continue;
+
+                // 從檔名推算 BlockX/BlockY（如果 SegInfo 不存在）
+                int blockX, blockY;
+                if (s32Data.SegInfo != null)
+                {
+                    blockX = s32Data.SegInfo.nBlockX;
+                    blockY = s32Data.SegInfo.nBlockY;
+                }
+                else if (!string.IsNullOrEmpty(s32Data.FilePath))
+                {
+                    // 從檔名解析，格式如 "80128008.s32" -> BlockX=0x8012, BlockY=0x8008
+                    string fileName = Path.GetFileNameWithoutExtension(s32Data.FilePath);
+                    if (fileName.Length == 8 &&
+                        int.TryParse(fileName.Substring(0, 4), System.Globalization.NumberStyles.HexNumber, null, out blockX) &&
+                        int.TryParse(fileName.Substring(4, 4), System.Globalization.NumberStyles.HexNumber, null, out blockY))
+                    {
+                        // 成功解析
+                    }
+                    else
+                    {
+                        Console.WriteLine($"警告: 無法從檔名解析區塊座標: {fileName}");
+                        continue;
+                    }
+                }
+                else
+                {
+                    Console.WriteLine("警告: S32 缺少 SegInfo 且無檔案路徑，跳過");
+                    continue;
+                }
+
+                // 加入區塊
+                var block = new Fs32Block
+                {
+                    BlockX = blockX,
+                    BlockY = blockY,
+                    S32Data = s32Data.OriginalFileData ?? S32Writer.ToBytes(s32Data)
+                };
+                fs32.Blocks.Add(block);
+
+                // 收集 TileIds
+                if (s32Data.Layer1 != null)
+                {
+                    for (int y = 0; y < 64; y++)
+                    {
+                        for (int x = 0; x < 128; x++)
+                        {
+                            var cell = s32Data.Layer1[y, x];
+                            if (cell?.TileId > 0)
+                                allTileIds.Add(cell.TileId);
+                        }
+                    }
+                }
+
+                if (s32Data.Layer2 != null)
+                {
+                    foreach (var item in s32Data.Layer2)
+                    {
+                        if (item.TileId > 0)
+                            allTileIds.Add(item.TileId);
+                    }
+                }
+
+                if (s32Data.Layer4 != null)
+                {
+                    foreach (var obj in s32Data.Layer4)
+                    {
+                        if (obj.TileId > 0)
+                            allTileIds.Add(obj.TileId);
+                    }
+                }
+            }
+
+            Console.WriteLine($"區塊數量: {fs32.Blocks.Count}");
+            Console.WriteLine($"使用的 TileId 數量: {allTileIds.Count}");
+
+            // 打包 Tiles
+            if (!string.IsNullOrEmpty(Share.LineagePath))
+            {
+                Console.WriteLine("打包 Tile 檔案...");
+                int tileCount = 0;
+                int downscaledCount = 0;
+
+                foreach (int tileId in allTileIds)
+                {
+                    byte[] tilData = L1PakReader.UnPack("Tile", $"{tileId}.til");
+                    if (tilData != null)
+                    {
+                        // 如果需要降級
+                        if (downscale && L1Til.IsRemaster(tilData))
+                        {
+                            tilData = L1Til.DownscaleTil(tilData);
+                            downscaledCount++;
+                        }
+
+                        fs32.Tiles[tileId] = new TilePackageData
+                        {
+                            OriginalTileId = tileId,
+                            Md5Hash = TileHashManager.CalculateMd5(tilData),
+                            TilData = tilData
+                        };
+                        tileCount++;
+                    }
+                }
+
+                Console.WriteLine($"已打包 {tileCount} 個 Tile");
+                if (downscale)
+                {
+                    Console.WriteLine($"已降級 {downscaledCount} 個 Remaster Tile");
+                }
+            }
+
+            // 寫入 fs32
+            Console.WriteLine("寫入 fs32 檔案...");
+            Fs32Writer.Write(fs32, outputPath);
+
+            sw.Stop();
+
+            var fileInfo = new FileInfo(outputPath);
+            Console.WriteLine();
+            Console.WriteLine("=== 完成 ===");
+            Console.WriteLine($"輸出檔案: {outputPath}");
+            Console.WriteLine($"檔案大小: {fileInfo.Length:N0} bytes ({fileInfo.Length / 1024.0 / 1024.0:F2} MB)");
+            Console.WriteLine($"耗時: {sw.ElapsedMilliseconds}ms");
+
+            return 0;
+        }
+
+        /// <summary>
+        /// import-fs32 命令 - 匯入 fs32 到指定地圖
+        /// </summary>
+        private static int CmdImportFs32(string[] args)
+        {
+            if (args.Length < 2)
+            {
+                Console.WriteLine("用法: -cli import-fs32 <fs32檔案> <目標地圖資料夾> [--replace]");
+                Console.WriteLine();
+                Console.WriteLine("將 fs32 匯入到指定地圖");
+                Console.WriteLine();
+                Console.WriteLine("參數:");
+                Console.WriteLine("  <fs32檔案>        要匯入的 fs32 檔案");
+                Console.WriteLine("  <目標地圖資料夾>  目標地圖資料夾（會自動建立）");
+                Console.WriteLine("  --replace         全部取代模式（刪除既有的 S32 檔案）");
+                Console.WriteLine();
+                Console.WriteLine("範例:");
+                Console.WriteLine("  import-fs32 C:\\100002.fs32 C:\\client\\map\\100003");
+                Console.WriteLine("  import-fs32 C:\\100002.fs32 C:\\client\\map\\100003 --replace");
+                return 1;
+            }
+
+            string fs32Path = args[0];
+            string targetMapPath = args[1];
+            bool replaceMode = args.Contains("--replace");
+
+            if (!File.Exists(fs32Path))
+            {
+                Console.WriteLine($"錯誤: fs32 檔案不存在: {fs32Path}");
+                return 1;
+            }
+
+            // 嘗試找到 client 路徑
+            string clientPath = targetMapPath;
+            while (!string.IsNullOrEmpty(clientPath))
+            {
+                string tileIdxPath = Path.Combine(clientPath, "Tile.idx");
+                if (File.Exists(tileIdxPath))
+                {
+                    Share.LineagePath = clientPath;
+                    break;
+                }
+                clientPath = Path.GetDirectoryName(clientPath);
+            }
+
+            Console.WriteLine("=== 匯入 fs32 ===");
+            Console.WriteLine($"fs32 檔案: {fs32Path}");
+            Console.WriteLine($"目標資料夾: {targetMapPath}");
+            Console.WriteLine($"匯入模式: {(replaceMode ? "全部取代" : "覆蓋/新增")}");
+            if (!string.IsNullOrEmpty(Share.LineagePath))
+            {
+                Console.WriteLine($"Client 路徑: {Share.LineagePath}");
+            }
+            Console.WriteLine();
+
+            var sw = Stopwatch.StartNew();
+
+            // 載入 fs32
+            Console.WriteLine("載入 fs32...");
+            var fs32 = Fs32Parser.ParseFile(fs32Path);
+            if (fs32 == null || fs32.Blocks.Count == 0)
+            {
+                Console.WriteLine("錯誤: 無效的 fs32 檔案或不包含任何區塊");
+                return 1;
+            }
+
+            Console.WriteLine($"來源地圖: {fs32.SourceMapId}");
+            Console.WriteLine($"區塊數量: {fs32.Blocks.Count}");
+            Console.WriteLine($"Tile 數量: {fs32.Tiles.Count}");
+            Console.WriteLine();
+
+            // 確保目標資料夾存在
+            if (!Directory.Exists(targetMapPath))
+            {
+                Console.WriteLine($"建立目標資料夾: {targetMapPath}");
+                Directory.CreateDirectory(targetMapPath);
+            }
+
+            // 全部取代模式：刪除既有 S32 檔案
+            int deletedCount = 0;
+            if (replaceMode)
+            {
+                Console.WriteLine("刪除既有 S32 檔案...");
+                var existingS32Files = Directory.GetFiles(targetMapPath, "*.s32");
+                foreach (var file in existingS32Files)
+                {
+                    try
+                    {
+                        File.Delete(file);
+                        deletedCount++;
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"警告: 無法刪除 {Path.GetFileName(file)}: {ex.Message}");
+                    }
+                }
+                Console.WriteLine($"已刪除 {deletedCount} 個既有 S32 檔案");
+            }
+
+            // 處理 Tiles（如果有）
+            if (fs32.Tiles.Count > 0 && !string.IsNullOrEmpty(Share.LineagePath))
+            {
+                Console.WriteLine("處理 Tile 檔案...");
+                int importedTiles = 0;
+                int skippedTiles = 0;
+
+                foreach (var tile in fs32.Tiles.Values)
+                {
+                    // 檢查是否已存在相同的 Tile
+                    byte[] existingTilData = L1PakReader.UnPack("Tile", $"{tile.OriginalTileId}.til");
+                    if (existingTilData != null)
+                    {
+                        byte[] existingMd5 = TileHashManager.CalculateMd5(existingTilData);
+                        if (TileHashManager.CompareMd5(existingMd5, tile.Md5Hash))
+                        {
+                            // MD5 相同，跳過
+                            skippedTiles++;
+                            continue;
+                        }
+                    }
+
+                    // 寫入新 Tile
+                    try
+                    {
+                        L1PakWriter.UpdateFile("Tile", $"{tile.OriginalTileId}.til", tile.TilData);
+                        importedTiles++;
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"警告: 無法寫入 Tile {tile.OriginalTileId}: {ex.Message}");
+                    }
+                }
+
+                Console.WriteLine($"已匯入 {importedTiles} 個新 Tile，跳過 {skippedTiles} 個重複 Tile");
+            }
+
+            // 寫入 S32 區塊
+            Console.WriteLine("寫入 S32 區塊...");
+            int importedBlocks = 0;
+            int errorBlocks = 0;
+
+            // 取得目標 MapId
+            string targetMapId = Path.GetFileName(targetMapPath);
+
+            // 嘗試讀取現有 S32 來取得 MapInfo
+            int mapMinBlockX = 0x7FFF;
+            int mapMinBlockY = 0x7FFF;
+            int mapBlockCountX = 1;
+
+            var existingS32 = Directory.GetFiles(targetMapPath, "*.s32").FirstOrDefault();
+            if (existingS32 != null)
+            {
+                try
+                {
+                    var firstS32 = S32Parser.ParseFile(existingS32);
+                    if (firstS32?.SegInfo != null)
+                    {
+                        mapMinBlockX = firstS32.SegInfo.nMapMinBlockX;
+                        mapMinBlockY = firstS32.SegInfo.nMapMinBlockY;
+                        mapBlockCountX = firstS32.SegInfo.nMapBlockCountX;
+                    }
+                }
+                catch { }
+            }
+
+            // 如果是全新的地圖，從 fs32 區塊推算 MapInfo
+            if (mapMinBlockX == 0x7FFF && fs32.Blocks.Count > 0)
+            {
+                mapMinBlockX = fs32.Blocks.Min(b => b.BlockX);
+                mapMinBlockY = fs32.Blocks.Min(b => b.BlockY);
+                int maxBlockX = fs32.Blocks.Max(b => b.BlockX);
+                mapBlockCountX = maxBlockX - mapMinBlockX + 1;
+            }
+
+            foreach (var block in fs32.Blocks)
+            {
+                try
+                {
+                    // 解析 S32 資料
+                    var s32Data = S32Parser.Parse(block.S32Data);
+                    if (s32Data == null)
+                    {
+                        Console.WriteLine($"警告: 無法解析區塊 {block.BlockX:X4}{block.BlockY:X4}");
+                        errorBlocks++;
+                        continue;
+                    }
+
+                    // 確保 SegInfo 存在
+                    if (s32Data.SegInfo == null)
+                    {
+                        s32Data.SegInfo = new L1MapSeg(block.BlockX, block.BlockY, true);
+                    }
+                    else
+                    {
+                        s32Data.SegInfo.nBlockX = block.BlockX;
+                        s32Data.SegInfo.nBlockY = block.BlockY;
+                    }
+
+                    // 更新地圖資訊
+                    s32Data.SegInfo.nMapMinBlockX = mapMinBlockX;
+                    s32Data.SegInfo.nMapMinBlockY = mapMinBlockY;
+                    s32Data.SegInfo.nMapBlockCountX = mapBlockCountX;
+
+                    // 計算區塊在地圖中的索引
+                    int relBlockX = block.BlockX - mapMinBlockX;
+                    int relBlockY = block.BlockY - mapMinBlockY;
+
+                    // 計算遊戲座標範圍
+                    s32Data.SegInfo.nLinBeginX = (relBlockX + relBlockY) * 64;
+                    s32Data.SegInfo.nLinBeginY = relBlockY * 64 - relBlockX * 64 + (mapBlockCountX - 1) * 64;
+                    s32Data.SegInfo.nLinEndX = s32Data.SegInfo.nLinBeginX + 64;
+                    s32Data.SegInfo.nLinEndY = s32Data.SegInfo.nLinBeginY + 64;
+
+                    // 寫入 S32 檔案
+                    string s32FileName = $"{block.BlockX:x4}{block.BlockY:x4}.s32";
+                    string s32FilePath = Path.Combine(targetMapPath, s32FileName);
+
+                    byte[] s32Bytes = S32Writer.ToBytes(s32Data);
+                    File.WriteAllBytes(s32FilePath, s32Bytes);
+
+                    importedBlocks++;
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"錯誤: 區塊 {block.BlockX:X4}{block.BlockY:X4}: {ex.Message}");
+                    errorBlocks++;
+                }
+            }
+
+            sw.Stop();
+
+            Console.WriteLine();
+            Console.WriteLine("=== 完成 ===");
+            Console.WriteLine($"成功匯入 {importedBlocks} 個區塊");
+            if (errorBlocks > 0)
+            {
+                Console.WriteLine($"失敗 {errorBlocks} 個區塊");
+            }
+            Console.WriteLine($"耗時: {sw.ElapsedMilliseconds}ms");
+
+            return errorBlocks > 0 ? 1 : 0;
         }
 
         /// <summary>
