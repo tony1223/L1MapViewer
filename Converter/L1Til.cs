@@ -365,15 +365,9 @@ namespace L1MapViewer.Converter {
             byte xxLen = blockData[idx++];
             byte yLen = blockData[idx++];
 
-            // 檢查是否為混合格式：座標超過 24x24 範圍
+            // 檢查是否為混合格式：座標超過 24x24 範圍（使用 48x48 座標系統）
             bool isHybrid = (x_offset > 24 || y_offset > 24 ||
                              x_offset + xxLen > 48 || y_offset + yLen > 48);
-
-            // 如果座標在 24x24 範圍內，可能已經是 Classic 版
-            if (!isHybrid && yLen <= 24 && y_offset + yLen <= 24 && xxLen <= 48 && x_offset + xxLen <= 48)
-            {
-                return blockData;
-            }
 
             // 混合格式：只需縮放座標，不需降採樣像素
             // 這種格式的像素已經是 24x24 尺寸，但座標使用 48x48 系統
@@ -381,6 +375,9 @@ namespace L1MapViewer.Converter {
             {
                 return DownscaleHybridBlock(blockData, type);
             }
+
+            // 注意：此函數只會被 DownscaleTil 呼叫，而 DownscaleTil 已經用 GetVersion
+            // 確認整個 tile 是 Remaster 版本，所以這裡不再做額外判斷，直接進行降採樣
 
             // 標準 R 版：需要完整的 2x2 降採樣
             // 解碼到 48x48 像素陣列 (使用 -1 表示透明)
