@@ -2351,9 +2351,33 @@ namespace L1FlyMapViewer
             _tilFileCache.Clear();
             _tilRemasterCache.Clear();
             tileDataCache.Clear();
+            cachedAggregatedTiles.Clear();
             Share.IdxDataList.Clear();  // 清除 idx 快取，強制重新讀取新資料夾的 idx
+            Share.MapDataList.Clear();  // 清除地圖快取，強制重新讀取新資料夾的地圖
             TileHashManager.ClearCache();  // 清除 Tile MD5 快取
             _listTilMaxId = null;       // 清除 list.til 快取
+
+            // 清除當前地圖狀態
+            _document.S32Files.Clear();
+            _document.MapId = null;
+            lstS32Files.Items.Clear();
+            _checkedS32Files.Clear();
+            lvTiles.Items.Clear();
+            lvGroupThumbnails.Items.Clear();
+            ClearS32BlockCache();
+            ClearMiniMapCache();
+
+            // 清除 viewport
+            lock (_viewportBitmapLock)
+            {
+                if (_viewportBitmap != null)
+                {
+                    _viewportBitmap.Dispose();
+                    _viewportBitmap = null;
+                }
+            }
+            pictureBox1.Invalidate();
+
             LogPerf("[LOADMAP] Cache cleared");
 
             Utils.ShowProgressBar(true, this);
@@ -4550,6 +4574,14 @@ namespace L1FlyMapViewer
                     // 先重新整理 Share.MapDataList 中的地圖資料（更新檔案清單）
                     Console.WriteLine($"[ImportFs32] Refreshing map data for: {_document.MapId}");
                     L1MapHelper.RefreshMap(_document.MapId);
+
+                    // 清除 Tile 相關快取（匯入新 Tile 後需要重新讀取）
+                    Console.WriteLine($"[ImportFs32] Clearing tile caches");
+                    TileHashManager.ClearCache();
+                    _tilFileCache.Clear();
+                    _tilRemasterCache.Clear();
+                    tileDataCache.Clear();
+                    cachedAggregatedTiles.Clear();
 
                     // 重新載入 S32 檔案清單
                     Console.WriteLine($"[ImportFs32] Reloading S32 file list for map: {_document.MapId}");
