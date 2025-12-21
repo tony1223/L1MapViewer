@@ -15,6 +15,7 @@ namespace L1MapViewer.Localization
             { "Menu_File_Export", "マップ通行データをエクスポート" },
             { "Menu_Import", "インポート" },
             { "Menu_Import_Material", "素材をインポート..." },
+            { "Menu_Import_Fs32ToNewMap", "マップパッケージを新規マップにインポート..." },
             { "Menu_Database", "データベース設定" },
             { "Menu_MapEditor", "マップエディタ" },
             { "Menu_Help_Discord", "Discordで議論する" },
@@ -212,6 +213,19 @@ namespace L1MapViewer.Localization
             { "Message_InvalidInput", "無効な入力です" },
             { "Message_FileNotFound", "ファイルが見つかりません: {0}" },
             { "Message_NoDataToExport", "エクスポートするデータがありません" },
+
+            // === Messages - Import Fs32 to New Map ===
+            { "ImportNewMap_Title", "マップパッケージを新規マップにインポート" },
+            { "ImportNewMap_SelectFile", "インポートする fs32 マップパッケージを選択" },
+            { "ImportNewMap_EnterMapId", "新規マップ番号を入力してください:" },
+            { "ImportNewMap_InvalidMapId", "無効なマップ番号です。数字を入力してください" },
+            { "ImportNewMap_MapExists", "マップ {0} は既に存在します。既存のインポートフローを使用しますか？\n\n「はい」= そのマップを開いてパッケージをインポート\n「いいえ」= 操作をキャンセル" },
+            { "ImportNewMap_CreatingFolder", "マップフォルダを作成中..." },
+            { "ImportNewMap_FolderCreated", "マップフォルダを作成しました: {0}" },
+            { "ImportNewMap_Importing", "マップパッケージをインポート中..." },
+            { "ImportNewMap_Success", "マップパッケージを新規マップ {0} に正常にインポートしました" },
+            { "ImportNewMap_Failed", "インポートに失敗しました: {0}" },
+            { "ImportNewMap_PleaseOpenClient", "先にリネージュクライアントを開いてください" },
 
             // === Messages - Database ===
             { "Message_PleaseConnectDB", "先にデータベースに接続してください" },

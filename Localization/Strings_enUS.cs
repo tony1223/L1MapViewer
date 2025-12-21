@@ -15,6 +15,7 @@ namespace L1MapViewer.Localization
             { "Menu_File_Export", "Export Map Passability Data" },
             { "Menu_Import", "Import" },
             { "Menu_Import_Material", "Import Material..." },
+            { "Menu_Import_Fs32ToNewMap", "Import Map Package to New Map..." },
             { "Menu_Database", "Database Settings" },
             { "Menu_MapEditor", "Map Editor" },
             { "Menu_Help_Discord", "Discuss on Discord" },
@@ -212,6 +213,19 @@ namespace L1MapViewer.Localization
             { "Message_InvalidInput", "Invalid input" },
             { "Message_FileNotFound", "File not found: {0}" },
             { "Message_NoDataToExport", "No data to export" },
+
+            // === Messages - Import Fs32 to New Map ===
+            { "ImportNewMap_Title", "Import Map Package to New Map" },
+            { "ImportNewMap_SelectFile", "Select fs32 map package to import" },
+            { "ImportNewMap_EnterMapId", "Enter new map number:" },
+            { "ImportNewMap_InvalidMapId", "Invalid map number. Please enter a number" },
+            { "ImportNewMap_MapExists", "Map {0} already exists. Do you want to use the existing import flow?\n\nClick \"Yes\" to open that map and import the package\nClick \"No\" to cancel" },
+            { "ImportNewMap_CreatingFolder", "Creating map folder..." },
+            { "ImportNewMap_FolderCreated", "Map folder created: {0}" },
+            { "ImportNewMap_Importing", "Importing map package..." },
+            { "ImportNewMap_Success", "Map package successfully imported to new map {0}" },
+            { "ImportNewMap_Failed", "Import failed: {0}" },
+            { "ImportNewMap_PleaseOpenClient", "Please open a Lineage client first" },
 
             // === Messages - Database ===
             { "Message_PleaseConnectDB", "Please connect to the database first" },

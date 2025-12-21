@@ -12,6 +12,7 @@ namespace L1FlyMapViewer
         private ToolStripMenuItem openToolStripMenuItem;
         private ToolStripMenuItem exportToolStripMenuItem;
         private ToolStripMenuItem importMaterialToolStripMenuItem;
+        private ToolStripMenuItem importFs32ToNewMapToolStripMenuItem;
         private ToolStripMenuItem discordToolStripMenuItem;
         private ToolStripMenuItem languageToolStripMenuItem;
         private ToolStripMenuItem langZhTWToolStripMenuItem;
@@ -151,6 +152,7 @@ namespace L1FlyMapViewer
             this.openToolStripMenuItem = new ToolStripMenuItem();
             this.exportToolStripMenuItem = new ToolStripMenuItem();
             this.importMaterialToolStripMenuItem = new ToolStripMenuItem();
+            this.importFs32ToNewMapToolStripMenuItem = new ToolStripMenuItem();
             this.discordToolStripMenuItem = new ToolStripMenuItem();
             this.languageToolStripMenuItem = new ToolStripMenuItem();
             this.langZhTWToolStripMenuItem = new ToolStripMenuItem();
@@ -303,6 +305,7 @@ namespace L1FlyMapViewer
             this.menuStrip1.Items.AddRange(new ToolStripItem[] {
                 this.openToolStripMenuItem,
                 this.importMaterialToolStripMenuItem,
+                this.importFs32ToNewMapToolStripMenuItem,
                 this.exportToolStripMenuItem,
                 this.discordToolStripMenuItem,
                 this.languageToolStripMenuItem
@@ -327,6 +330,14 @@ namespace L1FlyMapViewer
             this.importMaterialToolStripMenuItem.Size = new Size(86, 20);
             this.importMaterialToolStripMenuItem.Text = "匯入素材...";
             this.importMaterialToolStripMenuItem.Click += new System.EventHandler(this.importMaterialToolStripMenuItem_Click);
+
+            //
+            // importFs32ToNewMapToolStripMenuItem
+            //
+            this.importFs32ToNewMapToolStripMenuItem.Name = "importFs32ToNewMapToolStripMenuItem";
+            this.importFs32ToNewMapToolStripMenuItem.Size = new Size(140, 20);
+            this.importFs32ToNewMapToolStripMenuItem.Text = "匯入地圖包到新地圖...";
+            this.importFs32ToNewMapToolStripMenuItem.Click += new System.EventHandler(this.importFs32ToNewMapToolStripMenuItem_Click);
 
             //
             // exportToolStripMenuItem

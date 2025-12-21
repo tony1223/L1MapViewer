@@ -20,6 +20,11 @@ namespace L1MapViewer.Helper
         public string IdxType { get; set; } = "Tile";
 
         /// <summary>
+        /// 本次批次匯入中已分配的 ID（用於避免重複分配）
+        /// </summary>
+        private HashSet<int> _assignedIds = new HashSet<int>();
+
+        /// <summary>
         /// 處理打包的 Tiles，返回 ID 對應結果
         /// </summary>
         public TileMappingResult ProcessTiles(Dictionary<int, TilePackageData> packageTiles)
@@ -101,26 +106,40 @@ namespace L1MapViewer.Helper
         }
 
         /// <summary>
-        /// 檢查 TileId 是否可用
+        /// 檢查 TileId 是否可用（檢查 pak 檔和本次已分配的 ID）
         /// </summary>
         private bool IsTileIdAvailable(int tileId)
         {
+            // 檢查是否已在本次批次中分配
+            if (_assignedIds.Contains(tileId))
+                return false;
+
+            // 檢查 pak 檔案中是否存在
             return !L1PakWriter.FileExists(IdxType, $"{tileId}.til");
         }
 
         /// <summary>
-        /// 找到可用的 TileId
+        /// 找到可用的 TileId（跳過 pak 中已存在的和本次已分配的）
         /// </summary>
         private int FindAvailableTileId()
         {
             int id = StartSearchId;
-            while (L1PakWriter.FileExists(IdxType, $"{id}.til"))
+            // 同時檢查 pak 檔案和本次已分配的 ID
+            while (L1PakWriter.FileExists(IdxType, $"{id}.til") || _assignedIds.Contains(id))
             {
                 id++;
             }
             // 更新起始位置，下次從這裡繼續找
             StartSearchId = id + 1;
             return id;
+        }
+
+        /// <summary>
+        /// 標記 ID 已被分配（用於本次批次）
+        /// </summary>
+        private void MarkIdAsAssigned(int tileId)
+        {
+            _assignedIds.Add(tileId);
         }
 
         /// <summary>
@@ -138,6 +157,9 @@ namespace L1MapViewer.Helper
         {
             var result = new TileMappingResult();
             var tilesToImport = new Dictionary<string, byte[]>();
+
+            // 清除上次批次的已分配 ID 記錄
+            _assignedIds.Clear();
 
             foreach (var kvp in packageTiles)
             {
@@ -160,6 +182,7 @@ namespace L1MapViewer.Helper
                     else
                     {
                         int newId = FindAvailableTileId();
+                        MarkIdAsAssigned(newId);  // 標記已分配
                         tilesToImport[$"{newId}.til"] = packageData.TilData;
                         result.AddMapping(originalId, newId, TileMatchType.Remapped);
                         TileHashManager.RegisterTileMd5(newId, packageMd5);
@@ -177,6 +200,7 @@ namespace L1MapViewer.Helper
                     {
                         if (IsTileIdAvailable(originalId))
                         {
+                            MarkIdAsAssigned(originalId);  // 標記已分配
                             tilesToImport[$"{originalId}.til"] = packageData.TilData;
                             result.AddMapping(originalId, originalId, TileMatchType.NewOriginal);
                             TileHashManager.RegisterTileMd5(originalId, packageMd5);
@@ -184,6 +208,7 @@ namespace L1MapViewer.Helper
                         else
                         {
                             int newId = FindAvailableTileId();
+                            MarkIdAsAssigned(newId);  // 標記已分配
                             tilesToImport[$"{newId}.til"] = packageData.TilData;
                             result.AddMapping(originalId, newId, TileMatchType.NewRemapped);
                             TileHashManager.RegisterTileMd5(newId, packageMd5);

@@ -15,6 +15,7 @@ namespace L1MapViewer.Localization
             { "Menu_File_Export", "匯出地圖通行資料" },
             { "Menu_Import", "匯入" },
             { "Menu_Import_Material", "匯入素材..." },
+            { "Menu_Import_Fs32ToNewMap", "匯入地圖包到新地圖..." },
             { "Menu_Database", "資料庫設定" },
             { "Menu_MapEditor", "地圖編輯器" },
             { "Menu_Help_Discord", "到 Discord 討論" },
@@ -212,6 +213,19 @@ namespace L1MapViewer.Localization
             { "Message_InvalidInput", "輸入無效" },
             { "Message_FileNotFound", "找不到檔案: {0}" },
             { "Message_NoDataToExport", "沒有資料可匯出" },
+
+            // === Messages - Import Fs32 to New Map ===
+            { "ImportNewMap_Title", "匯入地圖包到新地圖" },
+            { "ImportNewMap_SelectFile", "選擇要匯入的 fs32 地圖包" },
+            { "ImportNewMap_EnterMapId", "請輸入新地圖編號:" },
+            { "ImportNewMap_InvalidMapId", "無效的地圖編號，請輸入數字" },
+            { "ImportNewMap_MapExists", "地圖 {0} 已經存在，是否要使用既有的匯入流程？\n\n按「是」將開啟該地圖並匯入地圖包\n按「否」取消操作" },
+            { "ImportNewMap_CreatingFolder", "正在建立地圖資料夾..." },
+            { "ImportNewMap_FolderCreated", "已建立地圖資料夾: {0}" },
+            { "ImportNewMap_Importing", "正在匯入地圖包..." },
+            { "ImportNewMap_Success", "地圖包已成功匯入到新地圖 {0}" },
+            { "ImportNewMap_Failed", "匯入失敗: {0}" },
+            { "ImportNewMap_PleaseOpenClient", "請先開啟天堂客戶端" },
 
             // === Messages - Database ===
             { "Message_PleaseConnectDB", "請先連線到資料庫" },
