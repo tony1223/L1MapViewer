@@ -4430,17 +4430,45 @@ namespace L1FlyMapViewer
                         return;
                     }
 
-                    // 2. 顯示匯入資訊並確認
-                    string confirmMessage = $"fs32 地圖包資訊：\n\n" +
-                                             $"• 來源地圖: {fs32.SourceMapId}\n" +
-                                             $"• 區塊數量: {fs32.Blocks.Count}\n" +
-                                             $"• 圖塊數量: {fs32.Tiles.Count}\n\n" +
-                                             $"將匯入至當前地圖: {_document.MapId}\n\n" +
-                                             $"⚠️ 相同座標的區塊將被覆蓋！\n\n" +
-                                             $"確定要繼續嗎？";
+                    // 2. 顯示匯入資訊並選擇匯入模式
+                    string infoMessage = $"fs32 地圖包資訊：\n\n" +
+                                         $"• 來源地圖: {fs32.SourceMapId}\n" +
+                                         $"• 區塊數量: {fs32.Blocks.Count}\n" +
+                                         $"• 圖塊數量: {fs32.Tiles.Count}\n\n" +
+                                         $"將匯入至當前地圖: {_document.MapId}\n\n" +
+                                         $"請選擇匯入模式：\n\n" +
+                                         $"【部份取代】只覆蓋相同座標的區塊（推薦）\n" +
+                                         $"【全部取代】刪除既有區塊，完全使用匯入的地圖";
 
-                    if (MessageBox.Show(confirmMessage, "確認匯入", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
+                    var importModeResult = MessageBox.Show(
+                        infoMessage + "\n\n按「是」= 部份取代（預設）\n按「否」= 全部取代\n按「取消」= 取消匯入",
+                        "選擇匯入模式",
+                        MessageBoxButtons.YesNoCancel,
+                        MessageBoxIcon.Question,
+                        MessageBoxDefaultButton.Button1);
+
+                    if (importModeResult == DialogResult.Cancel)
                         return;
+
+                    bool isFullReplace = (importModeResult == DialogResult.No);
+
+                    // 全部取代需要二次確認
+                    if (isFullReplace)
+                    {
+                        var warningResult = MessageBox.Show(
+                            "⚠️ 警告：全部取代模式 ⚠️\n\n" +
+                            "這將會刪除當前地圖的所有既有區塊！\n" +
+                            "整張地圖可能會消失，只剩下匯入的區塊。\n\n" +
+                            "此操作無法復原！\n\n" +
+                            "確定要繼續嗎？",
+                            "危險操作確認",
+                            MessageBoxButtons.YesNo,
+                            MessageBoxIcon.Warning,
+                            MessageBoxDefaultButton.Button2);
+
+                        if (warningResult != DialogResult.Yes)
+                            return;
+                    }
 
                     // 3. 處理 Tiles（如果有）
                     TileMappingResult tileMapping = null;
@@ -4454,7 +4482,31 @@ namespace L1FlyMapViewer
                         }
                     }
 
-                    // 4. 解析並寫入 S32 區塊
+                    // 4. 全部取代模式：刪除既有 S32 檔案
+                    int deletedCount = 0;
+                    if (isFullReplace)
+                    {
+                        toolStripStatusLabel1.Text = "正在刪除既有區塊...";
+                        Application.DoEvents();
+
+                        var existingS32Files = Directory.GetFiles(mapPath, "*.s32");
+                        foreach (var file in existingS32Files)
+                        {
+                            try
+                            {
+                                File.Delete(file);
+                                deletedCount++;
+                                Console.WriteLine($"[ImportFs32] Deleted: {Path.GetFileName(file)}");
+                            }
+                            catch (Exception ex)
+                            {
+                                Console.WriteLine($"[ImportFs32] Failed to delete {Path.GetFileName(file)}: {ex.Message}");
+                            }
+                        }
+                        Console.WriteLine($"[ImportFs32] Deleted {deletedCount} existing S32 files");
+                    }
+
+                    // 5. 解析並寫入 S32 區塊
                     toolStripStatusLabel1.Text = "正在匯入區塊...";
                     Application.DoEvents();
 
@@ -4541,9 +4593,16 @@ namespace L1FlyMapViewer
                         }
                     }
 
-                    // 5. 顯示結果
+                    // 6. 顯示結果
                     string resultMessage = $"匯入完成！\n\n" +
-                                           $"• 成功匯入: {importedCount} 個區塊\n";
+                                           $"• 匯入模式: {(isFullReplace ? "全部取代" : "部份取代")}\n";
+
+                    if (isFullReplace && deletedCount > 0)
+                    {
+                        resultMessage += $"• 已刪除既有區塊: {deletedCount} 個\n";
+                    }
+
+                    resultMessage += $"• 成功匯入: {importedCount} 個區塊\n";
 
                     if (tileMapping != null)
                     {
@@ -4563,7 +4622,7 @@ namespace L1FlyMapViewer
 
                     MessageBox.Show(resultMessage, "匯入完成", MessageBoxButtons.OK, MessageBoxIcon.Information);
 
-                    // 6. 重新載入 S32 檔案清單
+                    // 7. 重新載入 S32 檔案清單
                     toolStripStatusLabel1.Text = "正在重新載入地圖...";
                     Application.DoEvents();
 
