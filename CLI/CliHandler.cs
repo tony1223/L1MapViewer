@@ -105,6 +105,8 @@ namespace L1MapViewer.CLI
                         return Commands.MaterialCommands.VerifyMaterialTiles(cmdArgs);
                     case "list-til":
                         return CmdListTil(cmdArgs);
+                    case "validate-tiles":
+                        return CmdValidateTiles(cmdArgs);
                     case "help":
                     case "-h":
                     case "--help":
@@ -155,6 +157,8 @@ L1MapViewer CLI - S32 檔案解析工具
                               比對 Classic 版與 R 版降級後的 Tile，輸出比較圖片
   render-material <fs3p> <地圖資料夾> <gameX> <gameY> [options]
                               渲染素材到指定地圖位置並存成圖片
+  validate-tiles <s32檔案或地圖資料夾> [--client <路徑>]
+                              驗證 S32 中使用的 TileId 是否存在於 Tile.idx 中
   help                        顯示此幫助資訊
 
 範例:
@@ -287,6 +291,342 @@ L1MapViewer CLI - S32 檔案解析工具
             Console.WriteLine();
 
             return 0;
+        }
+
+        /// <summary>
+        /// validate-tiles 命令 - 驗證 S32 中使用的 TileId 是否存在於 Tile.idx 中
+        /// </summary>
+        private static int CmdValidateTiles(string[] args)
+        {
+            if (args.Length < 1)
+            {
+                Console.WriteLine("用法: -cli validate-tiles <s32檔案或地圖資料夾> [--client <路徑>]");
+                Console.WriteLine();
+                Console.WriteLine("驗證 S32 中使用的 TileId 是否存在於 Tile.idx 中");
+                Console.WriteLine();
+                Console.WriteLine("參數:");
+                Console.WriteLine("  <s32檔案或地圖資料夾>  要驗證的 S32 檔案或包含 S32 的地圖資料夾");
+                Console.WriteLine("  --client <路徑>        指定客戶端路徑（包含 Tile.idx/pak）");
+                Console.WriteLine("                         若不指定，會自動從輸入路徑向上搜尋");
+                Console.WriteLine();
+                Console.WriteLine("範例:");
+                Console.WriteLine("  validate-tiles C:\\client\\map\\4\\7fff8000.s32");
+                Console.WriteLine("  validate-tiles C:\\client\\map\\4");
+                Console.WriteLine("  validate-tiles C:\\map\\4 --client C:\\client");
+                return 1;
+            }
+
+            string inputPath = args[0];
+            string clientPath = null;
+
+            // 解析參數
+            for (int i = 1; i < args.Length; i++)
+            {
+                if (args[i] == "--client" && i + 1 < args.Length)
+                {
+                    clientPath = args[++i];
+                }
+            }
+
+            // 確定要處理的 S32 檔案列表
+            var s32Files = new List<string>();
+
+            if (File.Exists(inputPath) && inputPath.EndsWith(".s32", StringComparison.OrdinalIgnoreCase))
+            {
+                s32Files.Add(inputPath);
+            }
+            else if (Directory.Exists(inputPath))
+            {
+                s32Files.AddRange(Directory.GetFiles(inputPath, "*.s32"));
+            }
+            else
+            {
+                Console.WriteLine($"錯誤: 路徑不存在或不是有效的 S32 檔案/資料夾: {inputPath}");
+                return 1;
+            }
+
+            if (s32Files.Count == 0)
+            {
+                Console.WriteLine($"錯誤: 找不到任何 S32 檔案: {inputPath}");
+                return 1;
+            }
+
+            // 如果未指定 client 路徑，嘗試自動尋找
+            if (string.IsNullOrEmpty(clientPath))
+            {
+                string searchPath = Directory.Exists(inputPath) ? inputPath : Path.GetDirectoryName(inputPath);
+                while (!string.IsNullOrEmpty(searchPath))
+                {
+                    string tileIdxPath = Path.Combine(searchPath, "Tile.idx");
+                    if (File.Exists(tileIdxPath))
+                    {
+                        clientPath = searchPath;
+                        break;
+                    }
+                    searchPath = Path.GetDirectoryName(searchPath);
+                }
+            }
+
+            if (string.IsNullOrEmpty(clientPath))
+            {
+                Console.WriteLine("錯誤: 找不到 Tile.idx，請使用 --client 參數指定客戶端路徑");
+                return 1;
+            }
+
+            string tileIdx = Path.Combine(clientPath, "Tile.idx");
+            string tilePak = Path.Combine(clientPath, "Tile.pak");
+
+            if (!File.Exists(tileIdx) || !File.Exists(tilePak))
+            {
+                Console.WriteLine($"錯誤: Tile.idx 或 Tile.pak 不存在於: {clientPath}");
+                return 1;
+            }
+
+            Console.WriteLine("=== Tile 驗證 ===");
+            Console.WriteLine($"輸入路徑: {inputPath}");
+            Console.WriteLine($"S32 檔案數: {s32Files.Count}");
+            Console.WriteLine($"客戶端路徑: {clientPath}");
+            Console.WriteLine();
+
+            // 載入 Tile 索引
+            Console.WriteLine("載入 Tile 索引...");
+            var sw = Stopwatch.StartNew();
+
+            Share.LineagePath = clientPath;
+
+            // 清除快取以確保重新載入
+            if (Share.IdxDataList.ContainsKey("Tile"))
+            {
+                Share.IdxDataList.Remove("Tile");
+            }
+
+            // 觸發載入 Tile 索引
+            L1PakReader.UnPack("Tile", "1.til");
+
+            // 從 Share.IdxDataList 取得所有可用的 TileId
+            var availableTileIds = new HashSet<int>();
+            if (Share.IdxDataList.TryGetValue("Tile", out var tileIdxData))
+            {
+                foreach (var key in tileIdxData.Keys)
+                {
+                    if (key.EndsWith(".til"))
+                    {
+                        string numStr = key.Substring(0, key.Length - 4);
+                        if (int.TryParse(numStr, out int tileId))
+                        {
+                            availableTileIds.Add(tileId);
+                        }
+                    }
+                }
+            }
+
+            sw.Stop();
+            Console.WriteLine($"Tile 索引載入完成: {availableTileIds.Count} 個 Tile ({sw.ElapsedMilliseconds}ms)");
+            Console.WriteLine();
+
+            // 解析 S32 並驗證
+            Console.WriteLine("解析 S32 並驗證 TileId 和 IndexId...");
+            sw.Restart();
+
+            // 快取每個 TileId 的 block 數量
+            var tileBlockCounts = new Dictionary<int, int>();
+
+            // 取得 Tile 的 block 數量
+            int GetTileBlockCount(int tileId)
+            {
+                if (tileBlockCounts.TryGetValue(tileId, out int cached))
+                    return cached;
+
+                byte[] tilData = L1PakReader.UnPack("Tile", $"{tileId}.til");
+                if (tilData == null || tilData.Length < 4)
+                {
+                    tileBlockCounts[tileId] = -1; // 標記為無效
+                    return -1;
+                }
+
+                try
+                {
+                    using (var br = new BinaryReader(new MemoryStream(tilData)))
+                    {
+                        int blockCount = br.ReadInt32();
+                        tileBlockCounts[tileId] = blockCount;
+                        return blockCount;
+                    }
+                }
+                catch
+                {
+                    tileBlockCounts[tileId] = -1;
+                    return -1;
+                }
+            }
+
+            var invalidTiles = new List<(string fileName, string layer, int x, int y, int tileId, int indexId, string reason)>();
+            var uniqueInvalidTileIds = new HashSet<int>();
+            var uniqueInvalidIndexIds = new HashSet<(int tileId, int indexId)>();
+            int totalLayer1Cells = 0;
+            int totalLayer2Items = 0;
+            int totalLayer4Items = 0;
+
+            // 驗證 TileId 和 IndexId
+            void ValidateTile(string fileName, string layer, int x, int y, int tileId, int indexId)
+            {
+                if (tileId <= 0) return;
+
+                // 檢查 TileId 是否存在
+                if (!availableTileIds.Contains(tileId))
+                {
+                    invalidTiles.Add((fileName, layer, x, y, tileId, indexId, "Tile不存在"));
+                    uniqueInvalidTileIds.Add(tileId);
+                    return;
+                }
+
+                // 檢查 IndexId 是否有效
+                int blockCount = GetTileBlockCount(tileId);
+                if (blockCount < 0)
+                {
+                    invalidTiles.Add((fileName, layer, x, y, tileId, indexId, "Tile無法讀取"));
+                    uniqueInvalidTileIds.Add(tileId);
+                    return;
+                }
+
+                if (indexId < 0 || indexId >= blockCount)
+                {
+                    invalidTiles.Add((fileName, layer, x, y, tileId, indexId, $"IndexId超出範圍(0-{blockCount - 1})"));
+                    uniqueInvalidIndexIds.Add((tileId, indexId));
+                }
+            }
+
+            foreach (var filePath in s32Files)
+            {
+                string fileName = Path.GetFileName(filePath);
+                S32Data s32Data;
+
+                try
+                {
+                    s32Data = S32Parser.ParseFile(filePath);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"警告: 無法解析 {fileName}: {ex.Message}");
+                    continue;
+                }
+
+                // 檢查 Layer1（地板）
+                for (int y = 0; y < 64; y++)
+                {
+                    for (int x = 0; x < 128; x++)
+                    {
+                        var cell = s32Data.Layer1[y, x];
+                        if (cell != null && cell.TileId > 0)
+                        {
+                            totalLayer1Cells++;
+                            ValidateTile(fileName, "L1", x, y, cell.TileId, cell.IndexId);
+                        }
+                    }
+                }
+
+                // 檢查 Layer2
+                foreach (var item in s32Data.Layer2)
+                {
+                    if (item.TileId > 0)
+                    {
+                        totalLayer2Items++;
+                        ValidateTile(fileName, "L2", item.X, item.Y, item.TileId, item.IndexId);
+                    }
+                }
+
+                // 檢查 Layer4（物件）
+                foreach (var item in s32Data.Layer4)
+                {
+                    if (item.TileId > 0)
+                    {
+                        totalLayer4Items++;
+                        ValidateTile(fileName, "L4", item.X, item.Y, item.TileId, item.IndexId);
+                    }
+                }
+            }
+
+            sw.Stop();
+
+            Console.WriteLine($"驗證完成 ({sw.ElapsedMilliseconds}ms)");
+            Console.WriteLine($"已檢查 {tileBlockCounts.Count} 個不同的 Tile");
+            Console.WriteLine();
+            Console.WriteLine("=== 統計 ===");
+            Console.WriteLine($"Layer1 格子數: {totalLayer1Cells:N0}");
+            Console.WriteLine($"Layer2 項目數: {totalLayer2Items:N0}");
+            Console.WriteLine($"Layer4 物件數: {totalLayer4Items:N0}");
+            Console.WriteLine();
+
+            if (invalidTiles.Count == 0)
+            {
+                Console.WriteLine("結果: 所有 TileId 和 IndexId 都有效，沒有發現問題。");
+                return 0;
+            }
+
+            // 輸出無效的項目
+            int tileNotExistCount = invalidTiles.Count(t => t.reason == "Tile不存在" || t.reason == "Tile無法讀取");
+            int indexOutOfRangeCount = invalidTiles.Count(t => t.reason.StartsWith("IndexId超出範圍"));
+
+            Console.WriteLine($"=== 發現 {invalidTiles.Count} 個問題 ===");
+            if (uniqueInvalidTileIds.Count > 0)
+                Console.WriteLine($"  - Tile不存在: {tileNotExistCount} 個引用 (涉及 {uniqueInvalidTileIds.Count} 個 TileId)");
+            if (uniqueInvalidIndexIds.Count > 0)
+                Console.WriteLine($"  - IndexId超出範圍: {indexOutOfRangeCount} 個引用 (涉及 {uniqueInvalidIndexIds.Count} 個 TileId+IndexId 組合)");
+            Console.WriteLine();
+
+            // 按問題類型和 TileId 分組顯示
+            if (uniqueInvalidTileIds.Count > 0)
+            {
+                Console.WriteLine("不存在的 TileId:");
+                var notExistTiles = invalidTiles.Where(t => t.reason == "Tile不存在" || t.reason == "Tile無法讀取")
+                    .GroupBy(t => t.tileId).OrderBy(g => g.Key);
+                foreach (var group in notExistTiles)
+                {
+                    int tileId = group.Key;
+                    int count = group.Count();
+                    var layers = group.Select(g => g.layer).Distinct().OrderBy(l => l);
+                    var files = group.Select(g => g.fileName).Distinct().Take(3);
+                    Console.WriteLine($"  TileId {tileId}: {count} 個引用 (Layer: {string.Join(",", layers)}) - 檔案: {string.Join(", ", files)}{(group.Select(g => g.fileName).Distinct().Count() > 3 ? "..." : "")}");
+                }
+                Console.WriteLine();
+            }
+
+            if (uniqueInvalidIndexIds.Count > 0)
+            {
+                Console.WriteLine("IndexId 超出範圍:");
+                var outOfRangeItems = invalidTiles.Where(t => t.reason.StartsWith("IndexId超出範圍"))
+                    .GroupBy(t => (t.tileId, t.indexId)).OrderBy(g => g.Key.tileId).ThenBy(g => g.Key.indexId);
+                foreach (var group in outOfRangeItems.Take(30))
+                {
+                    int tileId = group.Key.tileId;
+                    int indexId = group.Key.indexId;
+                    int blockCount = tileBlockCounts.TryGetValue(tileId, out var bc) ? bc : -1;
+                    int count = group.Count();
+                    var layers = group.Select(g => g.layer).Distinct().OrderBy(l => l);
+                    Console.WriteLine($"  TileId {tileId}, IndexId {indexId} (最大={blockCount - 1}): {count} 個引用 (Layer: {string.Join(",", layers)})");
+                }
+                if (uniqueInvalidIndexIds.Count > 30)
+                {
+                    Console.WriteLine($"  ... 還有 {uniqueInvalidIndexIds.Count - 30} 個組合");
+                }
+                Console.WriteLine();
+            }
+
+            Console.WriteLine("詳細清單 (前 50 筆):");
+            Console.WriteLine("檔案名稱                  Layer  X      Y      TileId   IndexId  原因");
+            Console.WriteLine("──────────────────────────────────────────────────────────────────────────────");
+
+            foreach (var item in invalidTiles.Take(50))
+            {
+                Console.WriteLine($"{item.fileName,-25} {item.layer,-6} {item.x,-6} {item.y,-6} {item.tileId,-8} {item.indexId,-8} {item.reason}");
+            }
+
+            if (invalidTiles.Count > 50)
+            {
+                Console.WriteLine($"... 還有 {invalidTiles.Count - 50} 筆");
+            }
+
+            return invalidTiles.Count > 0 ? 1 : 0;
         }
 
         /// <summary>
