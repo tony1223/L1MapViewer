@@ -203,7 +203,7 @@ namespace L1MapViewer.CLI
         /// </summary>
         private static void CollectTiles(Fs32Data fs32, S32Data s32Data)
         {
-            // 從 Layer6 取得使用的 TileIds
+            // 從各 Layer 取得使用的 TileIds
             HashSet<int> tileIds = new HashSet<int>();
 
             // Layer1
