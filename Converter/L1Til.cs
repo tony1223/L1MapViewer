@@ -64,17 +64,12 @@ namespace L1MapViewer.Converter {
                         // 解析所有 blocks 檢查格式
                         var blocks = Parse(tilData);
 
-                        // 先檢查是否有任何 block 的 xxLen 或 yLen 超過 24
-                        // 如果有，這是 Remaster（壓縮得很好的 48x48）
-                        if (HasRemasterPixelSize(blocks))
+                        // 只要有一個 block 是 48x48，就是 Remaster
+                        if (HasAny48x48Block(blocks))
                             return TileVersion.Remaster;
 
-                        // 檢查是否為混合格式：座標在 48x48 範圍
-                        if (HasHybridCoordinates(blocks))
-                            return TileVersion.Hybrid;
-
-                        // 如果沒有超出範圍的座標，且 block 大小在 Classic 範圍內，則是 Classic
-                        if (firstBlockSize >= 400 && firstBlockSize <= 1000)
+                        // 所有 block 都是 24x24，就是 Classic
+                        if (AllBlocksAreClassic(blocks))
                             return TileVersion.Classic;
 
                         // 其他情況視為 Unknown
@@ -88,6 +83,93 @@ namespace L1MapViewer.Converter {
             {
                 return TileVersion.Unknown;
             }
+        }
+
+        /// <summary>
+        /// 檢查是否有任何 block 使用 48x48 座標系統
+        /// </summary>
+        private static bool HasAny48x48Block(List<byte[]> blocks)
+        {
+            if (blocks == null || blocks.Count == 0)
+                return false;
+
+            HashSet<byte> simpleDiamondTypes = new HashSet<byte> { 0, 1, 8, 9, 16, 17 };
+
+            foreach (var block in blocks)
+            {
+                if (block == null || block.Length < 2)
+                    continue;
+
+                byte type = block[0];
+
+                if (simpleDiamondTypes.Contains(type))
+                {
+                    // 簡單菱形格式：檢查像素數量
+                    // 48x48 約 1200 pixels = 2400 bytes
+                    int dataLen = block.Length - 1;
+                    int pixelCount = dataLen / 2;
+                    if (pixelCount >= 1000)  // 接近 48x48 的 1200 pixels
+                        return true;
+                }
+                else if (block.Length >= 5)
+                {
+                    // 壓縮格式：檢查座標是否使用 48x48 系統
+                    byte x_offset = block[1];
+                    byte y_offset = block[2];
+                    byte xxLen = block[3];
+                    byte yLen = block[4];
+
+                    // 明確檢查是否使用 48x48 座標系統
+                    // 最大座標超過 24 或接近 48 就是 48x48
+                    int maxX = x_offset + xxLen;
+                    int maxY = y_offset + yLen;
+                    if (maxX > 24 || maxY > 24 || xxLen > 24 || yLen > 24)
+                        return true;
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// 檢查所有 block 是否都是 24x24 格式
+        /// </summary>
+        private static bool AllBlocksAreClassic(List<byte[]> blocks)
+        {
+            if (blocks == null || blocks.Count == 0)
+                return false;
+
+            HashSet<byte> simpleDiamondTypes = new HashSet<byte> { 0, 1, 8, 9, 16, 17 };
+
+            foreach (var block in blocks)
+            {
+                if (block == null || block.Length < 2)
+                    continue;
+
+                byte type = block[0];
+
+                if (simpleDiamondTypes.Contains(type))
+                {
+                    // 簡單菱形格式：24x24 約 312 pixels = 624 bytes
+                    int dataLen = block.Length - 1;
+                    int pixelCount = dataLen / 2;
+                    if (pixelCount > 500)  // 超過 24x24 範圍
+                        return false;
+                }
+                else if (block.Length >= 5)
+                {
+                    // 壓縮格式：座標和尺寸必須都在 24 以內
+                    byte x_offset = block[1];
+                    byte y_offset = block[2];
+                    byte xxLen = block[3];
+                    byte yLen = block[4];
+
+                    if (x_offset + xxLen > 24 || y_offset + yLen > 24)
+                        return false;
+                }
+            }
+
+            return true;
         }
 
         /// <summary>
@@ -214,6 +296,124 @@ namespace L1MapViewer.Converter {
         public static int GetTileSize(byte[] tilData)
         {
             return GetTileSize(GetVersion(tilData));
+        }
+
+        /// <summary>
+        /// Block 分析結果
+        /// </summary>
+        public class BlockAnalysis
+        {
+            public byte Type { get; set; }
+            public int Size { get; set; }
+            public bool IsSimpleDiamond { get; set; }
+            public int EstimatedTileSize { get; set; }  // 24 or 48
+            public string Format { get; set; }  // "24x24", "48x48", "Unknown"
+
+            // 壓縮格式專用
+            public byte XOffset { get; set; }
+            public byte YOffset { get; set; }
+            public byte XxLen { get; set; }
+            public byte YLen { get; set; }
+            public int MaxX => XOffset + XxLen;
+            public int MaxY => YOffset + YLen;
+        }
+
+        /// <summary>
+        /// 分析單個 block 的尺寸資訊
+        /// </summary>
+        public static BlockAnalysis AnalyzeBlock(byte[] blockData)
+        {
+            var result = new BlockAnalysis
+            {
+                Size = blockData?.Length ?? 0,
+                Format = "Unknown"
+            };
+
+            if (blockData == null || blockData.Length < 2)
+                return result;
+
+            result.Type = blockData[0];
+
+            // 簡單菱形格式: 0, 1, 8, 9, 16, 17
+            HashSet<byte> simpleDiamondTypes = new HashSet<byte> { 0, 1, 8, 9, 16, 17 };
+            result.IsSimpleDiamond = simpleDiamondTypes.Contains(result.Type);
+
+            if (result.IsSimpleDiamond)
+            {
+                // 簡單菱形格式：根據資料大小判斷
+                // 48x48: 2*24*25*2 + 1 = 2401 bytes
+                // 24x24: 2*12*13*2 + 1 = 625 bytes
+                int dataLen = blockData.Length - 1;  // 扣掉 type byte
+                int pixelCount = dataLen / 2;
+
+                if (pixelCount >= 1000)  // 接近 1200 (48x48)
+                {
+                    result.EstimatedTileSize = 48;
+                    result.Format = "48x48";
+                }
+                else if (pixelCount >= 200)  // 接近 312 (24x24)
+                {
+                    result.EstimatedTileSize = 24;
+                    result.Format = "24x24";
+                }
+                else
+                {
+                    result.EstimatedTileSize = 0;
+                    result.Format = $"Unknown ({pixelCount} pixels)";
+                }
+            }
+            else if (blockData.Length >= 5)
+            {
+                // 壓縮格式
+                result.XOffset = blockData[1];
+                result.YOffset = blockData[2];
+                result.XxLen = blockData[3];
+                result.YLen = blockData[4];
+
+                // 判斷座標系統
+                int maxCoord = Math.Max(result.MaxX, result.MaxY);
+                int maxLen = Math.Max(result.XxLen, result.YLen);
+
+                if (maxCoord > 24 || maxLen > 24)
+                {
+                    result.EstimatedTileSize = 48;
+                    if (maxLen > 24)
+                        result.Format = "48x48 (Remaster)";
+                    else
+                        result.Format = "48x48 coords (Hybrid)";
+                }
+                else
+                {
+                    result.EstimatedTileSize = 24;
+                    result.Format = "24x24";
+                }
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        /// 分析整個 til 的所有 blocks
+        /// </summary>
+        public static (int classic, int remaster, int hybrid, int unknown) AnalyzeTilBlocks(byte[] tilData)
+        {
+            var blocks = Parse(tilData);
+            int classic = 0, remaster = 0, hybrid = 0, unknown = 0;
+
+            foreach (var block in blocks)
+            {
+                var analysis = AnalyzeBlock(block);
+                if (analysis.Format.Contains("24x24"))
+                    classic++;
+                else if (analysis.Format.Contains("Remaster"))
+                    remaster++;
+                else if (analysis.Format.Contains("Hybrid"))
+                    hybrid++;
+                else
+                    unknown++;
+            }
+
+            return (classic, remaster, hybrid, unknown);
         }
 
         /// <summary>

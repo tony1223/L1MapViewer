@@ -1460,14 +1460,31 @@ L1MapViewer CLI - S32 檔案解析工具
             var blocks = L1Til.Parse(tilData);
             Console.WriteLine($"解析到 {blocks.Count} 個 block");
 
-            // 顯示每個 block 的資訊
+            // 分析 block 尺寸統計
+            var (classic, remaster, hybrid, unknown) = L1Til.AnalyzeTilBlocks(tilData);
             Console.WriteLine();
-            Console.WriteLine("Block 資訊:");
+            Console.WriteLine("=== Block 尺寸分析 ===");
+            Console.WriteLine($"  24x24 (Classic):  {classic}");
+            Console.WriteLine($"  48x48 (Remaster): {remaster}");
+            Console.WriteLine($"  48x48 (Hybrid):   {hybrid}");
+            Console.WriteLine($"  Unknown:          {unknown}");
+
+            // 顯示每個 block 的詳細資訊
+            Console.WriteLine();
+            Console.WriteLine("Block 詳細資訊:");
             for (int i = 0; i < Math.Min(blocks.Count, 10); i++)
             {
-                var block = blocks[i];
-                byte type = block.Length > 0 ? block[0] : (byte)0;
-                Console.WriteLine($"  [{i:D3}] type={type}, size={block.Length} bytes");
+                var analysis = L1Til.AnalyzeBlock(blocks[i]);
+                if (analysis.IsSimpleDiamond)
+                {
+                    Console.WriteLine($"  [{i:D3}] type={analysis.Type}, size={analysis.Size}b, format={analysis.Format}");
+                }
+                else
+                {
+                    Console.WriteLine($"  [{i:D3}] type={analysis.Type}, size={analysis.Size}b, " +
+                        $"offset=({analysis.XOffset},{analysis.YOffset}), len=({analysis.XxLen},{analysis.YLen}), " +
+                        $"max=({analysis.MaxX},{analysis.MaxY}), format={analysis.Format}");
+                }
             }
             if (blocks.Count > 10)
             {
