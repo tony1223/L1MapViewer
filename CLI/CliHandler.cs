@@ -61,6 +61,10 @@ namespace L1MapViewer.CLI
                         return CmdLayer7(cmdArgs);
                     case "l8":
                         return CmdLayer8(cmdArgs);
+                    case "clear-l8":
+                        return CmdClearL8(cmdArgs);
+                    case "tile-stats":
+                        return CmdTileStats(cmdArgs);
                     case "export":
                         return CmdExport(cmdArgs);
                     case "fix":
@@ -315,7 +319,7 @@ L1MapViewer CLI - S32 檔案解析工具
         {
             if (args.Length < 1)
             {
-                Console.WriteLine("用法: -cli validate-tiles <s32檔案或地圖資料夾> [--client <路徑>]");
+                Console.WriteLine("用法: -cli validate-tiles <s32檔案或地圖資料夾> [--client <路徑>] [--detail]");
                 Console.WriteLine();
                 Console.WriteLine("驗證 S32 中使用的 TileId 是否存在於 Tile.idx 中");
                 Console.WriteLine();
@@ -323,16 +327,18 @@ L1MapViewer CLI - S32 檔案解析工具
                 Console.WriteLine("  <s32檔案或地圖資料夾>  要驗證的 S32 檔案或包含 S32 的地圖資料夾");
                 Console.WriteLine("  --client <路徑>        指定客戶端路徑（包含 Tile.idx/pak）");
                 Console.WriteLine("                         若不指定，會自動從輸入路徑向上搜尋");
+                Console.WriteLine("  --detail               顯示每個 Tile 的詳細資訊（存在、大小、block數）");
                 Console.WriteLine();
                 Console.WriteLine("範例:");
                 Console.WriteLine("  validate-tiles C:\\client\\map\\4\\7fff8000.s32");
                 Console.WriteLine("  validate-tiles C:\\client\\map\\4");
-                Console.WriteLine("  validate-tiles C:\\map\\4 --client C:\\client");
+                Console.WriteLine("  validate-tiles C:\\map\\4 --client C:\\client --detail");
                 return 1;
             }
 
             string inputPath = args[0];
             string clientPath = null;
+            bool showDetail = args.Contains("--detail");
 
             // 解析參數
             for (int i = 1; i < args.Length; i++)
@@ -566,6 +572,41 @@ L1MapViewer CLI - S32 檔案解析工具
             Console.WriteLine($"驗證完成 ({sw.ElapsedMilliseconds}ms)");
             Console.WriteLine($"已檢查 {tileBlockCounts.Count} 個不同的 Tile");
             Console.WriteLine();
+
+            // 顯示詳細資訊
+            if (showDetail)
+            {
+                Console.WriteLine("=== Layer6 Tile 詳細列表 ===");
+                Console.WriteLine($"{"TileId",-10} {"狀態",-8} {"Blocks",-8} {"大小",-12} {"備註"}");
+                Console.WriteLine(new string('-', 60));
+
+                foreach (var kvp in tileBlockCounts.OrderBy(k => k.Key))
+                {
+                    int tileId = kvp.Key;
+                    int blockCount = kvp.Value;
+                    string status = blockCount >= 0 ? "✓ 存在" : "✗ 缺失";
+                    string blocks = blockCount >= 0 ? blockCount.ToString() : "-";
+
+                    // 取得檔案大小
+                    string sizeStr = "-";
+                    if (blockCount >= 0)
+                    {
+                        byte[] tilData = L1PakReader.UnPack("Tile", $"{tileId}.til");
+                        if (tilData != null)
+                            sizeStr = $"{tilData.Length:N0} bytes";
+                    }
+
+                    string note = "";
+                    if (blockCount < 0)
+                        note = "Tile.idx 中不存在或無法讀取";
+                    else if (blockCount == 0)
+                        note = "Block 數為 0（空 Tile）";
+
+                    Console.WriteLine($"{tileId,-10} {status,-8} {blocks,-8} {sizeStr,-12} {note}");
+                }
+                Console.WriteLine();
+            }
+
             Console.WriteLine("=== 統計 ===");
             Console.WriteLine($"Layer1 格子數: {totalLayer1Cells:N0}");
             Console.WriteLine($"Layer2 項目數: {totalLayer2Items:N0}");
@@ -2147,6 +2188,225 @@ L1MapViewer CLI - S32 檔案解析工具
                     Console.WriteLine($"  SprId={item.SprId}, X={item.X}, Y={item.Y}, ExtendedData={item.ExtendedData}");
                 }
             }
+
+            return 0;
+        }
+
+        /// <summary>
+        /// clear-l8 命令 - 清空 S32 的 Layer8 並寫回
+        /// </summary>
+        private static int CmdClearL8(string[] args)
+        {
+            if (args.Length < 1)
+            {
+                Console.WriteLine("用法: -cli clear-l8 <s32檔案>");
+                return 1;
+            }
+
+            string filePath = args[0];
+            if (!File.Exists(filePath))
+            {
+                Console.WriteLine($"檔案不存在: {filePath}");
+                return 1;
+            }
+
+            var s32 = S32Parser.ParseFile(filePath);
+            int originalCount = s32.Layer8.Count;
+
+            if (originalCount == 0)
+            {
+                Console.WriteLine("Layer8 已經是空的，無需處理");
+                return 0;
+            }
+
+            Console.WriteLine($"原始 Layer8 數量: {originalCount}");
+            s32.Layer8.Clear();
+
+            // 寫回檔案
+            S32Writer.Write(s32, filePath);
+            Console.WriteLine($"已清空 Layer8 並寫回: {filePath}");
+
+            return 0;
+        }
+
+        /// <summary>
+        /// tile-stats 命令 - 統計地圖使用的 Tile Block Type
+        /// </summary>
+        private static int CmdTileStats(string[] args)
+        {
+            if (args.Length < 1)
+            {
+                Console.WriteLine("用法: -cli tile-stats <地圖資料夾> [--client <路徑>]");
+                Console.WriteLine("統計地圖使用的所有 Tile 的 Block Type 分布");
+                return 1;
+            }
+
+            string mapPath = args[0];
+            string clientPath = null;
+
+            // 解析參數
+            for (int i = 1; i < args.Length; i++)
+            {
+                if (args[i] == "--client" && i + 1 < args.Length)
+                    clientPath = args[++i];
+            }
+
+            bool isSingleFile = File.Exists(mapPath) && mapPath.EndsWith(".s32", StringComparison.OrdinalIgnoreCase);
+            if (!isSingleFile && !Directory.Exists(mapPath))
+            {
+                Console.WriteLine($"地圖資料夾或 S32 檔案不存在: {mapPath}");
+                return 1;
+            }
+
+            // 自動搜尋 client 路徑
+            if (string.IsNullOrEmpty(clientPath))
+            {
+                string searchPath = isSingleFile ? Path.GetDirectoryName(mapPath) : mapPath;
+                while (!string.IsNullOrEmpty(searchPath))
+                {
+                    string tileIdxPath = Path.Combine(searchPath, "Tile.idx");
+                    if (File.Exists(tileIdxPath))
+                    {
+                        clientPath = searchPath;
+                        break;
+                    }
+                    searchPath = Path.GetDirectoryName(searchPath);
+                }
+            }
+
+            if (string.IsNullOrEmpty(clientPath))
+            {
+                Console.WriteLine("錯誤: 找不到 Tile.idx，請使用 --client 參數指定客戶端路徑");
+                return 1;
+            }
+
+            Console.WriteLine($"=== Tile Block Type 統計 ===");
+            Console.WriteLine($"地圖: {mapPath}");
+            Console.WriteLine($"客戶端: {clientPath}");
+            Console.WriteLine();
+
+            // 設定客戶端路徑
+            Share.LineagePath = clientPath;
+            if (Share.IdxDataList.ContainsKey("Tile"))
+                Share.IdxDataList.Remove("Tile");
+            L1PakReader.UnPack("Tile", "1.til");
+
+            // 收集所有 S32 使用的 TileId
+            var allTileIds = new HashSet<int>();
+            var s32Files = isSingleFile
+                ? new[] { mapPath }
+                : Directory.GetFiles(mapPath, "*.s32");
+
+            Console.WriteLine($"掃描 {s32Files.Length} 個 S32 檔案...");
+
+            foreach (var s32File in s32Files)
+            {
+                try
+                {
+                    var s32 = S32Parser.ParseFile(s32File);
+
+                    // Layer1
+                    for (int y = 0; y < 64; y++)
+                        for (int x = 0; x < 128; x++)
+                            if (s32.Layer1[y, x]?.TileId > 0)
+                                allTileIds.Add(s32.Layer1[y, x].TileId);
+
+                    // Layer2
+                    foreach (var item in s32.Layer2)
+                        if (item.TileId > 0)
+                            allTileIds.Add(item.TileId);
+
+                    // Layer4
+                    foreach (var item in s32.Layer4)
+                        if (item.TileId > 0)
+                            allTileIds.Add(item.TileId);
+                }
+                catch { }
+            }
+
+            Console.WriteLine($"找到 {allTileIds.Count} 個不同的 TileId");
+            Console.WriteLine();
+
+            // 統計 Block Type
+            var blockTypeStats = new Dictionary<byte, int>();
+            var tileVersionStats = new Dictionary<string, int>
+            {
+                { "Classic", 0 },
+                { "Remaster", 0 },
+                { "Hybrid", 0 },
+                { "Unknown", 0 }
+            };
+            int totalBlocks = 0;
+            int tilesAnalyzed = 0;
+
+            Console.WriteLine("分析 Tile Block Type...");
+
+            foreach (var tileId in allTileIds.OrderBy(x => x))
+            {
+                byte[] tilData = L1PakReader.UnPack("Tile", $"{tileId}.til");
+                if (tilData == null || tilData.Length < 8)
+                    continue;
+
+                tilesAnalyzed++;
+
+                // 判斷 Tile 版本
+                var version = Converter.L1Til.GetVersion(tilData);
+                tileVersionStats[version.ToString()]++;
+
+                // 解析 blocks
+                var blocks = Converter.L1Til.Parse(tilData);
+                foreach (var block in blocks)
+                {
+                    if (block == null || block.Length < 1)
+                        continue;
+
+                    byte blockType = block[0];
+                    if (!blockTypeStats.ContainsKey(blockType))
+                        blockTypeStats[blockType] = 0;
+                    blockTypeStats[blockType]++;
+                    totalBlocks++;
+                }
+            }
+
+            // 輸出統計結果
+            Console.WriteLine($"\n=== Tile 版本統計 ===");
+            Console.WriteLine($"{"版本",-12} {"數量",-8} {"百分比"}");
+            Console.WriteLine(new string('-', 35));
+            foreach (var kvp in tileVersionStats.OrderByDescending(x => x.Value))
+            {
+                double pct = tilesAnalyzed > 0 ? (double)kvp.Value / tilesAnalyzed * 100 : 0;
+                Console.WriteLine($"{kvp.Key,-12} {kvp.Value,-8} {pct:F1}%");
+            }
+            Console.WriteLine($"{"總計",-12} {tilesAnalyzed,-8}");
+
+            Console.WriteLine($"\n=== Block Type 統計 ===");
+            Console.WriteLine($"{"Type",-6} {"名稱",-20} {"數量",-10} {"百分比"}");
+            Console.WriteLine(new string('-', 50));
+
+            // Block Type 說明
+            var typeNames = new Dictionary<byte, string>
+            {
+                { 0, "SimpleDiamond" },
+                { 1, "SimpleDiamond+Trans" },
+                { 3, "Compressed" },
+                { 6, "Compressed+6" },
+                { 7, "Compressed+7" },
+                { 8, "SimpleDiamond+8" },
+                { 9, "SimpleDiamond+9" },
+                { 16, "SimpleDiamond+16" },
+                { 17, "SimpleDiamond+17" },
+                { 34, "Compressed+34" },
+                { 35, "Compressed+35" }
+            };
+
+            foreach (var kvp in blockTypeStats.OrderBy(x => x.Key))
+            {
+                string name = typeNames.ContainsKey(kvp.Key) ? typeNames[kvp.Key] : $"Type_{kvp.Key}";
+                double pct = totalBlocks > 0 ? (double)kvp.Value / totalBlocks * 100 : 0;
+                Console.WriteLine($"{kvp.Key,-6} {name,-20} {kvp.Value,-10} {pct:F2}%");
+            }
+            Console.WriteLine(new string('-', 50));
+            Console.WriteLine($"{"總計",-6} {"",-20} {totalBlocks,-10}");
 
             return 0;
         }
