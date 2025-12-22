@@ -123,7 +123,7 @@ namespace L1MapViewer.CLI
             {
                 BlockX = s32Data.SegInfo.nBlockX,
                 BlockY = s32Data.SegInfo.nBlockY,
-                S32Data = GetS32Bytes(s32Data, stripL8Ext)
+                S32Data = GetS32Bytes(s32Data, stripL8Ext, layerFlags)
             };
             fs32.Blocks.Add(block);
 
@@ -154,7 +154,7 @@ namespace L1MapViewer.CLI
                 {
                     BlockX = s32Data.SegInfo.nBlockX,
                     BlockY = s32Data.SegInfo.nBlockY,
-                    S32Data = GetS32Bytes(s32Data, stripL8Ext)
+                    S32Data = GetS32Bytes(s32Data, stripL8Ext, layerFlags)
                 };
                 fs32.Blocks.Add(block);
 
@@ -185,7 +185,7 @@ namespace L1MapViewer.CLI
                 {
                     BlockX = s32Data.SegInfo.nBlockX,
                     BlockY = s32Data.SegInfo.nBlockY,
-                    S32Data = GetS32Bytes(s32Data, stripL8Ext)
+                    S32Data = GetS32Bytes(s32Data, stripL8Ext, layerFlags)
                 };
                 fs32.Blocks.Add(block);
 
@@ -199,25 +199,189 @@ namespace L1MapViewer.CLI
         }
 
         /// <summary>
-        /// 取得 S32 資料位元組，可選擇移除 Layer8 擴展資料
+        /// 取得 S32 資料位元組，根據 layerFlags 過濾圖層資料
         /// </summary>
-        private static byte[] GetS32Bytes(S32Data s32Data, bool stripL8Ext)
+        private static byte[] GetS32Bytes(S32Data s32Data, bool stripL8Ext, ushort layerFlags = 0xFF)
         {
-            if (!stripL8Ext)
+            // 如果所有圖層都選取且不需要移除 L8 擴展，直接返回原始資料
+            if (layerFlags == 0xFF && !stripL8Ext)
             {
                 return s32Data.OriginalFileData ?? S32Writer.ToBytes(s32Data);
             }
 
-            // 移除 Layer8 擴展資料
-            if (s32Data.Layer8HasExtendedData)
+            // 需要過濾圖層，建立副本避免修改原始資料
+            var filtered = CloneS32Data(s32Data);
+
+            // 根據 layerFlags 清除未選取的圖層
+            if ((layerFlags & 0x01) == 0) // Layer1
             {
-                s32Data.Layer8HasExtendedData = false;
-                foreach (var item in s32Data.Layer8)
+                for (int y = 0; y < 64; y++)
+                    for (int x = 0; x < 128; x++)
+                        filtered.Layer1[y, x] = new TileCell { TileId = 0, IndexId = 0 };
+            }
+
+            if ((layerFlags & 0x02) == 0) // Layer2
+            {
+                filtered.Layer2.Clear();
+            }
+
+            if ((layerFlags & 0x04) == 0) // Layer3
+            {
+                for (int y = 0; y < 64; y++)
+                    for (int x = 0; x < 64; x++)
+                        filtered.Layer3[y, x] = new MapAttribute { Attribute1 = 0, Attribute2 = 0 };
+            }
+
+            if ((layerFlags & 0x08) == 0) // Layer4
+            {
+                filtered.Layer4.Clear();
+            }
+
+            if ((layerFlags & 0x10) == 0) // Layer5
+            {
+                filtered.Layer5.Clear();
+            }
+
+            // Layer6 會由 S32Writer 自動重新計算
+
+            if ((layerFlags & 0x40) == 0) // Layer7
+            {
+                filtered.Layer7.Clear();
+            }
+
+            if ((layerFlags & 0x80) == 0) // Layer8
+            {
+                filtered.Layer8.Clear();
+                filtered.Layer8HasExtendedData = false;
+            }
+            else if (stripL8Ext && filtered.Layer8HasExtendedData)
+            {
+                // 移除 Layer8 擴展資料
+                filtered.Layer8HasExtendedData = false;
+                foreach (var item in filtered.Layer8)
                 {
                     item.ExtendedData = 0;
                 }
             }
-            return S32Writer.ToBytes(s32Data);
+
+            return S32Writer.ToBytes(filtered);
+        }
+
+        /// <summary>
+        /// 複製 S32Data (深層複製)
+        /// </summary>
+        private static S32Data CloneS32Data(S32Data source)
+        {
+            var clone = new S32Data
+            {
+                SegInfo = source.SegInfo,
+                Layer8HasExtendedData = source.Layer8HasExtendedData
+            };
+
+            // Layer1
+            for (int y = 0; y < 64; y++)
+            {
+                for (int x = 0; x < 128; x++)
+                {
+                    var src = source.Layer1[y, x];
+                    if (src != null)
+                    {
+                        clone.Layer1[y, x] = new TileCell
+                        {
+                            X = src.X,
+                            Y = src.Y,
+                            TileId = src.TileId,
+                            IndexId = src.IndexId
+                        };
+                    }
+                }
+            }
+
+            // Layer2
+            foreach (var item in source.Layer2)
+            {
+                clone.Layer2.Add(new Layer2Item
+                {
+                    X = item.X,
+                    Y = item.Y,
+                    IndexId = item.IndexId,
+                    TileId = item.TileId,
+                    UK = item.UK
+                });
+            }
+
+            // Layer3
+            for (int y = 0; y < 64; y++)
+            {
+                for (int x = 0; x < 64; x++)
+                {
+                    var src = source.Layer3[y, x];
+                    if (src != null)
+                    {
+                        clone.Layer3[y, x] = new MapAttribute
+                        {
+                            Attribute1 = src.Attribute1,
+                            Attribute2 = src.Attribute2
+                        };
+                    }
+                }
+            }
+
+            // Layer4
+            foreach (var obj in source.Layer4)
+            {
+                clone.Layer4.Add(new ObjectTile
+                {
+                    X = obj.X,
+                    Y = obj.Y,
+                    GroupId = obj.GroupId,
+                    Layer = obj.Layer,
+                    IndexId = obj.IndexId,
+                    TileId = obj.TileId
+                });
+            }
+
+            // Layer5
+            foreach (var item in source.Layer5)
+            {
+                clone.Layer5.Add(new Layer5Item
+                {
+                    X = item.X,
+                    Y = item.Y,
+                    ObjectIndex = item.ObjectIndex,
+                    Type = item.Type
+                });
+            }
+
+            // Layer6 (會由 S32Writer 重新計算)
+            clone.Layer6.AddRange(source.Layer6);
+
+            // Layer7
+            foreach (var item in source.Layer7)
+            {
+                clone.Layer7.Add(new Layer7Item
+                {
+                    Name = item.Name,
+                    X = item.X,
+                    Y = item.Y,
+                    TargetMapId = item.TargetMapId,
+                    PortalId = item.PortalId
+                });
+            }
+
+            // Layer8
+            foreach (var item in source.Layer8)
+            {
+                clone.Layer8.Add(new Layer8Item
+                {
+                    SprId = item.SprId,
+                    X = item.X,
+                    Y = item.Y,
+                    ExtendedData = item.ExtendedData
+                });
+            }
+
+            return clone;
         }
 
         /// <summary>
