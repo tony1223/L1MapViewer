@@ -567,7 +567,9 @@ namespace L1FlyMapViewer
             openToolStripMenuItem.Text = LocalizationManager.L("Menu_File_OpenClient");
             importMaterialToolStripMenuItem.Text = LocalizationManager.L("Menu_Import_Material");
             importFs32ToNewMapToolStripMenuItem.Text = LocalizationManager.L("Menu_Import_Fs32ToNewMap");
-            exportToolStripMenuItem.Text = LocalizationManager.L("Menu_File_Export");
+            exportToolStripMenuItem.Text = LocalizationManager.L("Menu_Export_ServerPassability");
+            exportL1JToolStripMenuItem.Text = LocalizationManager.L("Menu_Export_L1JFormat");
+            exportDIRToolStripMenuItem.Text = LocalizationManager.L("Menu_Export_DIRFormat");
             discordToolStripMenuItem.Text = LocalizationManager.L("Menu_Help_Discord");
 
             // 頁籤

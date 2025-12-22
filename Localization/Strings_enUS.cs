@@ -20,6 +20,9 @@ namespace L1MapViewer.Localization
             { "Menu_MapEditor", "Map Editor" },
             { "Menu_Help_Discord", "Discuss on Discord" },
             { "Menu_Language", "Language" },
+            { "Menu_Export_ServerPassability", "Export Server Passability" },
+            { "Menu_Export_L1JFormat", "L1J Format" },
+            { "Menu_Export_DIRFormat", "DIR Format" },
 
             // === Tab Pages ===
             { "Tab_MapPreview", "Map Preview" },
