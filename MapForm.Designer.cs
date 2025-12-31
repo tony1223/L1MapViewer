@@ -295,12 +295,10 @@ namespace L1FlyMapViewer
             this.tabS32Files.SuspendLayout();
             ((ISupportInitialize)this.miniMapPictureBox).BeginInit();
             this.tabControl1.SuspendLayout();
-            this.tabMapPreview.SuspendLayout();
             this.tabS32Editor.SuspendLayout();
             this.s32EditorPanel.SuspendLayout();
             this.s32LayerControlPanel.SuspendLayout();
             this.s32MapPanel.SuspendLayout();
-            this.panel1.SuspendLayout();
             ((ISupportInitialize)this.pictureBox4).BeginInit();
             ((ISupportInitialize)this.pictureBox3).BeginInit();
             ((ISupportInitialize)this.pictureBox2).BeginInit();
@@ -652,11 +650,10 @@ namespace L1FlyMapViewer
             //
             // tabControl1
             //
-            this.tabControl1.Controls.Add(this.tabMapPreview);
             this.tabControl1.Controls.Add(this.tabS32Editor);
             this.tabControl1.Location = new Point(290, 34);
             this.tabControl1.Name = "tabControl1";
-            this.tabControl1.SelectedIndex = 1;  // 預設開啟 S32 編輯器
+            this.tabControl1.SelectedIndex = 0;  // S32 編輯器
             this.tabControl1.Size = new Size(710, 640);
             this.tabControl1.TabIndex = 3;
 
@@ -1666,13 +1663,11 @@ namespace L1FlyMapViewer
             this.leftPanel.PerformLayout();
             ((ISupportInitialize)this.miniMapPictureBox).EndInit();
             this.tabControl1.ResumeLayout(false);
-            this.tabMapPreview.ResumeLayout(false);
             this.tabS32Editor.ResumeLayout(false);
             this.s32EditorPanel.ResumeLayout(false);
             this.s32LayerControlPanel.ResumeLayout(false);
             this.s32LayerControlPanel.PerformLayout();
             this.s32MapPanel.ResumeLayout(false);
-            this.panel1.ResumeLayout(false);
             ((ISupportInitialize)this.pictureBox4).EndInit();
             ((ISupportInitialize)this.pictureBox3).EndInit();
             ((ISupportInitialize)this.pictureBox2).EndInit();

@@ -261,6 +261,15 @@ namespace L1MapViewer.Controls
         }
 
         /// <summary>
+        /// 只重繪覆蓋層，不重新渲染地圖
+        /// 用於選取區域變更等不需要重新渲染地圖的情況
+        /// </summary>
+        public void InvalidateOverlay()
+        {
+            _mapPictureBox.Invalidate();
+        }
+
+        /// <summary>
         /// 使指定 S32 的快取失效
         /// </summary>
         public void InvalidateS32(string filePath)

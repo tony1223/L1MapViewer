@@ -9638,9 +9638,9 @@ namespace L1FlyMapViewer
                 }
                 boundsSw.Stop();
 
-                // 重繪以顯示選擇框
+                // 重繪覆蓋層以顯示選擇框（不需要重新渲染地圖）
                 var invalidateSw = Stopwatch.StartNew();
-                _mapViewerControl.Refresh();
+                _mapViewerControl.InvalidateOverlay();
                 invalidateSw.Stop();
 
                 totalSw.Stop();
@@ -9780,8 +9780,8 @@ namespace L1FlyMapViewer
                     }
                     else
                     {
-                        // 保留選取框顯示
-                        _mapViewerControl.Refresh();
+                        // 保留選取框顯示（只更新覆蓋層）
+                        _mapViewerControl.InvalidateOverlay();
                     }
                     totalSw.Stop();
                     LogPerf($"[MOUSE-UP-SELECT] bounds={boundsSw.ElapsedMilliseconds}ms, origin={originSw.ElapsedMilliseconds}ms, thumb={thumbSw.ElapsedMilliseconds}ms, total={totalSw.ElapsedMilliseconds}ms, cells={_editState.SelectedCells.Count}");
@@ -9814,12 +9814,40 @@ namespace L1FlyMapViewer
                 ShowSelectionContextMenu(e.Location);
                 return;
             }
+
         }
 
         // 顯示選取區域右鍵選單
         private void ShowSelectionContextMenu(Point location)
         {
             var menu = new ContextMenuStrip();
+
+            // 查看詳細資料（使用滑鼠位置的格子，或第一個選中的格子）
+            var coords = ScreenToGameCoords(location.X, location.Y);
+            SelectedCell detailCell = null;
+            if (coords.s32Data != null)
+            {
+                // 優先使用滑鼠位置的格子
+                detailCell = _editState.SelectedCells.FirstOrDefault(c =>
+                    c.S32Data == coords.s32Data && c.LocalX == coords.localX && c.LocalY == coords.localY);
+            }
+            if (detailCell == null && _editState.SelectedCells.Count > 0)
+            {
+                detailCell = _editState.SelectedCells[0];
+            }
+
+            if (detailCell != null)
+            {
+                var detailItem = new ToolStripMenuItem("查看詳細資料...");
+                detailItem.Click += (s, e) => {
+                    _editState.HighlightedS32Data = detailCell.S32Data;
+                    _editState.HighlightedCellX = detailCell.LocalX;
+                    _editState.HighlightedCellY = detailCell.LocalY;
+                    ShowCellLayersDialog(detailCell.LocalX, detailCell.LocalY);
+                };
+                menu.Items.Add(detailItem);
+                menu.Items.Add(new ToolStripSeparator());
+            }
 
             var exportFs32Item = new ToolStripMenuItem("匯出為 fs32 地圖包...");
             exportFs32Item.Click += (s, e) => ExportSelectionAsFs32();
