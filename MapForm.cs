@@ -17,6 +17,7 @@ using L1MapViewer.Localization;
 using L1MapViewer.Models;
 using L1MapViewer.Other;
 using L1MapViewer.Reader;
+using Lin.Helper.Core.Sprite;
 
 namespace L1FlyMapViewer
 {
@@ -18840,7 +18841,84 @@ namespace L1FlyMapViewer
             // ListView 排序狀態
             Dictionary<ListView, (int column, bool ascending)> sortStates = new Dictionary<ListView, (int, bool)>();
 
+            // SPR 圖片快取
+            Dictionary<int, Image> sprImageCache = new Dictionary<int, Image>();
+            Dictionary<int, Image> sprFullImageCache = new Dictionary<int, Image>(); // 大圖快取
+            HashSet<int> sprLoadFailed = new HashSet<int>(); // 追蹤載入失敗的 SPR
+            ImageList sprImageList = new ImageList();
+            sprImageList.ImageSize = new Size(48, 48);
+            sprImageList.ColorDepth = ColorDepth.Depth32Bit;
+
+            // 載入 SPR 圖片的輔助方法 (返回縮圖, 成功時也快取大圖)
+            Image LoadSprImage(int sprId)
+            {
+                if (sprImageCache.TryGetValue(sprId, out Image cached))
+                    return cached;
+
+                try
+                {
+                    string sprKey = $"{sprId}-0.spr";
+                    byte[] sprData = L1PakReader.UnPack("Sprite", sprKey);
+                    if (sprData != null && sprData.Length > 0)
+                    {
+                        var frames = SprReader.LoadRaw(sprData);
+                        if (frames != null && frames.Length > 0)
+                        {
+                            var frame = frames[0];
+                            if (frame.Width > 0 && frame.Height > 0 && frame.Pixels != null)
+                            {
+                                // 從 RGBA byte[] 建立原始大小圖片
+                                Bitmap fullBmp = new Bitmap(frame.Width, frame.Height, PixelFormat.Format32bppArgb);
+                                var fullBmpData = fullBmp.LockBits(
+                                    new Rectangle(0, 0, frame.Width, frame.Height),
+                                    ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
+                                System.Runtime.InteropServices.Marshal.Copy(frame.Pixels, 0, fullBmpData.Scan0, frame.Pixels.Length);
+                                fullBmp.UnlockBits(fullBmpData);
+                                sprFullImageCache[sprId] = fullBmp;
+
+                                // 建立 48x48 的縮圖
+                                Bitmap bmp = new Bitmap(48, 48, PixelFormat.Format32bppArgb);
+                                using (Graphics g = Graphics.FromImage(bmp))
+                                {
+                                    g.Clear(Color.FromArgb(40, 40, 40));
+                                    // 縮放到 48x48 並置中
+                                    float scale = Math.Min(44f / frame.Width, 44f / frame.Height);
+                                    int newW = (int)(frame.Width * scale);
+                                    int newH = (int)(frame.Height * scale);
+                                    int x = (48 - newW) / 2;
+                                    int y = (48 - newH) / 2;
+                                    g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBilinear;
+                                    g.DrawImage(fullBmp, x, y, newW, newH);
+                                }
+                                sprImageCache[sprId] = bmp;
+                                return bmp;
+                            }
+                        }
+                    }
+                }
+                catch { }
+
+                // 載入失敗
+                sprLoadFailed.Add(sprId);
+
+                // 建立佔位圖
+                Bitmap placeholder = new Bitmap(48, 48, PixelFormat.Format32bppArgb);
+                using (Graphics g = Graphics.FromImage(placeholder))
+                {
+                    g.Clear(Color.FromArgb(60, 60, 60));
+                    using (Font font = new Font("Consolas", 7))
+                    {
+                        string text = sprId.ToString();
+                        var size = g.MeasureString(text, font);
+                        g.DrawString(text, font, Brushes.Gray, (48 - size.Width) / 2, (48 - size.Height) / 2);
+                    }
+                }
+                sprImageCache[sprId] = placeholder;
+                return placeholder;
+            }
+
             // 建立兩個 ListView 的輔助方法
+            // 欄位順序: S32檔案(0), 擴展(1), SprId(2), 預覽(3), X(4), Y(5), ExtData(6)
             ListView CreateL8ListView()
             {
                 ListView lv = new ListView();
@@ -18849,12 +18927,14 @@ namespace L1FlyMapViewer
                 lv.View = View.Details;
                 lv.FullRowSelect = true;
                 lv.CheckBoxes = true;
-                lv.Columns.Add("S32 檔案", 120);
-                lv.Columns.Add("擴展", 50);
-                lv.Columns.Add("SprId", 70);
-                lv.Columns.Add("X", 60);
-                lv.Columns.Add("Y", 60);
-                lv.Columns.Add("ExtData", 80);
+                lv.SmallImageList = sprImageList;
+                lv.Columns.Add("S32 檔案", 100);
+                lv.Columns.Add("擴展", 45);
+                lv.Columns.Add("SprId", 60);
+                lv.Columns.Add("預覽", 55);
+                lv.Columns.Add("X", 50);
+                lv.Columns.Add("Y", 50);
+                lv.Columns.Add("ExtData", 70);
 
                 // 初始化排序狀態
                 sortStates[lv] = (-1, true);
@@ -18880,6 +18960,53 @@ namespace L1FlyMapViewer
             ListView lvAll = CreateL8ListView();
             tabSelected.Controls.Add(lvSelected);
             tabAll.Controls.Add(lvAll);
+
+            // 預覽區域 (右側)
+            GroupBox gbPreview = new GroupBox();
+            gbPreview.Text = "SPR 預覽";
+            gbPreview.Location = new Point(640, 115);
+            gbPreview.Size = new Size(180, 330);
+            resultForm.Controls.Add(gbPreview);
+
+            PictureBox pbPreview = new PictureBox();
+            pbPreview.Location = new Point(10, 20);
+            pbPreview.Size = new Size(160, 160);
+            pbPreview.BackColor = Color.FromArgb(40, 40, 40);
+            pbPreview.SizeMode = PictureBoxSizeMode.Zoom;
+            pbPreview.BorderStyle = BorderStyle.FixedSingle;
+            gbPreview.Controls.Add(pbPreview);
+
+            Label lblPreviewInfo = new Label();
+            lblPreviewInfo.Location = new Point(10, 185);
+            lblPreviewInfo.Size = new Size(160, 45);
+            lblPreviewInfo.Text = "選取項目以預覽";
+            lblPreviewInfo.ForeColor = Color.Gray;
+            gbPreview.Controls.Add(lblPreviewInfo);
+
+            // 跳轉按鈕
+            Button btnJumpToLocation = new Button();
+            btnJumpToLocation.Text = "跳轉到位置";
+            btnJumpToLocation.Location = new Point(10, 232);
+            btnJumpToLocation.Size = new Size(160, 25);
+            btnJumpToLocation.Enabled = false;
+            gbPreview.Controls.Add(btnJumpToLocation);
+
+            // 篩選無圖項目
+            CheckBox chkFilterNoImage = new CheckBox();
+            chkFilterNoImage.Text = "只顯示無圖項目";
+            chkFilterNoImage.Location = new Point(10, 260);
+            chkFilterNoImage.Size = new Size(160, 24);
+            chkFilterNoImage.ForeColor = Color.OrangeRed;
+            gbPreview.Controls.Add(chkFilterNoImage);
+
+            Label lblNoImageCount = new Label();
+            lblNoImageCount.Location = new Point(10, 285);
+            lblNoImageCount.Size = new Size(160, 20);
+            lblNoImageCount.ForeColor = Color.Gray;
+            gbPreview.Controls.Add(lblNoImageCount);
+
+            // 調整 TabControl 大小以容納預覽區
+            tabControl.Size = new Size(620, 330);
             resultForm.Controls.Add(tabControl);
 
             // 目前作用中的 ListView（用於編輯操作）
@@ -18950,7 +19077,7 @@ namespace L1FlyMapViewer
                         var (lvFilePath, lvItem) = ((string, Layer8Item))lvi.Tag;
                         if (lvFilePath == filePath)
                         {
-                            lvi.SubItems[1].Text = "是";  // 擴展欄位
+                            lvi.SubItems[1].Text = "是";  // 擴展欄位 (索引 1)
                         }
                     }
                     // 更新摘要
@@ -18991,8 +19118,8 @@ namespace L1FlyMapViewer
                         var (lvFilePath, lvItem) = ((string, Layer8Item))lvi.Tag;
                         if (lvFilePath == filePath)
                         {
-                            lvi.SubItems[1].Text = "";  // 擴展欄位
-                            lvi.SubItems[5].Text = "0"; // ExtData 欄位
+                            lvi.SubItems[1].Text = "";  // 擴展欄位 (索引 1)
+                            lvi.SubItems[6].Text = "0"; // ExtData 欄位 (索引 6)
                         }
                     }
                     // 更新摘要
@@ -19046,11 +19173,11 @@ namespace L1FlyMapViewer
                 }
                 if (cmbS32Extended.Items.Count > 0) cmbS32Extended.SelectedIndex = 0;
                 lblCurrentStatus.Text = "目前：一般格式";
-                // 更新 ListView 中所有項目的擴展欄位
+                // 更新 ListView 中所有項目的擴展欄位 (索引: 0=檔案, 1=擴展, 2=SprId, 3=預覽, 4=X, 5=Y, 6=ExtData)
                 foreach (ListViewItem lvi in lvItems.Items)
                 {
-                    lvi.SubItems[1].Text = "";  // 擴展欄位
-                    lvi.SubItems[5].Text = "0"; // ExtData 欄位
+                    lvi.SubItems[1].Text = "";  // 擴展欄位 (索引 1)
+                    lvi.SubItems[6].Text = "0"; // ExtData 欄位 (索引 6)
                 }
                 lblSummary.Text = $"共 {s32WithL8.Count} 個 S32 有 Layer8 資料，總計 {totalItems} 項。0 個 S32 使用擴展格式。";
                 MessageBox.Show($"已將 {currentExtCount} 個 S32 檔案重設為一般格式，並清除 {clearedItemCount} 個項目的 ExtendedData。\n請記得儲存 S32 檔案。", "完成", MessageBoxButtons.OK, MessageBoxIcon.Information);
@@ -19079,8 +19206,10 @@ namespace L1FlyMapViewer
             resultForm.Controls.Add(gbExtended);
 
             // 填入 ListView 資料的輔助方法
-            void FillListView(ListView lv, List<(string filePath, string fileName, int count, List<Layer8Item> items)> dataList)
+            // 欄位順序: S32檔案(0), 擴展(1), SprId(2), 預覽(3), X(4), Y(5), ExtData(6)
+            void FillListView(ListView lv, List<(string filePath, string fileName, int count, List<Layer8Item> items)> dataList, bool filterNoImage = false)
             {
+                lv.Items.Clear();
                 if (dataList.Count == 0)
                 {
                     lv.Items.Add(new ListViewItem("沒有任何 S32 檔案有 Layer8 資料"));
@@ -19093,9 +19222,25 @@ namespace L1FlyMapViewer
                         bool hasExtended = _document.S32Files.TryGetValue(filePath, out S32Data s32) && s32.Layer8HasExtendedData;
                         foreach (var item in items)
                         {
+                            // 篩選無圖項目
+                            if (filterNoImage && !sprLoadFailed.Contains(item.SprId))
+                                continue;
+
+                            // 載入 SPR 圖片
+                            Image sprImg = LoadSprImage(item.SprId);
+                            string imgKey = $"spr_{item.SprId}";
+                            if (!sprImageList.Images.ContainsKey(imgKey))
+                            {
+                                sprImageList.Images.Add(imgKey, sprImg);
+                            }
+
+                            // 欄位順序: S32檔案(0), 擴展(1), SprId(2), 預覽(3), X(4), Y(5), ExtData(6)
                             ListViewItem lvi = new ListViewItem(fileName);
                             lvi.SubItems.Add(hasExtended ? "是" : "");
                             lvi.SubItems.Add(item.SprId.ToString());
+                            lvi.SubItems.Add(""); // 預覽欄位 (圖片)
+                            lvi.SubItems[3].Tag = imgKey; // 儲存圖片 key
+                            lvi.ImageKey = imgKey; // 使用 ImageKey 顯示圖片
                             lvi.SubItems.Add(item.X.ToString());
                             lvi.SubItems.Add(item.Y.ToString());
                             lvi.SubItems.Add(item.ExtendedData.ToString());
@@ -19109,6 +19254,111 @@ namespace L1FlyMapViewer
             // 填入兩個 ListView
             FillListView(lvSelected, s32WithL8Selected);
             FillListView(lvAll, s32WithL8All);
+
+            // 更新無圖項目計數
+            int noImageCount = sprLoadFailed.Count;
+            lblNoImageCount.Text = $"無圖項目: {noImageCount} 個 SPR";
+
+            // 篩選無圖項目
+            chkFilterNoImage.CheckedChanged += (s, args) =>
+            {
+                FillListView(lvSelected, s32WithL8Selected, chkFilterNoImage.Checked);
+                FillListView(lvAll, s32WithL8All, chkFilterNoImage.Checked);
+            };
+
+            // 目前選取的項目資訊 (用於跳轉)
+            (string filePath, Layer8Item item)? currentSelectedItem = null;
+
+            // 選取項目時更新預覽
+            void UpdatePreview(ListView lv)
+            {
+                if (lv.SelectedItems.Count == 1 && lv.SelectedItems[0].Tag != null)
+                {
+                    var lvi = lv.SelectedItems[0];
+                    var (filePath, item) = ((string, Layer8Item))lvi.Tag;
+                    currentSelectedItem = (filePath, item);
+                    btnJumpToLocation.Enabled = true;
+
+                    // 顯示大圖
+                    if (sprFullImageCache.TryGetValue(item.SprId, out Image fullImg))
+                    {
+                        pbPreview.Image = fullImg;
+                        lblPreviewInfo.Text = $"SprId: {item.SprId}\n大小: {fullImg.Width}x{fullImg.Height}\n位置: ({item.X}, {item.Y})";
+                        lblPreviewInfo.ForeColor = Color.White;
+                    }
+                    else
+                    {
+                        pbPreview.Image = null;
+                        lblPreviewInfo.Text = $"SprId: {item.SprId}\n(無法載入圖片)\n位置: ({item.X}, {item.Y})";
+                        lblPreviewInfo.ForeColor = Color.OrangeRed;
+                    }
+                }
+                else
+                {
+                    currentSelectedItem = null;
+                    btnJumpToLocation.Enabled = false;
+                    pbPreview.Image = null;
+                    lblPreviewInfo.Text = "選取項目以預覽";
+                    lblPreviewInfo.ForeColor = Color.Gray;
+                }
+            }
+
+            lvSelected.SelectedIndexChanged += (s, args) => UpdatePreview(lvSelected);
+            lvAll.SelectedIndexChanged += (s, args) => UpdatePreview(lvAll);
+
+            // 跳轉按鈕點擊事件
+            btnJumpToLocation.Click += (s, args) =>
+            {
+                if (currentSelectedItem == null) return;
+                var (filePath, item) = currentSelectedItem.Value;
+
+                if (_document.S32Files.TryGetValue(filePath, out S32Data s32Data))
+                {
+                    // 直接使用已知的 S32 來計算跳轉位置
+                    // item.X, item.Y 是相對於 S32 的本地座標
+                    int localX = item.X;
+                    int localY = item.Y;
+
+                    // 計算世界像素座標
+                    int[] loc = s32Data.SegInfo.GetLoc(1.0);
+                    int mx = loc[0];
+                    int my = loc[1];
+
+                    // S32 的渲染邏輯：菱形地圖
+                    int layer1X = localX * 2;  // 轉換為 Layer1 座標
+                    int localBaseX = -24 * (layer1X / 2);
+                    int localBaseY = 63 * 12 - 12 * (layer1X / 2);
+
+                    int worldX = mx + localBaseX + layer1X * 24 + localY * 24;
+                    int worldY = my + localBaseY + localY * 12;
+
+                    // 捲動到該位置（置中）
+                    int viewportWidthWorld = (int)(s32MapPanel.Width / s32ZoomLevel);
+                    int viewportHeightWorld = (int)(s32MapPanel.Height / s32ZoomLevel);
+                    int scrollX = worldX - viewportWidthWorld / 2;
+                    int scrollY = worldY - viewportHeightWorld / 2;
+
+                    int maxScrollX = Math.Max(0, _viewState.MapWidth - viewportWidthWorld);
+                    int maxScrollY = Math.Max(0, _viewState.MapHeight - viewportHeightWorld);
+                    scrollX = Math.Max(0, Math.Min(scrollX, maxScrollX));
+                    scrollY = Math.Max(0, Math.Min(scrollY, maxScrollY));
+
+                    _viewState.SetScrollSilent(scrollX, scrollY);
+
+                    // 設定高亮
+                    _editState.HighlightedS32Data = s32Data;
+                    _editState.HighlightedCellX = layer1X;
+                    _editState.HighlightedCellY = localY;
+
+                    // 觸發重繪
+                    CheckAndRerenderIfNeeded();
+                    UpdateMiniMap();
+
+                    int globalX = s32Data.SegInfo.nLinBeginX + item.X;
+                    int globalY = s32Data.SegInfo.nLinBeginY + item.Y;
+                    this.toolStripStatusLabel1.Text = $"已跳轉到 L8 項目位置 ({globalX}, {globalY}) - SprId: {item.SprId}";
+                }
+            };
 
             List<(string filePath, Layer8Item item)> itemInfoList = new List<(string, Layer8Item)>();
             foreach (var (filePath, fileName, count, items) in s32WithL8All)
@@ -19164,11 +19414,11 @@ namespace L1FlyMapViewer
                 item.Y = newY;
                 item.ExtendedData = newExtData;
 
-                // 更新 ListView 顯示 (索引: 0=檔案, 1=擴展, 2=SprId, 3=X, 4=Y, 5=ExtData)
+                // 更新 ListView 顯示 (索引: 0=檔案, 1=擴展, 2=SprId, 3=預覽, 4=X, 5=Y, 6=ExtData)
                 lvi.SubItems[2].Text = item.SprId.ToString();
-                lvi.SubItems[3].Text = item.X.ToString();
-                lvi.SubItems[4].Text = item.Y.ToString();
-                lvi.SubItems[5].Text = item.ExtendedData.ToString();
+                lvi.SubItems[4].Text = item.X.ToString();
+                lvi.SubItems[5].Text = item.Y.ToString();
+                lvi.SubItems[6].Text = item.ExtendedData.ToString();
 
                 // 標記已修改
                 if (_document.S32Files.TryGetValue(filePath, out S32Data s32Data))
@@ -19235,10 +19485,20 @@ namespace L1FlyMapViewer
                         s32Data.Layer8.Add(newItem);
                         s32Data.IsModified = true;
 
-                        // 更新 ListView (索引: 0=檔案, 1=擴展, 2=SprId, 3=X, 4=Y, 5=ExtData)
+                        // 載入 SPR 圖片
+                        Image sprImg = LoadSprImage(newSprId);
+                        string imgKey = $"spr_{newSprId}";
+                        if (!sprImageList.Images.ContainsKey(imgKey))
+                        {
+                            sprImageList.Images.Add(imgKey, sprImg);
+                        }
+
+                        // 更新 ListView (索引: 0=檔案, 1=擴展, 2=SprId, 3=預覽, 4=X, 5=Y, 6=ExtData)
                         ListViewItem lvi = new ListViewItem(selectedFileName);
                         lvi.SubItems.Add(s32Data.Layer8HasExtendedData ? "是" : "");
                         lvi.SubItems.Add(newItem.SprId.ToString());
+                        lvi.SubItems.Add(""); // 預覽欄位
+                        lvi.ImageKey = imgKey;
                         lvi.SubItems.Add(newItem.X.ToString());
                         lvi.SubItems.Add(newItem.Y.ToString());
                         lvi.SubItems.Add(newItem.ExtendedData.ToString());
@@ -19254,6 +19514,118 @@ namespace L1FlyMapViewer
 
             gbEdit.Controls.AddRange(new Control[] { lblSprId, txtSprId, lblX, txtX, lblY, txtY, lblExtData, txtExtData, btnApplyEdit, btnAddNew });
             resultForm.Controls.Add(gbEdit);
+
+            // 批次取代區域
+            GroupBox gbBatchReplace = new GroupBox();
+            gbBatchReplace.Text = "批次取代 SprId";
+            gbBatchReplace.Location = new Point(10, 540);
+            gbBatchReplace.Size = new Size(500, 50);
+
+            Label lblFromSpr = new Label { Text = "將 SprId:", Location = new Point(10, 20), Size = new Size(60, 20) };
+            TextBox txtFromSprId = new TextBox { Location = new Point(75, 17), Size = new Size(70, 23) };
+            Label lblToSpr = new Label { Text = "改為:", Location = new Point(155, 20), Size = new Size(40, 20) };
+            TextBox txtToSprId = new TextBox { Location = new Point(195, 17), Size = new Size(70, 23) };
+
+            Button btnBatchReplace = new Button();
+            btnBatchReplace.Text = "批次取代";
+            btnBatchReplace.Location = new Point(280, 15);
+            btnBatchReplace.Size = new Size(80, 25);
+            btnBatchReplace.Click += (s, args) =>
+            {
+                if (!ushort.TryParse(txtFromSprId.Text, out ushort fromSprId) ||
+                    !ushort.TryParse(txtToSprId.Text, out ushort toSprId))
+                {
+                    MessageBox.Show("請輸入有效的 SprId 數值", "錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+
+                if (fromSprId == toSprId)
+                {
+                    MessageBox.Show("來源和目標 SprId 相同", "提示", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    return;
+                }
+
+                // 計算會影響多少項目
+                int affectedCount = 0;
+                foreach (var kvp in _document.S32Files)
+                {
+                    foreach (var item in kvp.Value.Layer8)
+                    {
+                        if (item.SprId == fromSprId) affectedCount++;
+                    }
+                }
+
+                if (affectedCount == 0)
+                {
+                    MessageBox.Show($"找不到 SprId = {fromSprId} 的項目", "提示", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    return;
+                }
+
+                var confirmResult = MessageBox.Show(
+                    $"確定要將所有 SprId = {fromSprId} 的項目 ({affectedCount} 個) 改為 SprId = {toSprId} 嗎？",
+                    "確認批次取代",
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Question);
+
+                if (confirmResult != DialogResult.Yes) return;
+
+                // 執行批次取代
+                int replacedCount = 0;
+                HashSet<string> modifiedFiles = new HashSet<string>();
+                foreach (var kvp in _document.S32Files)
+                {
+                    foreach (var item in kvp.Value.Layer8)
+                    {
+                        if (item.SprId == fromSprId)
+                        {
+                            item.SprId = toSprId;
+                            replacedCount++;
+                            modifiedFiles.Add(kvp.Key);
+                        }
+                    }
+                    if (modifiedFiles.Contains(kvp.Key))
+                    {
+                        kvp.Value.IsModified = true;
+                    }
+                }
+
+                // 載入新的 SPR 圖片
+                Image newSprImg = LoadSprImage(toSprId);
+                string newImgKey = $"spr_{toSprId}";
+                if (!sprImageList.Images.ContainsKey(newImgKey))
+                {
+                    sprImageList.Images.Add(newImgKey, newSprImg);
+                }
+
+                // 更新 ListView 顯示
+                foreach (ListView lv in new[] { lvSelected, lvAll })
+                {
+                    foreach (ListViewItem lvi in lv.Items)
+                    {
+                        if (lvi.Tag == null) continue;
+                        var (filePath, item) = ((string, Layer8Item))lvi.Tag;
+                        if (item.SprId == toSprId && lvi.SubItems[2].Text == fromSprId.ToString())
+                        {
+                            lvi.SubItems[2].Text = toSprId.ToString();
+                            lvi.ImageKey = newImgKey;
+                        }
+                    }
+                }
+
+                MessageBox.Show(
+                    $"已將 {replacedCount} 個項目的 SprId 從 {fromSprId} 改為 {toSprId}。\n影響 {modifiedFiles.Count} 個 S32 檔案。\n\n請記得儲存 S32 檔案。",
+                    "批次取代完成",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+            };
+
+            Label lblBatchHint = new Label { Text = "(影響全部 S32)", Location = new Point(370, 20), Size = new Size(120, 20), ForeColor = Color.Gray };
+
+            gbBatchReplace.Controls.AddRange(new Control[] { lblFromSpr, txtFromSprId, lblToSpr, txtToSprId, btnBatchReplace, lblBatchHint });
+            resultForm.Controls.Add(gbBatchReplace);
+
+            // 調整表單高度以容納批次取代區域
+            resultForm.Size = new Size(850, 730);
 
             // 選取項目時填入編輯區（為兩個 ListView 都註冊事件）
             void OnListViewSelectionChanged(object sender, EventArgs args)
@@ -19274,7 +19646,7 @@ namespace L1FlyMapViewer
 
             Button btnSelectAll = new Button();
             btnSelectAll.Text = "全選";
-            btnSelectAll.Location = new Point(10, 545);
+            btnSelectAll.Location = new Point(10, 600);
             btnSelectAll.Size = new Size(80, 30);
             btnSelectAll.Click += (s, args) =>
             {
@@ -19286,7 +19658,7 @@ namespace L1FlyMapViewer
 
             Button btnDeselectAll = new Button();
             btnDeselectAll.Text = "取消全選";
-            btnDeselectAll.Location = new Point(100, 545);
+            btnDeselectAll.Location = new Point(100, 600);
             btnDeselectAll.Size = new Size(80, 30);
             btnDeselectAll.Click += (s, args) =>
             {
@@ -19298,7 +19670,7 @@ namespace L1FlyMapViewer
 
             Button btnClearSelected = new Button();
             btnClearSelected.Text = "刪除勾選項目";
-            btnClearSelected.Location = new Point(10, 585);
+            btnClearSelected.Location = new Point(10, 640);
             btnClearSelected.Size = new Size(120, 35);
             btnClearSelected.BackColor = Color.LightCoral;
             btnClearSelected.Enabled = s32WithL8.Count > 0;
@@ -19354,7 +19726,7 @@ namespace L1FlyMapViewer
 
             Button btnClearAll = new Button();
             btnClearAll.Text = "刪除全部 L8";
-            btnClearAll.Location = new Point(140, 585);
+            btnClearAll.Location = new Point(140, 640);
             btnClearAll.Size = new Size(120, 35);
             btnClearAll.BackColor = Color.Salmon;
             btnClearAll.Enabled = s32WithL8.Count > 0;
@@ -19389,25 +19761,13 @@ namespace L1FlyMapViewer
 
             Button btnClose = new Button();
             btnClose.Text = "關閉";
-            btnClose.Location = new Point(730, 585);
+            btnClose.Location = new Point(730, 640);
             btnClose.Size = new Size(90, 35);
             btnClose.Click += (s, args) => resultForm.Close();
             resultForm.Controls.Add(btnClose);
 
-            resultForm.Resize += (s, args) =>
-            {
-                gbExtended.Size = new Size(resultForm.ClientSize.Width - 20, 75);
-                tabControl.Size = new Size(resultForm.ClientSize.Width - 20, resultForm.ClientSize.Height - 260);
-                gbEdit.Location = new Point(10, resultForm.ClientSize.Height - 135);
-                gbEdit.Size = new Size(resultForm.ClientSize.Width - 20, 80);
-                btnSelectAll.Location = new Point(10, resultForm.ClientSize.Height - 45);
-                btnDeselectAll.Location = new Point(100, resultForm.ClientSize.Height - 45);
-                btnClearSelected.Location = new Point(200, resultForm.ClientSize.Height - 45);
-                btnClearAll.Location = new Point(330, resultForm.ClientSize.Height - 45);
-                btnClose.Location = new Point(resultForm.ClientSize.Width - 100, resultForm.ClientSize.Height - 45);
-            };
-
-            resultForm.ShowDialog();
+            // 使用非模態對話框，可以平行瀏覽地圖
+            resultForm.Show();
         }
 
         // 查看與編輯第一層（地板圖塊）資料
