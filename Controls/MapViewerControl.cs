@@ -370,6 +370,12 @@ namespace L1MapViewer.Controls
                 // 取消進行中的渲染
                 _renderCts?.Cancel();
                 _dragRenderTimer.Stop();
+
+                // 也觸發 MapMouseDown 事件，讓外部可以追蹤拖曳狀態
+                var worldPoint = ScreenToWorld(e.Location);
+                var (gameX, gameY) = WorldToGameCoords(worldPoint);
+                MapMouseDown?.Invoke(this, new MapMouseEventArgs(
+                    e.Button, e.Location, worldPoint, gameX, gameY, 0, Control.ModifierKeys));
             }
             else
             {
@@ -416,6 +422,12 @@ namespace L1MapViewer.Controls
 
                 // 延遲渲染
                 _dragRenderTimer.Start();
+
+                // 也觸發 MapMouseUp 事件，讓外部可以處理拖曳結束
+                var worldPoint = ScreenToWorld(e.Location);
+                var (gameX, gameY) = WorldToGameCoords(worldPoint);
+                MapMouseUp?.Invoke(this, new MapMouseEventArgs(
+                    e.Button, e.Location, worldPoint, gameX, gameY, 0, Control.ModifierKeys));
             }
             else
             {
