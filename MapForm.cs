@@ -15984,29 +15984,43 @@ namespace L1FlyMapViewer
             if (newTileIds.Count == 0)
                 return;
 
-            // 檢查是否超過上限
-            var checkResult = TileHashManager.CheckTileIdsOverLimit(newTileIds);
-            if (!checkResult.IsOver)
-                return;
-
-            // 超過上限，詢問用戶是否擴充
-            string message = $"Tile ID 已達上限！\n\n" +
-                             $"目前上限: {checkResult.CurrentLimit}\n" +
-                             $"最大 Tile ID: {checkResult.MaxTileId}\n\n" +
-                             $"超過上限的 Tile 將顯示為三角形圖案。\n" +
-                             $"是否將上限擴充 +5000？\n" +
-                             $"(新上限: {checkResult.CurrentLimit + 5000})";
-
-            if (MessageBox.Show(message, "Tile 上限警告", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes)
+            // 循環檢查，直到上限滿足或用戶取消
+            while (true)
             {
-                int newLimit = checkResult.CurrentLimit + 5000;
-                if (TileHashManager.UpdateTileLimit(newLimit))
+                // 檢查是否超過上限
+                var checkResult = TileHashManager.CheckTileIdsOverLimit(newTileIds);
+                if (!checkResult.IsOver)
+                    return; // 上限已滿足
+
+                // 計算建議的擴充量（至少 +5000，或剛好滿足需求）
+                int needed = checkResult.MaxTileId - checkResult.CurrentLimit;
+                int expandAmount = Math.Max(5000, ((needed / 5000) + 1) * 5000);
+                int suggestedLimit = checkResult.CurrentLimit + expandAmount;
+
+                // 超過上限，詢問用戶是否擴充
+                string message = $"Tile ID 已達上限！\n\n" +
+                                 $"目前上限: {checkResult.CurrentLimit}\n" +
+                                 $"最大 Tile ID: {checkResult.MaxTileId}\n" +
+                                 $"超出: {needed} 個\n\n" +
+                                 $"超過上限的 Tile 將顯示為三角形圖案。\n" +
+                                 $"是否將上限擴充至 {suggestedLimit}？\n" +
+                                 $"(+{expandAmount})";
+
+                if (MessageBox.Show(message, "Tile 上限警告", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes)
                 {
-                    MessageBox.Show($"已將 Tile 上限擴充至 {newLimit}", "成功", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    // 用戶取消，結束檢查
+                    return;
+                }
+
+                if (TileHashManager.UpdateTileLimit(suggestedLimit))
+                {
+                    // 擴充成功，繼續循環檢查是否已滿足
+                    // （下一輪 while 會再次檢查）
                 }
                 else
                 {
                     MessageBox.Show("擴充 Tile 上限失敗", "錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
                 }
             }
         }
