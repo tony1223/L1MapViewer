@@ -30,6 +30,7 @@ namespace L1FlyMapViewer
         private ToolStripTextBox toolStripJumpTextBox;
         private ToolStripButton toolStripJumpButton;
         private ToolStripButton toolStripCopyMoveCmd;
+        private ToolStripButton toolStripShowAllL8;
 
         // 左側面板
         private Panel leftPanel;
@@ -176,6 +177,7 @@ namespace L1FlyMapViewer
             this.toolStripJumpLabel = new ToolStripStatusLabel();
             this.toolStripJumpTextBox = new ToolStripTextBox();
             this.toolStripJumpButton = new ToolStripButton();
+            this.toolStripShowAllL8 = new ToolStripButton();
             this.toolStripCopyMoveCmd = new ToolStripButton();
 
             // 左側面板
@@ -426,6 +428,8 @@ namespace L1FlyMapViewer
             //
             this.statusStrip1.Items.AddRange(new ToolStripItem[] {
                 this.toolStripStatusLabel1,
+                this.toolStripShowAllL8,
+                new ToolStripSeparator(),
                 this.toolStripStatusLabel2,
                 this.toolStripStatusLabel3,
                 this.toolStripProgressBar1,
@@ -445,8 +449,8 @@ namespace L1FlyMapViewer
             // toolStripStatusLabel1
             //
             this.toolStripStatusLabel1.Name = "toolStripStatusLabel1";
-            this.toolStripStatusLabel1.Size = new Size(400, 17);
-            this.toolStripStatusLabel1.Text = "点击获取坐标 | Ctrl+拖拽選择範圍 | Ctrl+滾輪縮放 | S32編輯器:Ctrl+左鍵刪除單格 | Shift+拖拽批量刪除區域";
+            this.toolStripStatusLabel1.Size = new Size(300, 17);
+            this.toolStripStatusLabel1.Text = "點擊獲取座標 | Ctrl+拖拽選擇範圍 | Ctrl+滾輪縮放";
 
             //
             // toolStripStatusLabel2
@@ -491,6 +495,15 @@ namespace L1FlyMapViewer
             this.toolStripJumpButton.Size = new Size(35, 20);
             this.toolStripJumpButton.Text = "Go";
             this.toolStripJumpButton.Click += new System.EventHandler(this.toolStripJumpButton_Click);
+
+            //
+            // toolStripShowAllL8
+            //
+            this.toolStripShowAllL8.Name = "toolStripShowAllL8";
+            this.toolStripShowAllL8.Size = new Size(80, 20);
+            this.toolStripShowAllL8.Text = "顯示全部L8";
+            this.toolStripShowAllL8.ToolTipText = "顯示畫面中所有 Layer8 SPR 特效";
+            this.toolStripShowAllL8.Click += new System.EventHandler(this.toolStripShowAllL8_Click);
 
             //
             // toolStripCopyMoveCmd

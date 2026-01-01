@@ -9231,6 +9231,8 @@ namespace L1FlyMapViewer
             int worldX = worldPoint.X;
             int worldY = worldPoint.Y;
 
+            Console.WriteLine($"[Layer8-Debug] Screen=({e.Location.X},{e.Location.Y}) -> World=({worldX},{worldY}), ShowLayer8={_viewState.ShowLayer8}, Button={e.Button}");
+
             // Layer8 標記點擊處理
             if (_viewState.ShowLayer8 && e.Button == MouseButtons.Left)
             {
@@ -9946,9 +9948,48 @@ namespace L1FlyMapViewer
                 this.toolStripStatusLabel1.Text = "已取消多邊形繪製";
                 return;
             }
-            // 左鍵：開始區域選擇（素材貼上模式時不進入區域選擇）
+            // 左鍵：先檢查是否點擊 Layer8 marker，再開始區域選擇
             else if (e.Button == MouseButtons.Left && Control.ModifierKeys == Keys.None && _pendingMaterial == null)
             {
+                // 先檢查是否點擊 Layer8 marker
+                if (_viewState.ShowLayer8)
+                {
+                    var worldPoint = S32ScreenToWorld(e.Location.X, e.Location.Y);
+                    var clickedMarker = FindLayer8MarkerAtPosition(worldPoint.X, worldPoint.Y);
+                    if (clickedMarker.HasValue)
+                    {
+                        var (s32Path, index) = clickedMarker.Value;
+                        Console.WriteLine($"[Layer8] Clicked marker: {s32Path} index={index}");
+
+                        // 切換顯示狀態
+                        if (_editState.EnabledLayer8Items.Contains((s32Path, index)))
+                        {
+                            _editState.EnabledLayer8Items.Remove((s32Path, index));
+                            _layer8AnimFrame.Remove((s32Path, index));
+
+                            if (_editState.EnabledLayer8Items.Count == 0 && _layer8AnimTimer != null)
+                            {
+                                _layer8AnimTimer.Stop();
+                            }
+                        }
+                        else
+                        {
+                            _editState.EnabledLayer8Items.Add((s32Path, index));
+                            _layer8AnimFrame[(s32Path, index)] = 0;
+
+                            if (_layer8AnimTimer != null && !_layer8AnimTimer.Enabled)
+                            {
+                                _layer8AnimTimer.Start();
+                            }
+                        }
+
+                        // 重繪
+                        RenderS32Map();
+                        return;  // 不進入區域選擇模式
+                    }
+                }
+
+                // 沒有點擊到 Layer8 marker，開始區域選擇
                 isSelectingRegion = true;
                 isLayer4CopyMode = true;  // 進入複製模式
                 regionStartPoint = e.Location;
@@ -13250,6 +13291,60 @@ namespace L1FlyMapViewer
                 Clipboard.SetText(moveCmd);
                 this.toolStripStatusLabel1.Text = $"已複製: {moveCmd}";
             }
+        }
+
+        // 顯示全部 L8 按鈕點擊事件 - 顯示地圖中所有 Layer8 SPR
+        private void toolStripShowAllL8_Click(object sender, EventArgs e)
+        {
+            if (_document.S32Files.Count == 0)
+            {
+                this.toolStripStatusLabel1.Text = "請先載入地圖";
+                return;
+            }
+
+            int addedCount = 0;
+
+            // 顯示全部地圖的 Layer8
+            foreach (var s32Data in _document.S32Files.Values)
+            {
+                if (s32Data.Layer8.Count == 0) continue;
+
+                for (int i = 0; i < s32Data.Layer8.Count; i++)
+                {
+                    var item = s32Data.Layer8[i];
+
+                    // 檢查座標是否有效
+                    int localL3X = item.X - s32Data.SegInfo.nLinBeginX;
+                    int localL3Y = item.Y - s32Data.SegInfo.nLinBeginY;
+
+                    if (localL3X < 0 || localL3X > 63 || localL3Y < 0 || localL3Y > 63)
+                        continue;
+
+                    var key = (s32Data.FilePath, i);
+                    if (!_editState.EnabledLayer8Items.Contains(key))
+                    {
+                        _editState.EnabledLayer8Items.Add(key);
+                        _layer8AnimFrame[key] = 0;
+                        addedCount++;
+                    }
+                }
+            }
+
+            // 啟動動畫計時器
+            if (addedCount > 0 && _layer8AnimTimer != null && !_layer8AnimTimer.Enabled)
+            {
+                _layer8AnimTimer.Start();
+            }
+
+            // 確保 Layer8 顯示已開啟
+            if (!_viewState.ShowLayer8)
+            {
+                _viewState.ShowLayer8 = true;
+                chkFloatLayer8.Checked = true;
+            }
+
+            this.toolStripStatusLabel1.Text = $"已啟用 {addedCount} 個 L8 特效（總共 {_editState.EnabledLayer8Items.Count} 個）";
+            RenderS32Map();
         }
 
         // 執行座標跳轉
@@ -19151,10 +19246,10 @@ namespace L1FlyMapViewer
             tabControl.Location = new Point(10, 115);
             tabControl.Size = new Size(810, 330);
 
-            TabPage tabSelected = new TabPage($"選取的 S32 ({s32WithL8Selected.Count})");
             TabPage tabAll = new TabPage($"全部 ({s32WithL8All.Count})");
-            tabControl.TabPages.Add(tabSelected);
+            TabPage tabSelected = new TabPage($"選取的 S32 ({s32WithL8Selected.Count})");
             tabControl.TabPages.Add(tabAll);
+            tabControl.TabPages.Add(tabSelected);
 
             // ListView 排序狀態
             Dictionary<ListView, (int column, bool ascending)> sortStates = new Dictionary<ListView, (int, bool)>();

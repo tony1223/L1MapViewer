@@ -110,6 +110,8 @@ namespace L1MapViewer.CLI
                         return Commands.BenchmarkCommands.RenderAdjacent(cmdArgs);
                     case "test-layer8":
                         return CmdTestLayer8(cmdArgs);
+                    case "test-layer8-click":
+                        return CmdTestLayer8Click(cmdArgs);
                     case "render-material":
                         return Commands.MaterialCommands.RenderMaterial(cmdArgs);
                     case "verify-material-tiles":
@@ -5569,6 +5571,178 @@ L1MapViewer CLI - S32 檔案解析工具
                     Directory.CreateDirectory(Path.GetDirectoryName(outputPath));
                     bitmap.Save(outputPath);
                     Console.WriteLine($"輸出: {outputPath}");
+                }
+            }
+
+            return 0;
+        }
+
+        /// <summary>
+        /// test-layer8-click 命令 - 測試 Layer8 點擊偵測
+        /// </summary>
+        private static int CmdTestLayer8Click(string[] args)
+        {
+            if (args.Length < 3)
+            {
+                Console.WriteLine("用法: -cli test-layer8-click <地圖資料夾> <gameX> <gameY> [--simulate-click <worldX> <worldY>]");
+                Console.WriteLine();
+                Console.WriteLine("範例:");
+                Console.WriteLine("  -cli test-layer8-click C:\\client\\map\\4 33706 32382");
+                Console.WriteLine("  -cli test-layer8-click C:\\client\\map\\4 33706 32382 --simulate-click 55000 12000");
+                return 1;
+            }
+
+            string mapFolder = args[0];
+            if (!int.TryParse(args[1], out int gameX) || !int.TryParse(args[2], out int gameY))
+            {
+                Console.WriteLine("錯誤: gameX 和 gameY 必須是數字");
+                return 1;
+            }
+
+            // 解析模擬點擊座標
+            int? simClickX = null, simClickY = null;
+            for (int i = 3; i < args.Length - 2; i++)
+            {
+                if (args[i].ToLower() == "--simulate-click" &&
+                    int.TryParse(args[i + 1], out int sx) &&
+                    int.TryParse(args[i + 2], out int sy))
+                {
+                    simClickX = sx;
+                    simClickY = sy;
+                    break;
+                }
+            }
+
+            if (!Directory.Exists(mapFolder))
+            {
+                Console.WriteLine($"錯誤: 地圖資料夾不存在: {mapFolder}");
+                return 1;
+            }
+
+            // 載入地圖
+            var loadResult = MapLoader.Load(mapFolder);
+            if (!loadResult.Success) return 1;
+
+            Console.WriteLine($"載入 {loadResult.S32Files.Count} 個 S32 檔案");
+            Console.WriteLine();
+
+            // 找出目標座標的 S32
+            S32Data targetS32 = null;
+            foreach (var s32 in loadResult.S32Files.Values)
+            {
+                var seg = s32.SegInfo;
+                if (gameX >= seg.nLinBeginX && gameX <= seg.nLinEndX &&
+                    gameY >= seg.nLinBeginY && gameY <= seg.nLinEndY)
+                {
+                    targetS32 = s32;
+                    break;
+                }
+            }
+
+            if (targetS32 == null)
+            {
+                Console.WriteLine($"找不到包含座標 ({gameX},{gameY}) 的 S32");
+                return 1;
+            }
+
+            Console.WriteLine($"=== 目標 S32: {Path.GetFileName(targetS32.FilePath)} ===");
+            Console.WriteLine($"座標範圍: ({targetS32.SegInfo.nLinBeginX},{targetS32.SegInfo.nLinBeginY}) - ({targetS32.SegInfo.nLinEndX},{targetS32.SegInfo.nLinEndY})");
+            Console.WriteLine($"Layer8 項目數: {targetS32.Layer8.Count}");
+            Console.WriteLine();
+
+            if (targetS32.Layer8.Count == 0)
+            {
+                Console.WriteLine("此 S32 沒有 Layer8 資料");
+                return 0;
+            }
+
+            int[] loc = targetS32.SegInfo.GetLoc(1.0);
+            int mx = loc[0];
+            int my = loc[1];
+            Console.WriteLine($"S32 世界起點: ({mx}, {my})");
+            Console.WriteLine();
+
+            // 列出所有 Layer8 marker 位置
+            Console.WriteLine("=== Layer8 Marker 位置 ===");
+            var markerPositions = new List<(int worldX, int worldY, int index, int sprId)>();
+
+            for (int i = 0; i < targetS32.Layer8.Count; i++)
+            {
+                var item = targetS32.Layer8[i];
+                int localL3X = item.X - targetS32.SegInfo.nLinBeginX;
+                int localL3Y = item.Y - targetS32.SegInfo.nLinBeginY;
+
+                if (localL3X < 0 || localL3X > 63 || localL3Y < 0 || localL3Y > 63)
+                {
+                    Console.WriteLine($"  [{i}] 超出範圍: GameXY=({item.X},{item.Y}), LocalXY=({localL3X},{localL3Y})");
+                    continue;
+                }
+
+                int layer1X = localL3X * 2;
+                int layer1Y = localL3Y;
+                int baseX = -24 * (layer1X / 2);
+                int baseY = 63 * 12 - 12 * (layer1X / 2);
+                // 標記中心位置（+12 偏移）
+                int markerWorldX = mx + baseX + layer1X * 24 + layer1Y * 24 + 12;
+                int markerWorldY = my + baseY + layer1Y * 12 + 12;
+
+                markerPositions.Add((markerWorldX, markerWorldY, i, item.SprId));
+                Console.WriteLine($"  [{i}] SprId={item.SprId}, GameXY=({item.X},{item.Y}), MarkerWorldXY=({markerWorldX},{markerWorldY})");
+            }
+
+            Console.WriteLine();
+
+            // 模擬點擊偵測
+            if (simClickX.HasValue && simClickY.HasValue)
+            {
+                Console.WriteLine($"=== 模擬點擊偵測: ({simClickX}, {simClickY}) ===");
+                const int hitRadius = 20;
+                bool found = false;
+
+                foreach (var (markerX, markerY, index, sprId) in markerPositions)
+                {
+                    int dx = simClickX.Value - markerX;
+                    int dy = simClickY.Value - markerY;
+                    int distSq = dx * dx + dy * dy;
+                    double dist = Math.Sqrt(distSq);
+
+                    if (distSq <= hitRadius * hitRadius)
+                    {
+                        Console.WriteLine($"  HIT! Marker[{index}] SprId={sprId} at ({markerX},{markerY}), dist={dist:F1}");
+                        found = true;
+                    }
+                    else if (dist < 50) // 顯示靠近的 marker
+                    {
+                        Console.WriteLine($"  NEAR: Marker[{index}] at ({markerX},{markerY}), dist={dist:F1} (need <= {hitRadius})");
+                    }
+                }
+
+                if (!found)
+                {
+                    Console.WriteLine("  沒有命中任何 marker");
+                    Console.WriteLine();
+                    Console.WriteLine("最近的 marker:");
+                    var nearest = markerPositions
+                        .Select(m => new { m.index, m.sprId, m.worldX, m.worldY,
+                            dist = Math.Sqrt(Math.Pow(simClickX.Value - m.worldX, 2) + Math.Pow(simClickY.Value - m.worldY, 2)) })
+                        .OrderBy(x => x.dist)
+                        .Take(3)
+                        .ToList();
+                    foreach (var n in nearest)
+                    {
+                        Console.WriteLine($"    Marker[{n.index}] SprId={n.sprId} at ({n.worldX},{n.worldY}), dist={n.dist:F1}");
+                    }
+                }
+            }
+            else
+            {
+                // 自動計算應該點擊的位置
+                Console.WriteLine("=== 點擊測試座標建議 ===");
+                if (markerPositions.Count > 0)
+                {
+                    var first = markerPositions[0];
+                    Console.WriteLine($"要測試第一個 marker，使用:");
+                    Console.WriteLine($"  --simulate-click {first.worldX} {first.worldY}");
                 }
             }
 
