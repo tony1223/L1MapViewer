@@ -136,8 +136,7 @@ namespace L1FlyMapViewer
         private Button btnRegionEdit;
         private Button btnCopyMapCoords;
         private Button btnImportFs32;
-        private Button btnSetPassable;
-        private Button btnSetImpassable;
+        private Button btnEditPassable;
         private Button btnEditLayer5;
         private Button btnSaveS32;
         private Button btnReloadMap;
@@ -270,8 +269,7 @@ namespace L1FlyMapViewer
             this.btnCopyMapCoords = new Button();
             this.btnImportFs32 = new Button();
             this.btnRegionEdit = new Button();
-            this.btnSetPassable = new Button();
-            this.btnSetImpassable = new Button();
+            this.btnEditPassable = new Button();
             this.btnEditLayer5 = new Button();
             this.btnSaveS32 = new Button();
             this.btnReloadMap = new Button();
@@ -806,8 +804,7 @@ namespace L1FlyMapViewer
             this.s32LayerControlPanel.Controls.Add(this.btnCopySettings);
             this.s32LayerControlPanel.Controls.Add(this.btnCopyMapCoords);
             this.s32LayerControlPanel.Controls.Add(this.btnImportFs32);
-            this.s32LayerControlPanel.Controls.Add(this.btnSetPassable);
-            this.s32LayerControlPanel.Controls.Add(this.btnSetImpassable);
+            this.s32LayerControlPanel.Controls.Add(this.btnEditPassable);
             this.s32LayerControlPanel.Controls.Add(this.btnEditLayer5);
             this.s32LayerControlPanel.Controls.Add(this.btnRegionEdit);
             this.s32LayerControlPanel.Controls.Add(this.btnSaveS32);
@@ -974,31 +971,20 @@ namespace L1FlyMapViewer
             this.btnImportFs32.Click += new System.EventHandler(this.btnImportFs32_Click);
 
             //
-            // btnSetPassable
+            // btnEditPassable
             //
-            this.btnSetPassable.Location = new Point(10, 35);
-            this.btnSetPassable.Name = "btnSetPassable";
-            this.btnSetPassable.Size = new Size(80, 25);
-            this.btnSetPassable.TabIndex = 9;
-            this.btnSetPassable.Text = "允許通行";
-            this.btnSetPassable.UseVisualStyleBackColor = true;
-            this.btnSetPassable.Click += new System.EventHandler(this.btnSetPassable_Click);
-
-            //
-            // btnSetImpassable
-            //
-            this.btnSetImpassable.Location = new Point(100, 35);
-            this.btnSetImpassable.Name = "btnSetImpassable";
-            this.btnSetImpassable.Size = new Size(80, 25);
-            this.btnSetImpassable.TabIndex = 10;
-            this.btnSetImpassable.Text = "禁止通行";
-            this.btnSetImpassable.UseVisualStyleBackColor = true;
-            this.btnSetImpassable.Click += new System.EventHandler(this.btnSetImpassable_Click);
+            this.btnEditPassable.Location = new Point(10, 35);
+            this.btnEditPassable.Name = "btnEditPassable";
+            this.btnEditPassable.Size = new Size(80, 25);
+            this.btnEditPassable.TabIndex = 9;
+            this.btnEditPassable.Text = "通行編輯";
+            this.btnEditPassable.UseVisualStyleBackColor = true;
+            this.btnEditPassable.Click += new System.EventHandler(this.btnEditPassable_Click);
 
             //
             // btnEditLayer5
             //
-            this.btnEditLayer5.Location = new Point(190, 35);
+            this.btnEditLayer5.Location = new Point(100, 35);
             this.btnEditLayer5.Name = "btnEditLayer5";
             this.btnEditLayer5.Size = new Size(80, 25);
             this.btnEditLayer5.TabIndex = 14;

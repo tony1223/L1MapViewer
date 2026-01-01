@@ -111,8 +111,7 @@ namespace L1FlyMapViewer
         private enum PassableEditMode
         {
             None,           // 無編輯模式
-            SetPassable,    // 設定為可通行
-            SetImpassable   // 設定為不可通行
+            Editing         // 通行編輯模式（選取區域後右鍵設定）
         }
         private PassableEditMode currentPassableEditMode = PassableEditMode.None;
         private Label lblPassabilityHelp; // 通行性編輯操作說明標籤
@@ -636,8 +635,7 @@ namespace L1FlyMapViewer
             btnCopySettings.Text = LocalizationManager.L("Button_CopySettings");
             btnCopyMapCoords.Text = LocalizationManager.L("Button_CopyMapCoords");
             btnImportFs32.Text = LocalizationManager.L("Button_ImportFs32");
-            btnSetPassable.Text = LocalizationManager.L("Button_SetPassable");
-            btnSetImpassable.Text = LocalizationManager.L("Button_SetImpassable");
+            btnEditPassable.Text = LocalizationManager.L("Button_EditPassable");
             btnEditLayer5.Text = LocalizationManager.L("Button_EditLayer5");
             btnRegionEdit.Text = LocalizationManager.L("Button_RegionEdit");
 
@@ -5811,58 +5809,33 @@ namespace L1FlyMapViewer
             ImportFs32ToCurrentMap();
         }
 
-        // 允許通行按鈕點擊事件
-        private void btnSetPassable_Click(object sender, EventArgs e)
+        // 通行編輯按鈕點擊事件
+        private void btnEditPassable_Click(object sender, EventArgs e)
         {
-            if (currentPassableEditMode == PassableEditMode.SetPassable)
+            if (currentPassableEditMode == PassableEditMode.Editing)
             {
                 // 取消模式
                 currentPassableEditMode = PassableEditMode.None;
-                btnSetPassable.BackColor = SystemColors.Control;
-                this.toolStripStatusLabel1.Text = "已取消允許通行模式";
+                btnEditPassable.BackColor = SystemColors.Control;
+                this.toolStripStatusLabel1.Text = "已取消通行編輯模式";
                 UpdatePassabilityHelpLabel();
             }
             else
             {
-                // 啟用允許通行模式
-                currentPassableEditMode = PassableEditMode.SetPassable;
-                btnSetPassable.BackColor = Color.LightGreen;
-                btnSetImpassable.BackColor = SystemColors.Control;
+                // 啟用通行編輯模式
+                currentPassableEditMode = PassableEditMode.Editing;
+                btnEditPassable.BackColor = Color.LightBlue;
                 // 取消 Layer5 編輯模式
                 _editState.IsLayer5EditMode = false;
                 btnEditLayer5.BackColor = SystemColors.Control;
                 UpdateLayer5HelpLabel();
+                // 取消區域編輯模式
+                currentRegionEditMode = RegionEditMode.None;
+                btnRegionEdit.BackColor = SystemColors.Control;
+                UpdateRegionHelpLabel();
                 // 自動顯示通行性覆蓋層
                 EnsurePassabilityLayerVisible();
-                this.toolStripStatusLabel1.Text = "允許通行模式：點擊格子設定 | Ctrl+左鍵繪製多邊形，右鍵完成";
-                UpdatePassabilityHelpLabel();
-            }
-        }
-
-        // 禁止通行按鈕點擊事件
-        private void btnSetImpassable_Click(object sender, EventArgs e)
-        {
-            if (currentPassableEditMode == PassableEditMode.SetImpassable)
-            {
-                // 取消模式
-                currentPassableEditMode = PassableEditMode.None;
-                btnSetImpassable.BackColor = SystemColors.Control;
-                this.toolStripStatusLabel1.Text = "已取消禁止通行模式";
-                UpdatePassabilityHelpLabel();
-            }
-            else
-            {
-                // 啟用禁止通行模式
-                currentPassableEditMode = PassableEditMode.SetImpassable;
-                btnSetImpassable.BackColor = Color.LightCoral;
-                btnSetPassable.BackColor = SystemColors.Control;
-                // 取消 Layer5 編輯模式
-                _editState.IsLayer5EditMode = false;
-                btnEditLayer5.BackColor = SystemColors.Control;
-                UpdateLayer5HelpLabel();
-                // 自動顯示通行性覆蓋層
-                EnsurePassabilityLayerVisible();
-                this.toolStripStatusLabel1.Text = "禁止通行模式：點擊格子設定 | Ctrl+左鍵繪製多邊形，右鍵完成";
+                this.toolStripStatusLabel1.Text = "通行編輯模式：左鍵選取區域，右鍵設定通行性";
                 UpdatePassabilityHelpLabel();
             }
         }
@@ -5885,8 +5858,7 @@ namespace L1FlyMapViewer
                 btnRegionEdit.BackColor = Color.LightBlue;
                 // 取消其他編輯模式
                 currentPassableEditMode = PassableEditMode.None;
-                btnSetPassable.BackColor = SystemColors.Control;
-                btnSetImpassable.BackColor = SystemColors.Control;
+                btnEditPassable.BackColor = SystemColors.Control;
                 UpdatePassabilityHelpLabel();
                 _editState.IsLayer5EditMode = false;
                 btnEditLayer5.BackColor = SystemColors.Control;
@@ -6139,8 +6111,7 @@ namespace L1FlyMapViewer
                 btnEditLayer5.BackColor = Color.FromArgb(100, 180, 255);
                 // 取消通行性編輯模式
                 currentPassableEditMode = PassableEditMode.None;
-                btnSetPassable.BackColor = SystemColors.Control;
-                btnSetImpassable.BackColor = SystemColors.Control;
+                btnEditPassable.BackColor = SystemColors.Control;
                 UpdatePassabilityHelpLabel();
                 // 自動顯示 Layer5 覆蓋層
                 EnsureLayer5Visible();
@@ -6208,18 +6179,151 @@ namespace L1FlyMapViewer
                 return;
             }
 
-            string modeText = currentPassableEditMode == PassableEditMode.SetPassable ? "允許通行" : "禁止通行";
-            Color borderColor = currentPassableEditMode == PassableEditMode.SetPassable ? Color.LimeGreen : Color.Red;
-
-            lblPassabilityHelp.Text = $"【{modeText}模式】\n" +
-                                      "• 點擊格子：設定整格通行性\n" +
-                                      "• Ctrl+左鍵：新增多邊形頂點\n" +
-                                      "• 右鍵：完成多邊形 (≥3點)\n" +
+            lblPassabilityHelp.Text = "【通行編輯模式】\n" +
+                                      "• 左鍵拖曳選取區域\n" +
+                                      "• 右鍵：設定通行性\n" +
+                                      "  - 左上 可/不可通行\n" +
+                                      "  - 右上 可/不可通行\n" +
+                                      "  - 整格 可/不可通行\n" +
                                       "• 再按按鈕：取消模式";
-            lblPassabilityHelp.ForeColor = borderColor;
+            lblPassabilityHelp.ForeColor = Color.LightBlue;
             lblPassabilityHelp.Visible = true;
             lblPassabilityHelp.BringToFront();
             lblDefaultHint.Visible = false;
+        }
+
+        // 通行性設定目標
+        private enum PassabilityTarget
+        {
+            LeftTop,     // 只設定 Attr1 (左上)
+            RightTop,    // 只設定 Attr2 (右上)
+            LeftBottom,  // 只設定左下（實際是左下格子的 Attr2）
+            RightBottom, // 只設定右下（實際是右下格子的 Attr1）
+            All          // 設定整格（全部四個邊）
+        }
+
+        // 批次設定選取區域的通行性
+        private void SetSelectedCellsPassability(PassabilityTarget target, bool passable)
+        {
+            if (_editState.SelectedCells.Count == 0) return;
+
+            int modifiedCount = 0;
+            HashSet<S32Data> modifiedS32s = new HashSet<S32Data>();
+
+            // 輔助函數：設定單一格子的屬性
+            void SetPassabilityBit(S32Data s32, int layer3X, int layer3Y, bool isAttr1, bool pass)
+            {
+                if (layer3X < 0 || layer3X >= 64 || layer3Y < 0 || layer3Y >= 64) return;
+                if (s32.Layer3[layer3Y, layer3X] == null)
+                {
+                    s32.Layer3[layer3Y, layer3X] = new MapAttribute { Attribute1 = 0, Attribute2 = 0 };
+                }
+                var attr = s32.Layer3[layer3Y, layer3X];
+                if (isAttr1)
+                {
+                    attr.Attribute1 = pass ? (short)(attr.Attribute1 & ~0x01) : (short)(attr.Attribute1 | 0x01);
+                }
+                else
+                {
+                    attr.Attribute2 = pass ? (short)(attr.Attribute2 & ~0x01) : (short)(attr.Attribute2 | 0x01);
+                }
+                modifiedS32s.Add(s32);
+            }
+
+            // 輔助函數：查找鄰近格子的 S32（可能跨 S32 邊界）
+            S32Data FindNeighborS32(S32Data currentS32, int gameX, int gameY)
+            {
+                // 檢查是否在當前 S32 範圍內
+                if (gameX >= currentS32.SegInfo.nLinBeginX && gameX < currentS32.SegInfo.nLinBeginX + 64 &&
+                    gameY >= currentS32.SegInfo.nLinBeginY && gameY < currentS32.SegInfo.nLinBeginY + 64)
+                {
+                    return currentS32;
+                }
+                // 查找其他 S32
+                foreach (var s32 in _document.S32Files.Values)
+                {
+                    if (gameX >= s32.SegInfo.nLinBeginX && gameX < s32.SegInfo.nLinBeginX + 64 &&
+                        gameY >= s32.SegInfo.nLinBeginY && gameY < s32.SegInfo.nLinBeginY + 64)
+                    {
+                        return s32;
+                    }
+                }
+                return null;
+            }
+
+            foreach (var cell in _editState.SelectedCells)
+            {
+                if (cell.S32Data == null) continue;
+
+                // 計算第三層座標（第三層是 64x64，第一層是 64x128）
+                int layer3X = cell.LocalX / 2;
+                if (layer3X >= 64) layer3X = 63;
+                int layer3Y = cell.LocalY;
+
+                // 計算遊戲座標
+                int gameX = cell.S32Data.SegInfo.nLinBeginX + layer3X;
+                int gameY = cell.S32Data.SegInfo.nLinBeginY + layer3Y;
+
+                // 根據目標設定對應的屬性
+                if (target == PassabilityTarget.LeftTop || target == PassabilityTarget.All)
+                {
+                    SetPassabilityBit(cell.S32Data, layer3X, layer3Y, true, passable);
+                }
+
+                if (target == PassabilityTarget.RightTop || target == PassabilityTarget.All)
+                {
+                    SetPassabilityBit(cell.S32Data, layer3X, layer3Y, false, passable);
+                }
+
+                // 左下：設定 (gameX-1, gameY) 的 Attr2（左邊格子的右上）
+                if (target == PassabilityTarget.LeftBottom || target == PassabilityTarget.All)
+                {
+                    var neighborS32 = FindNeighborS32(cell.S32Data, gameX - 1, gameY);
+                    if (neighborS32 != null)
+                    {
+                        int neighborLocalX = gameX - 1 - neighborS32.SegInfo.nLinBeginX;
+                        int neighborLocalY = gameY - neighborS32.SegInfo.nLinBeginY;
+                        SetPassabilityBit(neighborS32, neighborLocalX, neighborLocalY, false, passable);
+                    }
+                }
+
+                // 右下：設定 (gameX, gameY+1) 的 Attr1（下方格子的左上）
+                if (target == PassabilityTarget.RightBottom || target == PassabilityTarget.All)
+                {
+                    var neighborS32 = FindNeighborS32(cell.S32Data, gameX, gameY + 1);
+                    if (neighborS32 != null)
+                    {
+                        int neighborLocalX = gameX - neighborS32.SegInfo.nLinBeginX;
+                        int neighborLocalY = gameY + 1 - neighborS32.SegInfo.nLinBeginY;
+                        SetPassabilityBit(neighborS32, neighborLocalX, neighborLocalY, true, passable);
+                    }
+                }
+
+                modifiedCount++;
+            }
+
+            // 標記所有修改過的 S32 為已修改
+            foreach (var s32 in modifiedS32s)
+            {
+                s32.IsModified = true;
+            }
+
+            // 重繪（保留選取狀態）
+            ClearS32BlockCache();
+            RenderS32Map();
+
+            // 顯示結果
+            string targetName = target switch
+            {
+                PassabilityTarget.LeftTop => "左上",
+                PassabilityTarget.RightTop => "右上",
+                PassabilityTarget.LeftBottom => "左下",
+                PassabilityTarget.RightBottom => "右下",
+                PassabilityTarget.All => "整格",
+                _ => ""
+            };
+            string passableText = passable ? "可通行" : "不可通行";
+            this.toolStripStatusLabel1.Text = $"已設定 {modifiedCount} 格的 {targetName} 為{passableText}";
         }
 
         // 更新區域編輯操作說明標籤
@@ -9354,10 +9458,10 @@ namespace L1FlyMapViewer
         // 繪製編輯覆蓋層（從 s32PictureBox_Paint 中提取）
         private void DrawEditingOverlay(Graphics g)
         {
-            // 通行性編輯模式：繪製多邊形
+            // 通行性編輯模式：繪製多邊形（保留舊功能但使用統一顏色）
             if (_editState.IsDrawingPassabilityPolygon && _editState.PassabilityPolygonPoints.Count > 0)
             {
-                Color polygonColor = currentPassableEditMode == PassableEditMode.SetPassable ? Color.LimeGreen : Color.Red;
+                Color polygonColor = Color.LightBlue;
 
                 using (Pen pen = new Pen(polygonColor, 3))
                 {
@@ -9504,13 +9608,6 @@ namespace L1FlyMapViewer
                 _editState.HighlightedCellX = x;
                 _editState.HighlightedCellY = y;
                 UpdateStatusBarWithLayer3Info(s32Data, x, y);
-
-                // 通行性編輯模式：單擊設定通行性
-                if (currentPassableEditMode != PassableEditMode.None && e.Button == MouseButtons.Left)
-                {
-                    SetCellPassable(s32Data, x, y, currentPassableEditMode == PassableEditMode.SetPassable);
-                    return;
-                }
 
                 // 區域編輯模式：右鍵變更選取區域的區域類型
                 if (currentRegionEditMode != RegionEditMode.None && e.Button == MouseButtons.Right)
@@ -10170,37 +10267,8 @@ namespace L1FlyMapViewer
             if (currentS32Data == null || currentS32FileItem == null)
                 return;
 
-            // Ctrl + 左鍵 + 通行性編輯模式：繪製多邊形頂點
-            if (e.Button == MouseButtons.Left && Control.ModifierKeys == Keys.Control && currentPassableEditMode != PassableEditMode.None)
-            {
-                _editState.IsDrawingPassabilityPolygon = true;
-                _editState.PassabilityPolygonPoints.Add(e.Location);
-                _mapViewerControl.Refresh();
-                this.toolStripStatusLabel1.Text = $"多邊形頂點: {_editState.PassabilityPolygonPoints.Count} 個 (Ctrl+左鍵繼續新增，右鍵完成)";
-                return;
-            }
-            // 右鍵完成多邊形繪製
-            if (e.Button == MouseButtons.Right && _editState.IsDrawingPassabilityPolygon && _editState.PassabilityPolygonPoints.Count >= 3)
-            {
-                // 確保顯示通行性覆蓋層，以便看到修改結果
-                EnsurePassabilityLayerVisible();
-                SetPolygonPassable(_editState.PassabilityPolygonPoints, currentPassableEditMode == PassableEditMode.SetPassable);
-                _editState.PassabilityPolygonPoints.Clear();
-                _editState.IsDrawingPassabilityPolygon = false;
-                _mapViewerControl.Refresh();
-                return;
-            }
-            // 右鍵取消多邊形繪製（頂點不足）
-            if (e.Button == MouseButtons.Right && _editState.IsDrawingPassabilityPolygon)
-            {
-                _editState.PassabilityPolygonPoints.Clear();
-                _editState.IsDrawingPassabilityPolygon = false;
-                _mapViewerControl.Refresh();
-                this.toolStripStatusLabel1.Text = "已取消多邊形繪製";
-                return;
-            }
             // 左鍵：開始區域選擇（Layer8 點擊已在前面處理）
-            else if (e.Button == MouseButtons.Left && Control.ModifierKeys == Keys.None && _pendingMaterial == null)
+            if (e.Button == MouseButtons.Left && Control.ModifierKeys == Keys.None && _pendingMaterial == null)
             {
                 isSelectingRegion = true;
                 isLayer4CopyMode = true;  // 進入複製模式
@@ -10433,7 +10501,7 @@ namespace L1FlyMapViewer
                 _mapViewerControl.Refresh();
             }
 
-            // 右鍵顯示選取區域操作選單
+            // 右鍵顯示選取區域操作選單（通行編輯模式時會包含通行設定選項）
             if (e.Button == MouseButtons.Right && isLayer4CopyMode && _editState.SelectedCells.Count > 0)
             {
                 ShowSelectionContextMenu(e.Location);
@@ -10491,6 +10559,66 @@ namespace L1FlyMapViewer
             var clearItem = new ToolStripMenuItem("清除選取區域資料...");
             clearItem.Click += (s, e) => ClearSelectedCellsWithDialog();
             menu.Items.Add(clearItem);
+
+            // 通行編輯模式：加入通行性設定選項
+            if (currentPassableEditMode == PassableEditMode.Editing)
+            {
+                int cellCount = _editState.SelectedCells.Count;
+                menu.Items.Add(new ToolStripSeparator());
+
+                // 左上
+                var leftTopPassable = new ToolStripMenuItem($"左上 可通行 ({cellCount} 格)");
+                leftTopPassable.Click += (s, ev) => SetSelectedCellsPassability(PassabilityTarget.LeftTop, true);
+                menu.Items.Add(leftTopPassable);
+
+                var leftTopImpassable = new ToolStripMenuItem($"左上 不可通行 ({cellCount} 格)");
+                leftTopImpassable.Click += (s, ev) => SetSelectedCellsPassability(PassabilityTarget.LeftTop, false);
+                menu.Items.Add(leftTopImpassable);
+
+                menu.Items.Add(new ToolStripSeparator());
+
+                // 右上
+                var rightTopPassable = new ToolStripMenuItem($"右上 可通行 ({cellCount} 格)");
+                rightTopPassable.Click += (s, ev) => SetSelectedCellsPassability(PassabilityTarget.RightTop, true);
+                menu.Items.Add(rightTopPassable);
+
+                var rightTopImpassable = new ToolStripMenuItem($"右上 不可通行 ({cellCount} 格)");
+                rightTopImpassable.Click += (s, ev) => SetSelectedCellsPassability(PassabilityTarget.RightTop, false);
+                menu.Items.Add(rightTopImpassable);
+
+                menu.Items.Add(new ToolStripSeparator());
+
+                // 左下（實際設定鄰近格子的右上）
+                var leftBottomPassable = new ToolStripMenuItem($"左下 可通行 ({cellCount} 格)");
+                leftBottomPassable.Click += (s, ev) => SetSelectedCellsPassability(PassabilityTarget.LeftBottom, true);
+                menu.Items.Add(leftBottomPassable);
+
+                var leftBottomImpassable = new ToolStripMenuItem($"左下 不可通行 ({cellCount} 格)");
+                leftBottomImpassable.Click += (s, ev) => SetSelectedCellsPassability(PassabilityTarget.LeftBottom, false);
+                menu.Items.Add(leftBottomImpassable);
+
+                menu.Items.Add(new ToolStripSeparator());
+
+                // 右下（實際設定鄰近格子的左上）
+                var rightBottomPassable = new ToolStripMenuItem($"右下 可通行 ({cellCount} 格)");
+                rightBottomPassable.Click += (s, ev) => SetSelectedCellsPassability(PassabilityTarget.RightBottom, true);
+                menu.Items.Add(rightBottomPassable);
+
+                var rightBottomImpassable = new ToolStripMenuItem($"右下 不可通行 ({cellCount} 格)");
+                rightBottomImpassable.Click += (s, ev) => SetSelectedCellsPassability(PassabilityTarget.RightBottom, false);
+                menu.Items.Add(rightBottomImpassable);
+
+                menu.Items.Add(new ToolStripSeparator());
+
+                // 整格（四個邊全部）
+                var allPassable = new ToolStripMenuItem($"整格 可通行 ({cellCount} 格)");
+                allPassable.Click += (s, ev) => SetSelectedCellsPassability(PassabilityTarget.All, true);
+                menu.Items.Add(allPassable);
+
+                var allImpassable = new ToolStripMenuItem($"整格 不可通行 ({cellCount} 格)");
+                allImpassable.Click += (s, ev) => SetSelectedCellsPassability(PassabilityTarget.All, false);
+                menu.Items.Add(allImpassable);
+            }
 
             menu.Show(_mapViewerControl, location);
         }
@@ -10953,10 +11081,10 @@ namespace L1FlyMapViewer
                 LogPerf($"[PAINT] total={paintSw.ElapsedMilliseconds}ms, lockWait={lockWaitMs}ms, drawImage={drawImageMs}ms, bmp={bmpW}x{bmpH}, draw={drawW}x{drawH}");
             }
 
-            // 通行性編輯模式：繪製多邊形
+            // 通行性編輯模式：繪製多邊形（舊功能，保留但使用固定顏色）
             if (_editState.IsDrawingPassabilityPolygon && _editState.PassabilityPolygonPoints.Count > 0)
             {
-                Color polygonColor = currentPassableEditMode == PassableEditMode.SetPassable ? Color.LimeGreen : Color.Red;
+                Color polygonColor = Color.LightBlue;
 
                 // 繪製已有的多邊形邊
                 using (Pen pen = new Pen(polygonColor, 3))
