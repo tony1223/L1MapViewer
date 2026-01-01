@@ -39,6 +39,11 @@ namespace L1FlyMapViewer
         /// </summary>
         private readonly ViewState _viewState = new ViewState();
 
+        // Layer8 SPR 顯示相關
+        private readonly Dictionary<int, List<Image>> _layer8SprCache = new Dictionary<int, List<Image>>();
+        private readonly Dictionary<(string, int), int> _layer8AnimFrame = new Dictionary<(string, int), int>();
+        private System.Windows.Forms.Timer _layer8AnimTimer;
+
         // IMapViewer 介面實作 - 明確公開控制項屬性
         ComboBox IMapViewer.comboBox1 => this.comboBox1;
         PictureBox IMapViewer.pictureBox1 => this.pictureBox1;
@@ -403,6 +408,28 @@ namespace L1FlyMapViewer
                 CheckAndRerenderIfNeeded();
                 timerSw.Stop();
                 LogPerf($"[DRAG-TIMER] tick end, total={timerSw.ElapsedMilliseconds}ms");
+            };
+
+            // 初始化 Layer8 動畫計時器（100ms 每帧）
+            _layer8AnimTimer = new System.Windows.Forms.Timer();
+            _layer8AnimTimer.Interval = 100;
+            _layer8AnimTimer.Tick += (s, e) =>
+            {
+                if (_editState.EnabledLayer8Items.Count == 0)
+                {
+                    _layer8AnimTimer.Stop();
+                    return;
+                }
+
+                // 更新所有啟用項目的帧索引
+                var keys = _layer8AnimFrame.Keys.ToList();
+                foreach (var key in keys)
+                {
+                    _layer8AnimFrame[key]++;
+                }
+
+                // 重繪
+                RenderS32Map();
             };
 
             // 註冊滑鼠滾輪事件用於縮放
@@ -5612,6 +5639,13 @@ namespace L1FlyMapViewer
             {
                 chkShowCombatZones.Checked = chkFloatCombatZones.Checked;
             }
+            else if (sender == chkFloatLayer8)
+            {
+                // Layer8 沒有對應的主 CheckBox，直接更新 ViewState
+                _viewState.ShowLayer8 = chkFloatLayer8.Checked;
+                // 重新渲染地圖
+                RenderS32Map();
+            }
 
             // 更新圖示顯示狀態
             UpdateLayerIconText();
@@ -5631,12 +5665,13 @@ namespace L1FlyMapViewer
             if (chkFloatLayer5.Checked) enabledCount++;
             if (chkFloatSafeZones.Checked) enabledCount++;
             if (chkFloatCombatZones.Checked) enabledCount++;
+            if (chkFloatLayer8.Checked) enabledCount++;
 
             if (enabledCount == 0)
             {
                 lblLayerIcon.ForeColor = Color.Gray;
             }
-            else if (enabledCount == 9)
+            else if (enabledCount == 10)
             {
                 lblLayerIcon.ForeColor = Color.LightGreen;
             }
@@ -6573,6 +6608,13 @@ namespace L1FlyMapViewer
                         if (hasHighlight && _editState.HighlightedS32Data != null)
                         {
                             DrawHighlightedCellViewport(viewportBitmap, currentMap, worldRect);
+                        }
+
+                        // 繪製 Layer8 標記和啟用的 SPR 動畫
+                        Console.WriteLine($"[Layer8-Check] ShowLayer8={_viewState.ShowLayer8}, S32FilesCount={_document.S32Files.Count}");
+                        if (_viewState.ShowLayer8)
+                        {
+                            DrawLayer8MarkersAndSprites(viewportBitmap, worldRect);
                         }
 
                         // 保存渲染結果元數據
@@ -7727,6 +7769,243 @@ namespace L1FlyMapViewer
                     g.DrawPolygon(pen, new Point[] { p1, p2, p3, p4 });
                 }
             }
+        }
+
+        // 繪製 Layer8 標記和啟用的 SPR 動畫
+        private void DrawLayer8MarkersAndSprites(Bitmap bitmap, Rectangle worldRect)
+        {
+            int totalLayer8Count = 0;
+            int drawnCount = 0;
+
+            using (Graphics g = Graphics.FromImage(bitmap))
+            {
+                g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+
+                // 繪製所有 Layer8 項目的標記
+                foreach (var s32Data in _document.S32Files.Values)
+                {
+                    totalLayer8Count += s32Data.Layer8.Count;
+                    if (s32Data.Layer8.Count == 0) continue;
+
+                    int[] loc = s32Data.SegInfo.GetLoc(1.0);
+                    int mx = loc[0];
+                    int my = loc[1];
+
+                    for (int i = 0; i < s32Data.Layer8.Count; i++)
+                    {
+                        var item = s32Data.Layer8[i];
+
+                        // Layer8 X,Y 是絕對遊戲座標，先轉為本地座標
+                        int localLayer3X = item.X - s32Data.SegInfo.nLinBeginX;  // 0~63
+                        int localLayer3Y = item.Y - s32Data.SegInfo.nLinBeginY;  // 0~63
+
+                        // 跳過超出範圍的項目
+                        if (localLayer3X < 0 || localLayer3X > 63 || localLayer3Y < 0 || localLayer3Y > 63)
+                            continue;
+
+                        // 轉為 Layer1 座標並計算世界像素座標
+                        int layer1X = localLayer3X * 2;  // 0~127
+                        int layer1Y = localLayer3Y;       // 0~63
+
+                        int baseX = -24 * (layer1X / 2);
+                        int baseY = 63 * 12 - 12 * (layer1X / 2);
+                        int worldX = mx + baseX + layer1X * 24 + layer1Y * 24;
+                        int worldY = my + baseY + layer1Y * 12;
+
+                        // 轉為畫布座標（格子中心）
+                        int x = worldX - worldRect.X + 12;
+                        int y = worldY - worldRect.Y + 12;
+
+                        // 檢查是否在可見範圍內
+                        if (x < -50 || x > bitmap.Width + 50 || y < -50 || y > bitmap.Height + 50)
+                            continue;
+
+                        bool isEnabled = _editState.EnabledLayer8Items.Contains((s32Data.FilePath, i));
+
+                        // 如果已啟用，繪製 SPR 動畫
+                        if (isEnabled)
+                        {
+                            DrawLayer8Sprite(g, item.SprId, x, y, s32Data.FilePath, i);
+                        }
+
+                        // 繪製標記（圓點）- 加大尺寸
+                        Color markerColor = isEnabled ? Color.Lime : Color.Orange;
+                        int markerRadius = 10;
+                        using (SolidBrush brush = new SolidBrush(markerColor))
+                        {
+                            g.FillEllipse(brush, x - markerRadius, y - markerRadius, markerRadius * 2, markerRadius * 2);
+                        }
+                        g.DrawEllipse(Pens.White, x - markerRadius, y - markerRadius, markerRadius * 2, markerRadius * 2);
+
+                        // 在標記旁顯示 SprId
+                        using (Font font = new Font("Arial", 8, FontStyle.Bold))
+                        {
+                            g.DrawString(item.SprId.ToString(), font, Brushes.White, x + markerRadius + 2, y - 6);
+                        }
+                        drawnCount++;
+                    }
+                }
+            }
+
+            Console.WriteLine($"[Layer8] totalLayer8Count={totalLayer8Count}, drawnCount={drawnCount}, worldRect={worldRect}");
+        }
+
+        // 繪製單個 Layer8 SPR 動畫帧
+        private void DrawLayer8Sprite(Graphics g, int sprId, int x, int y, string s32Path, int itemIndex)
+        {
+            // 載入 SPR 帧（如果還沒載入）
+            if (!_layer8SprCache.TryGetValue(sprId, out var frames))
+            {
+                frames = LoadLayer8SprFrames(sprId);
+                _layer8SprCache[sprId] = frames;
+            }
+
+            if (frames == null || frames.Count == 0) return;
+
+            // 取得當前帧索引
+            var key = (s32Path, itemIndex);
+            if (!_layer8AnimFrame.TryGetValue(key, out int frameIdx))
+            {
+                frameIdx = 0;
+                _layer8AnimFrame[key] = 0;
+            }
+
+            Image frame = frames[frameIdx % frames.Count];
+
+            // 繪製 SPR（置中於標記位置）
+            g.DrawImage(frame, x - frame.Width / 2, y - frame.Height / 2);
+        }
+
+        // 載入 Layer8 SPR 帧（支援多 idx 檔案）
+        private List<Image> LoadLayer8SprFrames(int sprId)
+        {
+            string sprKey = $"{sprId}-0.spr";
+
+            // 依序嘗試不同的 idx 檔案
+            string[] idxTypes = new[] {
+                "Sprite",
+                "Sprite00", "Sprite01", "Sprite02", "Sprite03",
+                "Sprite04", "Sprite05", "Sprite06", "Sprite07",
+                "Sprite08", "Sprite09", "Sprite10", "Sprite11",
+                "Sprite12", "Sprite13", "Sprite14", "Sprite15"
+            };
+
+            foreach (var idxType in idxTypes)
+            {
+                try
+                {
+                    byte[] sprData = L1PakReader.UnPack(idxType, sprKey);
+                    if (sprData != null && sprData.Length > 0)
+                    {
+                        var rawFrames = Lin.Helper.Core.Sprite.SprReader.LoadRaw(sprData);
+                        if (rawFrames != null && rawFrames.Length > 0)
+                        {
+                            var result = new List<Image>();
+                            foreach (var f in rawFrames)
+                            {
+                                if (f.Width > 0 && f.Height > 0 && f.Pixels != null)
+                                {
+                                    result.Add(CreateBitmapFromRgbaLayer8(f.Pixels, f.Width, f.Height));
+                                }
+                            }
+                            if (result.Count > 0)
+                                return result;
+                        }
+                    }
+                }
+                catch { }
+            }
+
+            return new List<Image>();  // 找不到
+        }
+
+        // 將 RGBA 像素轉換為 BGRA 並建立 Bitmap（Layer8 用）
+        private Bitmap CreateBitmapFromRgbaLayer8(byte[] rgbaPixels, int width, int height)
+        {
+            byte[] bgraPixels = new byte[rgbaPixels.Length];
+            for (int i = 0; i < rgbaPixels.Length; i += 4)
+            {
+                bgraPixels[i + 0] = rgbaPixels[i + 2]; // B <- R
+                bgraPixels[i + 1] = rgbaPixels[i + 1]; // G <- G
+                bgraPixels[i + 2] = rgbaPixels[i + 0]; // R <- B
+                bgraPixels[i + 3] = rgbaPixels[i + 3]; // A <- A
+            }
+            Bitmap bmp = new Bitmap(width, height, PixelFormat.Format32bppArgb);
+            var bmpData = bmp.LockBits(new Rectangle(0, 0, width, height), ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
+            System.Runtime.InteropServices.Marshal.Copy(bgraPixels, 0, bmpData.Scan0, bgraPixels.Length);
+            bmp.UnlockBits(bmpData);
+            return bmp;
+        }
+
+        /// <summary>
+        /// 將 S32 地圖面板的螢幕座標轉換為世界像素座標
+        /// 考慮縮放和 RenderOrigin 偏移
+        /// </summary>
+        private Point S32ScreenToWorld(int screenX, int screenY)
+        {
+            // bitmap 繪製位置 = (RenderOrigin - Scroll) * zoom
+            int drawOffsetX = (int)((_viewState.RenderOriginX - _viewState.ScrollX) * s32ZoomLevel);
+            int drawOffsetY = (int)((_viewState.RenderOriginY - _viewState.ScrollY) * s32ZoomLevel);
+
+            // 螢幕座標 -> bitmap 座標 -> 世界座標
+            int bitmapX = (int)((screenX - drawOffsetX) / s32ZoomLevel);
+            int bitmapY = (int)((screenY - drawOffsetY) / s32ZoomLevel);
+            int worldX = bitmapX + _viewState.RenderOriginX;
+            int worldY = bitmapY + _viewState.RenderOriginY;
+
+            return new Point(worldX, worldY);
+        }
+
+        // 查找點擊位置的 Layer8 標記
+        private (string s32Path, int index)? FindLayer8MarkerAtPosition(int worldX, int worldY)
+        {
+            const int hitRadius = 20;  // 標記點擊範圍（加大）
+            Console.WriteLine($"[Layer8-Click] Finding marker at world ({worldX}, {worldY})");
+
+            foreach (var s32Data in _document.S32Files.Values)
+            {
+                if (s32Data.Layer8.Count == 0) continue;
+
+                int[] loc = s32Data.SegInfo.GetLoc(1.0);
+                int mx = loc[0];
+                int my = loc[1];
+
+                for (int i = 0; i < s32Data.Layer8.Count; i++)
+                {
+                    var item = s32Data.Layer8[i];
+
+                    // Layer8 X,Y 是絕對遊戲座標，先轉為本地座標
+                    int localLayer3X = item.X - s32Data.SegInfo.nLinBeginX;
+                    int localLayer3Y = item.Y - s32Data.SegInfo.nLinBeginY;
+
+                    if (localLayer3X < 0 || localLayer3X > 63 || localLayer3Y < 0 || localLayer3Y > 63)
+                        continue;
+
+                    int layer1X = localLayer3X * 2;
+                    int layer1Y = localLayer3Y;
+
+                    int baseX = -24 * (layer1X / 2);
+                    int baseY = 63 * 12 - 12 * (layer1X / 2);
+                    // 渲染時畫布座標 = worldX - worldRect.X + 12
+                    // 所以標記的世界座標中心是 worldX + 12, worldY + 12
+                    int markerWorldX = mx + baseX + layer1X * 24 + layer1Y * 24 + 12;
+                    int markerWorldY = my + baseY + layer1Y * 12 + 12;
+
+                    // 檢查是否在點擊範圍內
+                    int dx = worldX - markerWorldX;
+                    int dy = worldY - markerWorldY;
+                    int distSq = dx * dx + dy * dy;
+
+                    if (distSq <= hitRadius * hitRadius)
+                    {
+                        Console.WriteLine($"[Layer8-Click] HIT! marker at ({markerWorldX},{markerWorldY}), dist={Math.Sqrt(distSq):F1}");
+                        return (s32Data.FilePath, i);
+                    }
+                }
+            }
+
+            Console.WriteLine($"[Layer8-Click] No marker found");
+            return null;
         }
 
         // 繪製 S32 邊界框（Viewport 版本）
@@ -8947,9 +9226,48 @@ namespace L1FlyMapViewer
                 return;
             }
 
-            // 將點擊位置轉換為世界座標（考慮縮放和捲動位置）
-            int worldX = (int)(e.Location.X / s32ZoomLevel) + _viewState.ScrollX;
-            int worldY = (int)(e.Location.Y / s32ZoomLevel) + _viewState.ScrollY;
+            // 將點擊位置轉換為世界座標
+            var worldPoint = S32ScreenToWorld(e.Location.X, e.Location.Y);
+            int worldX = worldPoint.X;
+            int worldY = worldPoint.Y;
+
+            // Layer8 標記點擊處理
+            if (_viewState.ShowLayer8 && e.Button == MouseButtons.Left)
+            {
+                var clickedMarker = FindLayer8MarkerAtPosition(worldX, worldY);
+                if (clickedMarker.HasValue)
+                {
+                    var (s32Path, index) = clickedMarker.Value;
+
+                    // 切換顯示狀態
+                    if (_editState.EnabledLayer8Items.Contains((s32Path, index)))
+                    {
+                        _editState.EnabledLayer8Items.Remove((s32Path, index));
+                        _layer8AnimFrame.Remove((s32Path, index));
+
+                        // 如果沒有啟用的項目，停止動畫計時器
+                        if (_editState.EnabledLayer8Items.Count == 0 && _layer8AnimTimer != null)
+                        {
+                            _layer8AnimTimer.Stop();
+                        }
+                    }
+                    else
+                    {
+                        _editState.EnabledLayer8Items.Add((s32Path, index));
+                        _layer8AnimFrame[(s32Path, index)] = 0;
+
+                        // 啟動動畫計時器
+                        if (_layer8AnimTimer != null && !_layer8AnimTimer.Enabled)
+                        {
+                            _layer8AnimTimer.Start();
+                        }
+                    }
+
+                    // 重繪
+                    RenderS32Map();
+                    return;
+                }
+            }
 
             // 使用優化的格子查找（先過濾 S32 範圍，減少 400x 計算量）
             var result = CellFinder.FindCellOptimized(worldX, worldY, _document.S32Files.Values);

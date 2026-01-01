@@ -121,6 +121,7 @@ namespace L1FlyMapViewer
         private CheckBox chkFloatLayer5;
         private CheckBox chkFloatSafeZones;
         private CheckBox chkFloatCombatZones;
+        private CheckBox chkFloatLayer8;
         private CheckBox chkShowPassable;
         private CheckBox chkShowLayer5;
         private CheckBox chkShowGrid;
@@ -285,6 +286,7 @@ namespace L1FlyMapViewer
             this.chkFloatLayer5 = new CheckBox();
             this.chkFloatSafeZones = new CheckBox();
             this.chkFloatCombatZones = new CheckBox();
+            this.chkFloatLayer8 = new CheckBox();
             this.chkShowLayer5 = new CheckBox();
 
             this.menuStrip1.SuspendLayout();
@@ -1072,7 +1074,7 @@ namespace L1FlyMapViewer
             this.layerFloatPanel.Controls.Add(this.layerPopupPanel);
             this.layerFloatPanel.Location = new Point(10, 10);
             this.layerFloatPanel.Name = "layerFloatPanel";
-            this.layerFloatPanel.Size = new Size(90, 235);
+            this.layerFloatPanel.Size = new Size(90, 295);
             this.layerFloatPanel.TabIndex = 10;
             this.layerFloatPanel.Anchor = AnchorStyles.Top | AnchorStyles.Right;
 
@@ -1102,10 +1104,11 @@ namespace L1FlyMapViewer
             this.layerPopupPanel.Controls.Add(this.chkFloatS32Boundary);
             this.layerPopupPanel.Controls.Add(this.chkFloatSafeZones);
             this.layerPopupPanel.Controls.Add(this.chkFloatCombatZones);
+            this.layerPopupPanel.Controls.Add(this.chkFloatLayer8);
             this.layerPopupPanel.Location = new Point(0, 24);
             this.layerPopupPanel.Name = "layerPopupPanel";
             this.layerPopupPanel.Padding = new Padding(5);
-            this.layerPopupPanel.Size = new Size(90, 211);
+            this.layerPopupPanel.Size = new Size(90, 270);
             this.layerPopupPanel.TabIndex = 1;
             this.layerPopupPanel.Visible = true;
 
@@ -1230,6 +1233,20 @@ namespace L1FlyMapViewer
             this.chkFloatCombatZones.Text = "戰鬥區域";
             this.chkFloatCombatZones.UseVisualStyleBackColor = true;
             this.chkFloatCombatZones.CheckedChanged += new System.EventHandler(this.chkFloatLayer_CheckedChanged);
+
+            //
+            // chkFloatLayer8
+            //
+            this.chkFloatLayer8.AutoSize = true;
+            this.chkFloatLayer8.ForeColor = Color.FromArgb(255, 180, 100);
+            this.chkFloatLayer8.Location = new Point(8, 203);
+            this.chkFloatLayer8.Name = "chkFloatLayer8";
+            this.chkFloatLayer8.Size = new Size(80, 19);
+            this.chkFloatLayer8.TabIndex = 9;
+            this.chkFloatLayer8.Text = "L8 特效";
+            this.chkFloatLayer8.UseVisualStyleBackColor = true;
+            this.chkFloatLayer8.Checked = true;
+            this.chkFloatLayer8.CheckedChanged += new System.EventHandler(this.chkFloatLayer_CheckedChanged);
 
             //
             // rightPanel

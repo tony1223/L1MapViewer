@@ -268,6 +268,17 @@ namespace L1MapViewer.Models
             set { if (_showS32Boundary != value) { _showS32Boundary = value; DisplayOptionsChanged?.Invoke(this, EventArgs.Empty); } }
         }
 
+        private bool _showLayer8 = true;
+
+        /// <summary>
+        /// 顯示 Layer8 (SPR 特效標記)
+        /// </summary>
+        public bool ShowLayer8
+        {
+            get => _showLayer8;
+            set { if (_showLayer8 != value) { _showLayer8 = value; DisplayOptionsChanged?.Invoke(this, EventArgs.Empty); } }
+        }
+
         /// <summary>
         /// 顯示選項變更事件
         /// </summary>

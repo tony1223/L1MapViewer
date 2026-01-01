@@ -12,6 +12,7 @@ using L1MapViewer.Converter;
 using L1MapViewer.Helper;
 using L1MapViewer.Models;
 using L1MapViewer.Reader;
+using L1MapViewer.CLI.Commands;
 using static L1MapViewer.Other.Struct;
 
 namespace L1MapViewer.CLI
@@ -107,6 +108,8 @@ namespace L1MapViewer.CLI
                         return Commands.BenchmarkCommands.Thumbnails(cmdArgs);
                     case "render-adjacent":
                         return Commands.BenchmarkCommands.RenderAdjacent(cmdArgs);
+                    case "test-layer8":
+                        return CmdTestLayer8(cmdArgs);
                     case "render-material":
                         return Commands.MaterialCommands.RenderMaterial(cmdArgs);
                     case "verify-material-tiles":
@@ -5368,6 +5371,209 @@ L1MapViewer CLI - S32 檔案解析工具
         }
 
         // CmdBenchmarkCellFind, CmdBenchmarkMouseClick 已移至 Commands/BenchmarkCommands.cs
+
+        /// <summary>
+        /// test-layer8 命令 - 測試 Layer8 資料和渲染
+        /// </summary>
+        private static int CmdTestLayer8(string[] args)
+        {
+            if (args.Length < 3)
+            {
+                Console.WriteLine("用法: -cli test-layer8 <地圖資料夾> <gameX> <gameY> [--render]");
+                Console.WriteLine();
+                Console.WriteLine("範例:");
+                Console.WriteLine("  -cli test-layer8 C:\\client\\map\\4 33712 32380");
+                Console.WriteLine("  -cli test-layer8 C:\\client\\map\\4 33712 32380 --render");
+                return 1;
+            }
+
+            string mapFolder = args[0];
+            if (!int.TryParse(args[1], out int gameX) || !int.TryParse(args[2], out int gameY))
+            {
+                Console.WriteLine("錯誤: gameX 和 gameY 必須是數字");
+                return 1;
+            }
+            bool doRender = args.Any(a => a.ToLower() == "--render");
+
+            if (!Directory.Exists(mapFolder))
+            {
+                Console.WriteLine($"錯誤: 地圖資料夾不存在: {mapFolder}");
+                return 1;
+            }
+
+            // 載入地圖
+            var loadResult = MapLoader.Load(mapFolder);
+            if (!loadResult.Success) return 1;
+
+            Console.WriteLine($"載入 {loadResult.S32Files.Count} 個 S32 檔案");
+            Console.WriteLine();
+
+            // 統計 Layer8 資料
+            int totalLayer8 = 0;
+            var s32WithLayer8 = new List<S32Data>();
+
+            foreach (var s32 in loadResult.S32Files.Values)
+            {
+                if (s32.Layer8.Count > 0)
+                {
+                    totalLayer8 += s32.Layer8.Count;
+                    s32WithLayer8.Add(s32);
+                }
+            }
+
+            Console.WriteLine($"=== Layer8 統計 ===");
+            Console.WriteLine($"總 Layer8 項目數: {totalLayer8}");
+            Console.WriteLine($"有 Layer8 的 S32 數量: {s32WithLayer8.Count}");
+            Console.WriteLine();
+
+            // 找出目標座標附近的 S32
+            S32Data targetS32 = null;
+            foreach (var s32 in loadResult.S32Files.Values)
+            {
+                var seg = s32.SegInfo;
+                if (gameX >= seg.nLinBeginX && gameX <= seg.nLinEndX &&
+                    gameY >= seg.nLinBeginY && gameY <= seg.nLinEndY)
+                {
+                    targetS32 = s32;
+                    break;
+                }
+            }
+
+            if (targetS32 != null)
+            {
+                Console.WriteLine($"=== 目標 S32: {Path.GetFileName(targetS32.FilePath)} ===");
+                Console.WriteLine($"座標範圍: ({targetS32.SegInfo.nLinBeginX},{targetS32.SegInfo.nLinBeginY}) - ({targetS32.SegInfo.nLinEndX},{targetS32.SegInfo.nLinEndY})");
+                Console.WriteLine($"Layer8 項目數: {targetS32.Layer8.Count}");
+
+                if (targetS32.Layer8.Count > 0)
+                {
+                    Console.WriteLine();
+                    Console.WriteLine("Layer8 項目:");
+                    int[] loc = targetS32.SegInfo.GetLoc(1.0);
+                    int mx = loc[0];
+                    int my = loc[1];
+
+                    for (int i = 0; i < targetS32.Layer8.Count && i < 20; i++)
+                    {
+                        var item = targetS32.Layer8[i];
+                        // Layer8 X,Y 是絕對遊戲座標，轉為本地座標
+                        int localL3X = item.X - targetS32.SegInfo.nLinBeginX;
+                        int localL3Y = item.Y - targetS32.SegInfo.nLinBeginY;
+
+                        // 計算世界像素座標
+                        int layer1X = localL3X * 2;
+                        int layer1Y = localL3Y;
+                        int baseX = -24 * (layer1X / 2);
+                        int baseY = 63 * 12 - 12 * (layer1X / 2);
+                        int worldX = mx + baseX + layer1X * 24 + layer1Y * 24 + 12;
+                        int worldY = my + baseY + layer1Y * 12 + 12;
+
+                        Console.WriteLine($"  [{i}] SprId={item.SprId}, GameXY=({item.X},{item.Y}), LocalXY=({localL3X},{localL3Y}), WorldPos=({worldX},{worldY})");
+                    }
+                    if (targetS32.Layer8.Count > 20)
+                        Console.WriteLine($"  ... 還有 {targetS32.Layer8.Count - 20} 個項目");
+                }
+            }
+            else
+            {
+                Console.WriteLine($"找不到包含座標 ({gameX},{gameY}) 的 S32");
+            }
+
+            // 列出所有有 Layer8 的 S32
+            if (s32WithLayer8.Count > 0 && s32WithLayer8.Count <= 20)
+            {
+                Console.WriteLine();
+                Console.WriteLine("=== 所有有 Layer8 的 S32 ===");
+                foreach (var s32 in s32WithLayer8)
+                {
+                    Console.WriteLine($"  {Path.GetFileName(s32.FilePath)}: {s32.Layer8.Count} 個項目");
+                    foreach (var item in s32.Layer8.Take(5))
+                    {
+                        Console.WriteLine($"    SprId={item.SprId}, X={item.X}, Y={item.Y}");
+                    }
+                    if (s32.Layer8.Count > 5)
+                        Console.WriteLine($"    ...");
+                }
+            }
+
+            // 渲染測試
+            if (doRender && targetS32 != null && targetS32.Layer8.Count > 0)
+            {
+                Console.WriteLine();
+                Console.WriteLine("=== 渲染測試 ===");
+
+                int[] loc = targetS32.SegInfo.GetLoc(1.0);
+                int mx = loc[0];
+                int my = loc[1];
+
+                // 計算第一個 Layer8 項目的世界座標（使用正確的座標轉換）
+                var firstItem = targetS32.Layer8[0];
+                int firstLocalX = firstItem.X - targetS32.SegInfo.nLinBeginX;
+                int firstLocalY = firstItem.Y - targetS32.SegInfo.nLinBeginY;
+                int layer1X = firstLocalX * 2;
+                int layer1Y = firstLocalY;
+                int baseX = -24 * (layer1X / 2);
+                int baseY = 63 * 12 - 12 * (layer1X / 2);
+                int centerX = mx + baseX + layer1X * 24 + layer1Y * 24 + 12;
+                int centerY = my + baseY + layer1Y * 12 + 12;
+
+                Console.WriteLine($"第一個 Layer8 項目世界座標: ({centerX}, {centerY})");
+
+                // 建立一個 800x600 的測試區域
+                int testWidth = 800;
+                int testHeight = 600;
+                var worldRect = new Rectangle(centerX - testWidth / 2, centerY - testHeight / 2, testWidth, testHeight);
+                Console.WriteLine($"測試渲染區域: {worldRect}");
+
+                using (var bitmap = new Bitmap(testWidth, testHeight, System.Drawing.Imaging.PixelFormat.Format32bppArgb))
+                using (var g = Graphics.FromImage(bitmap))
+                {
+                    g.Clear(Color.DarkGray);
+                    g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+
+                    int drawnCount = 0;
+                    foreach (var item in targetS32.Layer8)
+                    {
+                        // 正確的座標轉換
+                        int localL3X = item.X - targetS32.SegInfo.nLinBeginX;
+                        int localL3Y = item.Y - targetS32.SegInfo.nLinBeginY;
+
+                        if (localL3X < 0 || localL3X > 63 || localL3Y < 0 || localL3Y > 63)
+                            continue;
+
+                        int l1X = localL3X * 2;
+                        int l1Y = localL3Y;
+                        int bX = -24 * (l1X / 2);
+                        int bY = 63 * 12 - 12 * (l1X / 2);
+                        int wX = mx + bX + l1X * 24 + l1Y * 24 + 12;
+                        int wY = my + bY + l1Y * 12 + 12;
+
+                        int x = wX - worldRect.X;
+                        int y = wY - worldRect.Y;
+
+                        if (x >= -20 && x < testWidth + 20 && y >= -20 && y < testHeight + 20)
+                        {
+                            g.FillEllipse(Brushes.Orange, x - 8, y - 8, 16, 16);
+                            g.DrawEllipse(Pens.White, x - 8, y - 8, 16, 16);
+                            using (var font = new Font("Arial", 8))
+                            {
+                                g.DrawString(item.SprId.ToString(), font, Brushes.White, x + 10, y - 6);
+                            }
+                            drawnCount++;
+                        }
+                    }
+
+                    Console.WriteLine($"繪製了 {drawnCount} 個 marker");
+
+                    string outputPath = Path.Combine(Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location), "tests", "layer8_test.png");
+                    Directory.CreateDirectory(Path.GetDirectoryName(outputPath));
+                    bitmap.Save(outputPath);
+                    Console.WriteLine($"輸出: {outputPath}");
+                }
+            }
+
+            return 0;
+        }
 
         /// <summary>
         /// export-passability 命令 - 匯出地圖通行資料為 L1J/DIR 格式
