@@ -81,6 +81,7 @@ namespace L1FlyMapViewer
         private Button btnToolCheckL5Invalid;
         private Button btnToolCheckL1;
         private Button btnToolCheckL2;
+        private Button btnToolCheckL3;
         private Button btnToolCheckL4;
         private Button btnToolCheckL5;
         private Button btnToolCheckL6;
@@ -230,6 +231,7 @@ namespace L1FlyMapViewer
             this.btnToolCheckL5Invalid = new Button();
             this.btnToolCheckL1 = new Button();
             this.btnToolCheckL2 = new Button();
+            this.btnToolCheckL3 = new Button();
             this.btnToolCheckL4 = new Button();
             this.btnToolCheckL5 = new Button();
             this.btnToolCheckL6 = new Button();
@@ -1418,6 +1420,7 @@ namespace L1FlyMapViewer
             this.toolbarPanel2.BorderStyle = BorderStyle.FixedSingle;
             this.toolbarPanel2.Controls.Add(this.btnToolCheckL1);
             this.toolbarPanel2.Controls.Add(this.btnToolCheckL2);
+            this.toolbarPanel2.Controls.Add(this.btnToolCheckL3);
             this.toolbarPanel2.Controls.Add(this.btnToolCheckL4);
             this.toolbarPanel2.Controls.Add(this.btnToolCheckL5);
             this.toolbarPanel2.Controls.Add(this.btnToolCheckL6);
@@ -1606,15 +1609,27 @@ namespace L1FlyMapViewer
             this.btnToolCheckL2.Name = "btnToolCheckL2";
             this.btnToolCheckL2.Size = new Size(34, 34);
             this.btnToolCheckL2.TabIndex = 11;
-            this.btnToolCheckL2.Text = "清L2";
+            this.btnToolCheckL2.Text = "查L2";
             this.btnToolCheckL2.UseVisualStyleBackColor = true;
             this.toolTip1.SetToolTip(this.btnToolCheckL2, "查看與清除第二層資料");
             this.btnToolCheckL2.Click += new System.EventHandler(this.btnToolCheckL2_Click);
 
             //
+            // btnToolCheckL3
+            //
+            this.btnToolCheckL3.Location = new Point(2, 78);
+            this.btnToolCheckL3.Name = "btnToolCheckL3";
+            this.btnToolCheckL3.Size = new Size(34, 34);
+            this.btnToolCheckL3.TabIndex = 19;
+            this.btnToolCheckL3.Text = "查L3";
+            this.btnToolCheckL3.UseVisualStyleBackColor = true;
+            this.toolTip1.SetToolTip(this.btnToolCheckL3, "查看第三層（屬性）資料");
+            this.btnToolCheckL3.Click += new System.EventHandler(this.btnToolCheckL3_Click);
+
+            //
             // btnToolCheckL4
             //
-            this.btnToolCheckL4.Location = new Point(2, 78);
+            this.btnToolCheckL4.Location = new Point(2, 116);
             this.btnToolCheckL4.Name = "btnToolCheckL4";
             this.btnToolCheckL4.Size = new Size(34, 34);
             this.btnToolCheckL4.TabIndex = 11;
@@ -1626,7 +1641,7 @@ namespace L1FlyMapViewer
             //
             // btnToolCheckL5
             //
-            this.btnToolCheckL5.Location = new Point(2, 116);
+            this.btnToolCheckL5.Location = new Point(2, 154);
             this.btnToolCheckL5.Name = "btnToolCheckL5";
             this.btnToolCheckL5.Size = new Size(34, 34);
             this.btnToolCheckL5.TabIndex = 11;
@@ -1638,7 +1653,7 @@ namespace L1FlyMapViewer
             //
             // btnToolCheckL6
             //
-            this.btnToolCheckL6.Location = new Point(2, 154);
+            this.btnToolCheckL6.Location = new Point(2, 192);
             this.btnToolCheckL6.Name = "btnToolCheckL6";
             this.btnToolCheckL6.Size = new Size(34, 34);
             this.btnToolCheckL6.TabIndex = 12;
@@ -1650,7 +1665,7 @@ namespace L1FlyMapViewer
             //
             // btnToolCheckL7
             //
-            this.btnToolCheckL7.Location = new Point(2, 192);
+            this.btnToolCheckL7.Location = new Point(2, 230);
             this.btnToolCheckL7.Name = "btnToolCheckL7";
             this.btnToolCheckL7.Size = new Size(34, 34);
             this.btnToolCheckL7.TabIndex = 13;
@@ -1662,7 +1677,7 @@ namespace L1FlyMapViewer
             //
             // btnToolCheckL8
             //
-            this.btnToolCheckL8.Location = new Point(2, 230);
+            this.btnToolCheckL8.Location = new Point(2, 268);
             this.btnToolCheckL8.Name = "btnToolCheckL8";
             this.btnToolCheckL8.Size = new Size(34, 34);
             this.btnToolCheckL8.TabIndex = 14;
@@ -1674,7 +1689,7 @@ namespace L1FlyMapViewer
             //
             // btnEnableVisibleL8
             //
-            this.btnEnableVisibleL8.Location = new Point(2, 266);
+            this.btnEnableVisibleL8.Location = new Point(2, 304);
             this.btnEnableVisibleL8.Name = "btnEnableVisibleL8";
             this.btnEnableVisibleL8.Size = new Size(34, 34);
             this.btnEnableVisibleL8.TabIndex = 15;

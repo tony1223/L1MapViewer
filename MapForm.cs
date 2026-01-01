@@ -11828,19 +11828,57 @@ namespace L1FlyMapViewer
             int layer3X = x / 2;
             if (layer3X >= 64) layer3X = 63;
 
+            // x 偶數用 Attribute1 (左上)，x 奇數用 Attribute2 (右上)
+            bool isEvenX = (x % 2 == 0);
+
             var attr = currentS32Data.Layer3[y, layer3X];
             if (attr != null)
             {
                 Label info = new Label();
-                string attrText = $"第3層座標: [{layer3X}, {y}]\n\n";
-                attrText += $"Attribute1 (左上邊):\n";
-                attrText += $"  {attr.Attribute1} (0x{attr.Attribute1:X4})\n\n";
-                attrText += $"Attribute2 (右上邊):\n";
-                attrText += $"  {attr.Attribute2} (0x{attr.Attribute2:X4})\n";
+                string attrText = $"第3層座標: [{layer3X}, {y}]\n";
+                attrText += $"第1層 X={x} ({(isEvenX ? "偶數" : "奇數")})\n\n";
+
+                // 顯示當前格子對應的屬性
+                short currentAttr = isEvenX ? attr.Attribute1 : attr.Attribute2;
+                string posName = isEvenX ? "左上" : "右上";
+
+                // 解析區域類型
+                int lowNibble = currentAttr & 0x0F;
+                bool isPassable = (currentAttr & 0x01) == 0;
+                bool isSafe = (lowNibble & 0x04) != 0;
+                bool isCombat = (lowNibble & 0x0C) == 0x08;
+
+                string regionType = "一般區域";
+                if (isSafe) regionType = "安全區域";
+                else if (isCombat) regionType = "戰鬥區域";
+
+                string passable = isPassable ? "可通行" : "不可通行";
+
+                attrText += $"【{posName}】(當前格)\n";
+                attrText += $"  區域: {regionType}\n";
+                attrText += $"  通行: {passable}\n";
+                attrText += $"  值: {currentAttr} (0x{currentAttr:X4})\n\n";
+
+                // 也顯示另一邊的屬性供參考
+                short otherAttr = isEvenX ? attr.Attribute2 : attr.Attribute1;
+                string otherPosName = isEvenX ? "右上" : "左上";
+                int otherLowNibble = otherAttr & 0x0F;
+                bool otherPassable = (otherAttr & 0x01) == 0;
+                bool otherSafe = (otherLowNibble & 0x04) != 0;
+                bool otherCombat = (otherLowNibble & 0x0C) == 0x08;
+
+                string otherRegion = "一般";
+                if (otherSafe) otherRegion = "安全";
+                else if (otherCombat) otherRegion = "戰鬥";
+
+                attrText += $"【{otherPosName}】\n";
+                attrText += $"  {otherRegion}, {(otherPassable ? "可通行" : "不可通行")}\n";
+                attrText += $"  值: 0x{otherAttr:X4}";
 
                 info.Text = attrText;
                 info.Dock = DockStyle.Fill;
-                info.TextAlign = ContentAlignment.TopCenter;
+                info.TextAlign = ContentAlignment.TopLeft;
+                info.Padding = new Padding(5);
                 panel.Controls.Add(info);
 
                 // 刪除按鈕
@@ -21323,6 +21361,177 @@ namespace L1FlyMapViewer
             btnClose.Click += (s, args) => resultForm.Close();
             pnlButtons.Controls.Add(btnClose);
 
+            resultForm.ShowDialog();
+        }
+
+        // 查看第三層（屬性）資料
+        private void btnToolCheckL3_Click(object sender, EventArgs e)
+        {
+            if (_document.S32Files.Count == 0)
+            {
+                MessageBox.Show("請先載入地圖", "提示", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            // 收集所有 Layer3 資料項目
+            var allItems = new List<(string filePath, string fileName, int x, int y, short attr1, short attr2, string region1, string pass1, string region2, string pass2)>();
+            var s32Stats = new List<(string filePath, string fileName, int safeCount, int combatCount, int impassableCount, int totalNonZero)>();
+
+            foreach (var kvp in _document.S32Files)
+            {
+                string filePath = kvp.Key;
+                string fileName = Path.GetFileName(kvp.Key);
+                S32Data s32Data = kvp.Value;
+
+                int safeCount = 0, combatCount = 0, impassableCount = 0, totalNonZero = 0;
+
+                for (int y = 0; y < 64; y++)
+                {
+                    for (int x = 0; x < 64; x++)
+                    {
+                        var attr = s32Data.Layer3[y, x];
+                        if (attr == null || (attr.Attribute1 == 0 && attr.Attribute2 == 0)) continue;
+
+                        // 解析 Attribute1
+                        int val1 = attr.Attribute1 & 0x0F;
+                        bool pass1 = (attr.Attribute1 & 0x01) == 0;
+                        string region1 = "一般";
+                        if ((val1 & 0x04) != 0) { region1 = "安全"; safeCount++; }
+                        else if ((val1 & 0x0C) == 0x08) { region1 = "戰鬥"; combatCount++; }
+                        if (!pass1) impassableCount++;
+
+                        // 解析 Attribute2
+                        int val2 = attr.Attribute2 & 0x0F;
+                        bool pass2 = (attr.Attribute2 & 0x01) == 0;
+                        string region2 = "一般";
+                        if ((val2 & 0x04) != 0) { region2 = "安全"; safeCount++; }
+                        else if ((val2 & 0x0C) == 0x08) { region2 = "戰鬥"; combatCount++; }
+                        if (!pass2) impassableCount++;
+
+                        totalNonZero++;
+                        allItems.Add((filePath, fileName, x, y, attr.Attribute1, attr.Attribute2,
+                            region1, pass1 ? "可通行" : "不可通行",
+                            region2, pass2 ? "可通行" : "不可通行"));
+                    }
+                }
+
+                if (totalNonZero > 0)
+                    s32Stats.Add((filePath, fileName, safeCount, combatCount, impassableCount, totalNonZero));
+            }
+
+            // 顯示結果
+            Form resultForm = new Form();
+            resultForm.Text = $"L3 查看 - 共 {allItems.Count} 筆資料";
+            resultForm.Size = new Size(1000, 650);
+            resultForm.FormBorderStyle = FormBorderStyle.Sizable;
+            resultForm.StartPosition = FormStartPosition.CenterParent;
+
+            TabControl tabControl = new TabControl();
+            tabControl.Dock = DockStyle.Fill;
+
+            // Tab 1: 資料列表
+            TabPage tabList = new TabPage("資料列表");
+            ListView lvItems = new ListView();
+            lvItems.Dock = DockStyle.Fill;
+            lvItems.View = View.Details;
+            lvItems.FullRowSelect = true;
+            lvItems.GridLines = true;
+            lvItems.Font = new Font("Consolas", 9);
+
+            lvItems.Columns.Add("S32", 120);
+            lvItems.Columns.Add("X", 50);
+            lvItems.Columns.Add("Y", 50);
+            lvItems.Columns.Add("Attr1", 70);
+            lvItems.Columns.Add("區域1", 50);
+            lvItems.Columns.Add("通行1", 70);
+            lvItems.Columns.Add("Attr2", 70);
+            lvItems.Columns.Add("區域2", 50);
+            lvItems.Columns.Add("通行2", 70);
+
+            foreach (var item in allItems)
+            {
+                var lvi = new ListViewItem(item.fileName);
+                lvi.SubItems.Add(item.x.ToString());
+                lvi.SubItems.Add(item.y.ToString());
+                lvi.SubItems.Add($"0x{item.attr1:X4}");
+                lvi.SubItems.Add(item.region1);
+                lvi.SubItems.Add(item.pass1);
+                lvi.SubItems.Add($"0x{item.attr2:X4}");
+                lvi.SubItems.Add(item.region2);
+                lvi.SubItems.Add(item.pass2);
+                lvi.Tag = item.filePath;
+                lvItems.Items.Add(lvi);
+            }
+
+            // 雙擊跳轉
+            lvItems.DoubleClick += (s, args) =>
+            {
+                if (lvItems.SelectedItems.Count > 0)
+                {
+                    var lvi = lvItems.SelectedItems[0];
+                    string filePath = lvi.Tag?.ToString();
+                    if (int.TryParse(lvi.SubItems[1].Text, out int cellX) &&
+                        int.TryParse(lvi.SubItems[2].Text, out int cellY) &&
+                        !string.IsNullOrEmpty(filePath) && _document.S32Files.TryGetValue(filePath, out S32Data s32Data))
+                    {
+                        // 計算世界座標並跳轉
+                        int[] loc = s32Data.SegInfo.GetLoc(1.0);
+                        int layer1X = cellX * 2;
+                        int baseX = -24 * (layer1X / 2);
+                        int baseY = 63 * 12 - 12 * (layer1X / 2);
+                        int worldX = loc[0] + baseX + layer1X * 24 + cellY * 24;
+                        int worldY = loc[1] + baseY + cellY * 12;
+
+                        _viewState.ScrollX = worldX - _mapViewerControl.Width / 2;
+                        _viewState.ScrollY = worldY - _mapViewerControl.Height / 2;
+                        RenderS32Map();
+                        this.toolStripStatusLabel1.Text = $"已跳轉到 {Path.GetFileName(filePath)} ({cellX},{cellY})";
+                    }
+                }
+            };
+
+            tabList.Controls.Add(lvItems);
+            tabControl.TabPages.Add(tabList);
+
+            // Tab 2: 統計
+            TabPage tabStats = new TabPage("統計");
+            ListView lvStats = new ListView();
+            lvStats.Dock = DockStyle.Fill;
+            lvStats.View = View.Details;
+            lvStats.FullRowSelect = true;
+            lvStats.GridLines = true;
+
+            lvStats.Columns.Add("S32 檔案", 200);
+            lvStats.Columns.Add("安全區", 80);
+            lvStats.Columns.Add("戰鬥區", 80);
+            lvStats.Columns.Add("不可通行", 80);
+            lvStats.Columns.Add("總計", 80);
+
+            foreach (var stat in s32Stats)
+            {
+                var item = new ListViewItem(stat.fileName);
+                item.SubItems.Add(stat.safeCount.ToString());
+                item.SubItems.Add(stat.combatCount.ToString());
+                item.SubItems.Add(stat.impassableCount.ToString());
+                item.SubItems.Add(stat.totalNonZero.ToString());
+                item.Tag = stat.filePath;
+                lvStats.Items.Add(item);
+            }
+
+            int totalSafe = s32Stats.Sum(x => x.safeCount);
+            int totalCombat = s32Stats.Sum(x => x.combatCount);
+            int totalImpassable = s32Stats.Sum(x => x.impassableCount);
+
+            Label lblSummary = new Label();
+            lblSummary.Text = $"安全區: {totalSafe} | 戰鬥區: {totalCombat} | 不可通行: {totalImpassable}";
+            lblSummary.Dock = DockStyle.Bottom;
+            lblSummary.Height = 25;
+
+            tabStats.Controls.Add(lvStats);
+            tabStats.Controls.Add(lblSummary);
+            tabControl.TabPages.Add(tabStats);
+
+            resultForm.Controls.Add(tabControl);
             resultForm.ShowDialog();
         }
 
