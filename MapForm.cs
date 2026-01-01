@@ -22115,6 +22115,7 @@ namespace L1FlyMapViewer
             // 顯示項目的方法
             Action<List<(string filePath, int itemIndex, Layer5Item item, string fileName)>> displayItems = (itemsToShow) =>
             {
+                clbItems.BeginUpdate();
                 clbItems.Items.Clear();
                 itemInfoList.Clear();
                 if (itemsToShow.Count == 0)
@@ -22132,6 +22133,7 @@ namespace L1FlyMapViewer
                         itemInfoList.Add((filePath, itemIndex, item));
                     }
                 }
+                clbItems.EndUpdate();
             };
 
             // 搜尋方法
@@ -22215,8 +22217,10 @@ namespace L1FlyMapViewer
             btnSelectAll.Size = new Size(80, 30);
             btnSelectAll.Click += (s, args) =>
             {
+                clbItems.BeginUpdate();
                 for (int i = 0; i < clbItems.Items.Count; i++)
                     clbItems.SetItemChecked(i, true);
+                clbItems.EndUpdate();
             };
             resultForm.Controls.Add(btnSelectAll);
 
@@ -22226,8 +22230,10 @@ namespace L1FlyMapViewer
             btnDeselectAll.Size = new Size(80, 30);
             btnDeselectAll.Click += (s, args) =>
             {
+                clbItems.BeginUpdate();
                 for (int i = 0; i < clbItems.Items.Count; i++)
                     clbItems.SetItemChecked(i, false);
+                clbItems.EndUpdate();
             };
             resultForm.Controls.Add(btnDeselectAll);
 
