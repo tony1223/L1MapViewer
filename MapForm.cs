@@ -7084,26 +7084,18 @@ namespace L1FlyMapViewer
                                 int X = mx + localBaseX + x1 * 24 + y * 24;
                                 int Y = my + localBaseY + y * 12;
 
-                                // 菱形的四個頂點
+                                // 菱形的頂點
                                 Point pTop = new Point(X + 24, Y + 0);
                                 Point pRight = new Point(X + 48, Y + 12);
-                                Point pBottom = new Point(X + 24, Y + 24);
                                 Point pLeft = new Point(X + 0, Y + 12);
-                                Point pCenter = new Point(X + 24, Y + 12);
 
-                                // 左半邊 - 使用 Attribute1 判斷
+                                // 左上邊線 - 使用 Attribute1 判斷
                                 Pen pen1 = (attr.Attribute1 & 0x01) != 0 ? penImpassable : penPassable;
                                 g.DrawLine(pen1, pLeft, pTop);
-                                g.DrawLine(pen1, pTop, pCenter);
-                                g.DrawLine(pen1, pCenter, pBottom);
-                                g.DrawLine(pen1, pBottom, pLeft);
 
-                                // 右半邊 - 使用 Attribute2 判斷
+                                // 右上邊線 - 使用 Attribute2 判斷
                                 Pen pen2 = (attr.Attribute2 & 0x01) != 0 ? penImpassable : penPassable;
                                 g.DrawLine(pen2, pTop, pRight);
-                                g.DrawLine(pen2, pRight, pBottom);
-                                g.DrawLine(pen2, pBottom, pCenter);
-                                g.DrawLine(pen2, pCenter, pTop);
                             }
                         }
                     }
@@ -7486,6 +7478,8 @@ namespace L1FlyMapViewer
             {
                 g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
 
+                // Layer3 每個格子分成兩個三角形：
+                // Attribute1 = 左上三角形, Attribute2 = 右上三角形
                 using (Pen penImpassable = new Pen(Color.FromArgb(255, 128, 0, 128), 3))
                 using (Pen penPassable = new Pen(Color.FromArgb(255, 50, 200, 255), 2))
                 {
@@ -7513,26 +7507,18 @@ namespace L1FlyMapViewer
                                 if (X + 48 < 0 || X > worldRect.Width || Y + 24 < 0 || Y > worldRect.Height)
                                     continue;
 
-                                // 菱形的四個頂點
+                                // 菱形的頂點
                                 Point pTop = new Point(X + 24, Y + 0);
                                 Point pRight = new Point(X + 48, Y + 12);
-                                Point pBottom = new Point(X + 24, Y + 24);
                                 Point pLeft = new Point(X + 0, Y + 12);
-                                Point pCenter = new Point(X + 24, Y + 12);
 
-                                // 左半邊 - 使用 Attribute1 判斷
+                                // 左上邊線 - 使用 Attribute1 判斷
                                 Pen pen1 = (attr.Attribute1 & 0x01) != 0 ? penImpassable : penPassable;
                                 g.DrawLine(pen1, pLeft, pTop);
-                                g.DrawLine(pen1, pTop, pCenter);
-                                g.DrawLine(pen1, pCenter, pBottom);
-                                g.DrawLine(pen1, pBottom, pLeft);
 
-                                // 右半邊 - 使用 Attribute2 判斷
+                                // 右上邊線 - 使用 Attribute2 判斷
                                 Pen pen2 = (attr.Attribute2 & 0x01) != 0 ? penImpassable : penPassable;
                                 g.DrawLine(pen2, pTop, pRight);
-                                g.DrawLine(pen2, pRight, pBottom);
-                                g.DrawLine(pen2, pBottom, pCenter);
-                                g.DrawLine(pen2, pCenter, pTop);
                             }
                         }
                     }
