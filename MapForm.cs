@@ -20511,21 +20511,21 @@ namespace L1FlyMapViewer
                         if (!_editState.EnabledLayer8Items.Contains(key))
                         {
                             _editState.EnabledLayer8Items.Add(key);
+                            _layer8AnimFrame[key] = 0;
                             enabledCount++;
                         }
                     }
                 }
             }
 
+            // 啟動動畫計時器
+            if (enabledCount > 0 && _layer8AnimTimer != null && !_layer8AnimTimer.Enabled)
+            {
+                _layer8AnimTimer.Start();
+            }
+
             // 重繪 L8 動畫覆蓋層
             _mapViewerControl?.InvalidateAnimationOverlay();
-
-            // 顯示啟用數量
-            if (enabledCount > 0)
-            {
-                // 可選：顯示提示訊息
-                // MessageBox.Show($"已啟用 {enabledCount} 個 L8 特效", "提示", MessageBoxButtons.OK, MessageBoxIcon.Information);
-            }
         }
 
         // 查看與編輯第一層（地板圖塊）資料
