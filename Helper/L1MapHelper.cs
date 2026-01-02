@@ -30,6 +30,9 @@ namespace L1MapViewer.Helper {
 
         private static bool isRemastered;
 
+        // 防止重入的旗標
+        private static bool _isReading = false;
+
         // 載入時間統計（供外部查看）
         public static long LastLoadZone3descMs { get; private set; }
         public static long LastLoadZoneXmlMs { get; private set; }
@@ -39,13 +42,20 @@ namespace L1MapViewer.Helper {
 
         //讀取地圖檔資料
         public static Dictionary<string, L1Map> Read(string szSelectedPath) {
-            DebugLog.Log($"[L1MapHelper.Read] Start: path={szSelectedPath}");
+            DebugLog.Log($"[L1MapHelper.Read] Start: path={szSelectedPath}, _isReading={_isReading}");
             DebugLog.Log($"[L1MapHelper.Read] Share.LineagePath={Share.LineagePath}");
+
+            // 防止重入（Application.DoEvents 可能造成重入）
+            if (_isReading) {
+                DebugLog.Log("[L1MapHelper.Read] WARNING: Re-entry detected! Returning cached list.");
+                return Share.MapDataList;
+            }
 
             if (string.IsNullOrEmpty(szSelectedPath)) {
                 DebugLog.Log("[L1MapHelper.Read] Empty path, returning cached list");
                 return Share.MapDataList;
             }
+
             //確認路徑
             string szMapPath = string.Format(@"{0}\map\", szSelectedPath);
             DebugLog.Log($"[L1MapHelper.Read] Checking map path: {szMapPath}");
@@ -55,6 +65,9 @@ namespace L1MapViewer.Helper {
                 MessageBox.Show("錯誤的天堂路徑");
                 return Share.MapDataList;
             }
+
+            _isReading = true;
+            try {
             //是否為天R - 每次都需要重新判斷
             isRemastered = Directory.Exists(szSelectedPath + @"/bin32/") || Directory.Exists(szSelectedPath + @"\bin32\");
             DebugLog.Log($"[L1MapHelper.Read] isRemastered={isRemastered}");
@@ -201,6 +214,10 @@ namespace L1MapViewer.Helper {
 
             DebugLog.Log($"[L1MapHelper.Read] Complete! Maps={LastMapCount}, Files={LastTotalFileCount}, ScanTime={LastScanDirectoriesMs}ms");
             return Share.MapDataList;
+            }
+            finally {
+                _isReading = false;
+            }
         }
 
         /// <summary>
