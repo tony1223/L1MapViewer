@@ -1590,7 +1590,7 @@ namespace L1FlyMapViewer
             RenderS32Map();
 
             // 更新 Layer5 異常檢查按鈕
-            UpdateLayer5InvalidButton();
+            UpdateMapValidateButton();
         }
 
         // 取消複製/貼上模式
@@ -1741,7 +1741,7 @@ namespace L1FlyMapViewer
             RenderS32Map();
 
             // 更新 Layer5 異常檢查按鈕
-            UpdateLayer5InvalidButton();
+            UpdateMapValidateButton();
 
             this.toolStripStatusLabel1.Text = $"已還原: {action.Description} (Ctrl+Z: {_editState.UndoHistory.Count} / Ctrl+Y: {_editState.RedoHistory.Count})";
         }
@@ -1862,7 +1862,7 @@ namespace L1FlyMapViewer
             RenderS32Map();
 
             // 更新 Layer5 異常檢查按鈕
-            UpdateLayer5InvalidButton();
+            UpdateMapValidateButton();
 
             this.toolStripStatusLabel1.Text = $"已重做: {action.Description} (Ctrl+Z: {_editState.UndoHistory.Count} / Ctrl+Y: {_editState.RedoHistory.Count})";
         }
@@ -4119,7 +4119,7 @@ namespace L1FlyMapViewer
             lvGroupThumbnails.Items.Clear();
 
             // 隱藏 Layer5 異常按鈕
-            btnToolCheckL5Invalid.Visible = false;
+            btnMapValidate.Visible = false;
 
             // 從 Share.MapDataList 取得地圖資料
             if (!Share.MapDataList.ContainsKey(mapId))
@@ -4297,7 +4297,7 @@ namespace L1FlyMapViewer
                     {
                         UpdateGroupThumbnailsList();  // 異步，立即返回
                         UpdateTileListAsync();        // 異步，立即返回
-                        UpdateLayer5InvalidButton();
+                        UpdateMapValidateButton();
                     }
                     long tileListMs = phaseStopwatch.ElapsedMilliseconds;  // 只計算啟動時間
                     long thumbnailStartMs = 0;  // 已合併到上面
@@ -11918,7 +11918,7 @@ namespace L1FlyMapViewer
                 RenderS32Map();
 
                 // 更新 Layer5 異常檢查按鈕
-                UpdateLayer5InvalidButton();
+                UpdateMapValidateButton();
 
                 // 組合結果訊息
                 var resultParts = new List<string>();
@@ -16733,7 +16733,7 @@ namespace L1FlyMapViewer
                 // 更新 Layer5 異常檢查按鈕
                 if (layer5Count > 0)
                 {
-                    UpdateLayer5InvalidButton();
+                    UpdateMapValidateButton();
                 }
 
                 // 更新狀態（包含座標資訊以便偵錯）
@@ -18642,7 +18642,7 @@ namespace L1FlyMapViewer
             RenderS32Map();
 
             // 更新 Layer5 異常檢查按鈕
-            UpdateLayer5InvalidButton();
+            UpdateMapValidateButton();
 
             // 更新群組縮圖列表
             if (_editState.SelectedCells.Count > 0)
@@ -18730,7 +18730,7 @@ namespace L1FlyMapViewer
             RenderS32Map();
 
             // 更新 Layer5 異常檢查按鈕
-            UpdateLayer5InvalidButton();
+            UpdateMapValidateButton();
 
             // 更新群組縮圖列表（保持選取區域的交集）
             if (_editState.SelectedCells != null && _editState.SelectedCells.Count > 0)
@@ -19036,7 +19036,7 @@ namespace L1FlyMapViewer
             RenderS32Map();
 
             // 更新 Layer5 異常檢查按鈕
-            UpdateLayer5InvalidButton();
+            UpdateMapValidateButton();
 
             // 更新群組縮圖列表（使用第一個選取格子的資訊）
             if (_editState.SelectedCells.Count > 0)
@@ -19091,7 +19091,7 @@ namespace L1FlyMapViewer
             RenderS32Map();
 
             // 更新 Layer5 異常檢查按鈕
-            UpdateLayer5InvalidButton();
+            UpdateMapValidateButton();
 
             // 更新群組縮圖列表（使用第一個選取格子的資訊）
             if (_editState.SelectedCells.Count > 0)
@@ -23672,7 +23672,7 @@ namespace L1FlyMapViewer
                 MessageBox.Show($"已清除 {removedCount} 個 Layer5 項目。\n\n請記得儲存 S32 檔案。", "完成",
                     MessageBoxButtons.OK, MessageBoxIcon.Information);
 
-                UpdateLayer5InvalidButton();
+                UpdateMapValidateButton();
                 resultForm.Close();
                 RenderS32Map();
             };
@@ -23708,7 +23708,7 @@ namespace L1FlyMapViewer
                 MessageBox.Show($"已清除 {removedCount} 個 Layer5 項目。\n\n請記得儲存 S32 檔案。", "完成",
                     MessageBoxButtons.OK, MessageBoxIcon.Information);
 
-                UpdateLayer5InvalidButton();
+                UpdateMapValidateButton();
                 resultForm.Close();
                 RenderS32Map();
             };
@@ -23735,10 +23735,10 @@ namespace L1FlyMapViewer
         }
 
         // 檢查 Layer5 異常並更新按鈕顯示狀態（異步版本，不阻塞 UI）
-        private void UpdateLayer5InvalidButton()
+        private void UpdateMapValidateButton()
         {
             // 先隱藏按鈕，背景檢查完成後再更新
-            btnToolCheckL5Invalid.Visible = false;
+            btnMapValidate.Visible = false;
 
             Task.Run(() =>
             {
@@ -23760,15 +23760,19 @@ namespace L1FlyMapViewer
                 var (overLimitTileIds, tileLimit, maxTileId) = GetAllOverLimitTileIds();
                 sw4.Stop();
 
+                var sw5 = Stopwatch.StartNew();
+                var invalidL5TypeItems = GetInvalidLayer5TypeItems();
+                sw5.Stop();
+
                 totalSw.Stop();
 
-                int totalInvalid = invalidL5Items.Count + invalidTileItems.Count + layer8ExtendedS32.Count + overLimitTileIds.Count;
-                Console.WriteLine($"[L5CHECK] Total: {totalSw.ElapsedMilliseconds}ms | L5Check: {sw1.ElapsedMilliseconds}ms ({invalidL5Items.Count}) | TileValidate: {sw2.ElapsedMilliseconds}ms ({invalidTileItems.Count}) | L8Ext: {sw3.ElapsedMilliseconds}ms ({layer8ExtendedS32.Count}) | OverLimit: {sw4.ElapsedMilliseconds}ms ({overLimitTileIds.Count})");
+                int totalInvalid = invalidL5Items.Count + invalidTileItems.Count + layer8ExtendedS32.Count + overLimitTileIds.Count + invalidL5TypeItems.Count;
+                Console.WriteLine($"[MapValidate] Total: {totalSw.ElapsedMilliseconds}ms | L5Check: {sw1.ElapsedMilliseconds}ms ({invalidL5Items.Count}) | TileValidate: {sw2.ElapsedMilliseconds}ms ({invalidTileItems.Count}) | L8Ext: {sw3.ElapsedMilliseconds}ms ({layer8ExtendedS32.Count}) | OverLimit: {sw4.ElapsedMilliseconds}ms ({overLimitTileIds.Count}) | L5Type: {sw5.ElapsedMilliseconds}ms ({invalidL5TypeItems.Count})");
 
                 // 回到 UI 執行緒更新按鈕
                 this.BeginInvoke((MethodInvoker)delegate
                 {
-                    btnToolCheckL5Invalid.Visible = totalInvalid > 0;
+                    btnMapValidate.Visible = totalInvalid > 0;
                     if (totalInvalid > 0)
                     {
                         var tooltipParts = new List<string>();
@@ -23780,7 +23784,9 @@ namespace L1FlyMapViewer
                             tooltipParts.Add($"L8擴展: {layer8ExtendedS32.Count}");
                         if (overLimitTileIds.Count > 0)
                             tooltipParts.Add($"Tile超上限: {overLimitTileIds.Count}");
-                        toolTip1.SetToolTip(btnToolCheckL5Invalid, $"發現異常: {string.Join(", ", tooltipParts)}");
+                        if (invalidL5TypeItems.Count > 0)
+                            tooltipParts.Add($"L5無效Type: {invalidL5TypeItems.Count}");
+                        toolTip1.SetToolTip(btnMapValidate, $"發現異常: {string.Join(", ", tooltipParts)}");
                     }
                 });
             });
@@ -23840,6 +23846,34 @@ namespace L1FlyMapViewer
 
             // 轉換為舊格式
             return results.Select(r => (r.FilePath, r.FileName, r.Item, r.ItemIndex, r.Reason)).ToList();
+        }
+
+        // 取得 Layer5 中 Type 不是 0 或 1 的項目
+        private List<(string filePath, string fileName, Layer5Item item, int itemIndex)> GetInvalidLayer5TypeItems()
+        {
+            var result = new List<(string filePath, string fileName, Layer5Item item, int itemIndex)>();
+
+            if (_document.S32Files.Count == 0)
+                return result;
+
+            foreach (var kvp in _document.S32Files)
+            {
+                string filePath = kvp.Key;
+                string fileName = Path.GetFileName(filePath);
+                S32Data s32Data = kvp.Value;
+
+                for (int i = 0; i < s32Data.Layer5.Count; i++)
+                {
+                    var item = s32Data.Layer5[i];
+                    // Type 只能是 0 (半透明) 或 1 (消失)
+                    if (item.Type != 0 && item.Type != 1)
+                    {
+                        result.Add((filePath, fileName, item, i));
+                    }
+                }
+            }
+
+            return result;
         }
 
         /// <summary>
@@ -24229,18 +24263,19 @@ namespace L1FlyMapViewer
         }
 
         // 檢查 Layer5 異常和無效 TileId
-        private void btnToolCheckL5Invalid_Click(object sender, EventArgs e)
+        private void btnMapValidate_Click(object sender, EventArgs e)
         {
             var invalidL5Items = GetInvalidLayer5Items();
             var invalidTileItems = GetInvalidTileIds();
             var layer8ExtendedS32 = GetLayer8ExtendedS32Files();
             var (overLimitTileIds, tileLimit, maxTileId) = GetAllOverLimitTileIds();
+            var invalidL5TypeItems = GetInvalidLayer5TypeItems();
 
-            if (invalidL5Items.Count == 0 && invalidTileItems.Count == 0 && layer8ExtendedS32.Count == 0 && overLimitTileIds.Count == 0)
+            if (invalidL5Items.Count == 0 && invalidTileItems.Count == 0 && layer8ExtendedS32.Count == 0 && overLimitTileIds.Count == 0 && invalidL5TypeItems.Count == 0)
             {
                 MessageBox.Show("檢查完成，沒有發現任何異常。",
                     "檢查完成", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                btnToolCheckL5Invalid.Visible = false;
+                btnMapValidate.Visible = false;
                 return;
             }
 
@@ -24275,6 +24310,14 @@ namespace L1FlyMapViewer
             if (overLimitTileIds.Count > 0)
             {
                 msgParts.Add(string.Format(LocalizationManager.L("AbnormalCheck_TileOverLimit"), overLimitTileIds.Count, tileLimit, maxTileId));
+            }
+            if (invalidL5TypeItems.Count > 0)
+            {
+                // 統計各 Type 值的數量
+                var typeCounts = invalidL5TypeItems.GroupBy(x => x.item.Type)
+                    .OrderBy(g => g.Key)
+                    .Select(g => $"Type={g.Key}:{g.Count()}");
+                msgParts.Add($"• {invalidL5TypeItems.Count} 個 L5 無效 Type ({string.Join(", ", typeCounts)})");
             }
 
             // 顯示確認對話框
@@ -24593,7 +24636,7 @@ namespace L1FlyMapViewer
                         }
                     }
                     MessageBox.Show(string.Format(LocalizationManager.L("AbnormalCheck_ResetComplete"), resetCount, clearedItems), LocalizationManager.L("AbnormalCheck_ResetDone"));
-                    UpdateLayer5InvalidButton();
+                    UpdateMapValidateButton();
                     resultForm.Close();
                 };
                 pnlL8Buttons.Controls.Add(btnL8ResetSelected);
@@ -24621,7 +24664,7 @@ namespace L1FlyMapViewer
                         }
                     }
                     MessageBox.Show(string.Format(LocalizationManager.L("AbnormalCheck_ResetComplete"), resetCount, clearedItems), LocalizationManager.L("AbnormalCheck_ResetDone"));
-                    UpdateLayer5InvalidButton();
+                    UpdateMapValidateButton();
                     resultForm.Close();
                 };
                 pnlL8Buttons.Controls.Add(btnL8ResetAll);
@@ -24678,7 +24721,7 @@ namespace L1FlyMapViewer
                     {
                         _listTilMaxId = null;  // 清除快取
                         MessageBox.Show($"已將 list.til 上限擴充至 {suggestedLimit}。", "擴充成功", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                        UpdateLayer5InvalidButton();
+                        UpdateMapValidateButton();
                         resultForm.Close();
                     }
                     else
@@ -24704,7 +24747,7 @@ namespace L1FlyMapViewer
                     {
                         _listTilMaxId = null;
                         MessageBox.Show($"已將 list.til 上限設為 {newLimit}。", "設定成功", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                        UpdateLayer5InvalidButton();
+                        UpdateMapValidateButton();
                         resultForm.Close();
                     }
                     else
@@ -24713,6 +24756,115 @@ namespace L1FlyMapViewer
                     }
                 };
                 pnlOverLimitButtons.Controls.Add(btnExpandCustom);
+            }
+
+            // ===== Tab 5: L5 無效 Type =====
+            if (invalidL5TypeItems.Count > 0)
+            {
+                TabPage tabL5Type = new TabPage($"L5無效Type ({invalidL5TypeItems.Count})");
+                tabControl.TabPages.Add(tabL5Type);
+
+                // 統計各 Type 的數量
+                var typeCounts = invalidL5TypeItems.GroupBy(x => x.item.Type)
+                    .OrderBy(g => g.Key)
+                    .Select(g => $"Type={g.Key}: {g.Count()}");
+
+                Label lblL5TypeSummary = new Label();
+                lblL5TypeSummary.Text = $"發現 {invalidL5TypeItems.Count} 個 L5 項目使用無效的 Type 值 (有效值: 0=半透明, 1=消失)\n分佈: {string.Join(", ", typeCounts)}";
+                lblL5TypeSummary.Location = new Point(5, 5);
+                lblL5TypeSummary.Size = new Size(tabL5Type.ClientSize.Width - 10, 40);
+                lblL5TypeSummary.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
+                tabL5Type.Controls.Add(lblL5TypeSummary);
+
+                CheckedListBox clbL5TypeItems = new CheckedListBox();
+                clbL5TypeItems.Location = new Point(5, 50);
+                clbL5TypeItems.Size = new Size(tabL5Type.ClientSize.Width - 10, tabL5Type.ClientSize.Height - 130);
+                clbL5TypeItems.Font = new Font("Consolas", 9);
+                clbL5TypeItems.CheckOnClick = true;
+                clbL5TypeItems.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
+
+                foreach (var (filePath, fileName, item, itemIndex) in invalidL5TypeItems)
+                {
+                    // 計算遊戲座標
+                    string gameCoordStr = "";
+                    if (_document.S32Files.TryGetValue(filePath, out var s32Data) && s32Data.SegInfo != null)
+                    {
+                        int gameX = s32Data.SegInfo.nLinBeginX + item.X / 2;
+                        int gameY = s32Data.SegInfo.nLinBeginY + item.Y;
+                        gameCoordStr = $" 遊戲({gameX},{gameY})";
+                    }
+                    string displayText = $"[{fileName}] X={item.X}, Y={item.Y}{gameCoordStr}, ObjIdx={item.ObjectIndex}, Type={item.Type}";
+                    clbL5TypeItems.Items.Add(displayText);
+                }
+                tabL5Type.Controls.Add(clbL5TypeItems);
+
+                // 按鈕面板
+                Panel pnlL5TypeButtons = new Panel();
+                pnlL5TypeButtons.Location = new Point(5, tabL5Type.ClientSize.Height - 75);
+                pnlL5TypeButtons.Size = new Size(tabL5Type.ClientSize.Width - 10, 70);
+                pnlL5TypeButtons.Anchor = AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
+                tabL5Type.Controls.Add(pnlL5TypeButtons);
+
+                Button btnL5TypeSelectAll = new Button { Text = "全選", Location = new Point(0, 0), Size = new Size(80, 30) };
+                btnL5TypeSelectAll.Click += (s, args) => { for (int i = 0; i < clbL5TypeItems.Items.Count; i++) clbL5TypeItems.SetItemChecked(i, true); };
+                pnlL5TypeButtons.Controls.Add(btnL5TypeSelectAll);
+
+                Button btnL5TypeDeselectAll = new Button { Text = "全不選", Location = new Point(90, 0), Size = new Size(80, 30) };
+                btnL5TypeDeselectAll.Click += (s, args) => { for (int i = 0; i < clbL5TypeItems.Items.Count; i++) clbL5TypeItems.SetItemChecked(i, false); };
+                pnlL5TypeButtons.Controls.Add(btnL5TypeDeselectAll);
+
+                Button btnL5TypeClearSelected = new Button { Text = "清除勾選項目", Location = new Point(0, 35), Size = new Size(100, 30), BackColor = Color.LightCoral };
+                btnL5TypeClearSelected.Click += (s, args) =>
+                {
+                    if (clbL5TypeItems.CheckedIndices.Count == 0) { MessageBox.Show("請先勾選要清除的項目", "提示"); return; }
+                    if (MessageBox.Show($"確定要清除 {clbL5TypeItems.CheckedIndices.Count} 個 L5 項目？", "確認刪除", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes) return;
+
+                    var toDelete = new Dictionary<string, List<Layer5Item>>();
+                    foreach (int idx in clbL5TypeItems.CheckedIndices)
+                    {
+                        var (filePath, _, item, _) = invalidL5TypeItems[idx];
+                        if (!toDelete.ContainsKey(filePath)) toDelete[filePath] = new List<Layer5Item>();
+                        toDelete[filePath].Add(item);
+                    }
+                    int deletedCount = 0;
+                    foreach (var kvp in toDelete)
+                    {
+                        if (_document.S32Files.TryGetValue(kvp.Key, out var s32Data))
+                        {
+                            foreach (var item in kvp.Value) { s32Data.Layer5.Remove(item); deletedCount++; }
+                            s32Data.IsModified = true;
+                        }
+                    }
+                    MessageBox.Show($"已清除 {deletedCount} 個 L5 項目。\n請記得儲存 S32 檔案。", "清除完成");
+                    ClearS32BlockCache(); resultForm.Close(); RenderS32Map();
+                    UpdateMapValidateButton();
+                };
+                pnlL5TypeButtons.Controls.Add(btnL5TypeClearSelected);
+
+                Button btnL5TypeClearAll = new Button { Text = "清除全部", Location = new Point(110, 35), Size = new Size(100, 30), BackColor = Color.Salmon };
+                btnL5TypeClearAll.Click += (s, args) =>
+                {
+                    if (MessageBox.Show($"確定要清除全部 {invalidL5TypeItems.Count} 個無效 Type 的 L5 項目？", "確認全部刪除", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes) return;
+                    var toDelete = new Dictionary<string, List<Layer5Item>>();
+                    foreach (var (filePath, _, item, _) in invalidL5TypeItems)
+                    {
+                        if (!toDelete.ContainsKey(filePath)) toDelete[filePath] = new List<Layer5Item>();
+                        toDelete[filePath].Add(item);
+                    }
+                    int deletedCount = 0;
+                    foreach (var kvp in toDelete)
+                    {
+                        if (_document.S32Files.TryGetValue(kvp.Key, out var s32Data))
+                        {
+                            foreach (var item in kvp.Value) { s32Data.Layer5.Remove(item); deletedCount++; }
+                            s32Data.IsModified = true;
+                        }
+                    }
+                    MessageBox.Show($"已清除 {deletedCount} 個 L5 項目。\n請記得儲存 S32 檔案。", "清除完成");
+                    ClearS32BlockCache(); resultForm.Close(); RenderS32Map();
+                    UpdateMapValidateButton();
+                };
+                pnlL5TypeButtons.Controls.Add(btnL5TypeClearAll);
             }
 
             // 關閉按鈕

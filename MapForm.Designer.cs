@@ -79,7 +79,7 @@ namespace L1FlyMapViewer
         private Button btnToolAddS32;
         private Button btnToolClearLayer7;
         private Button btnToolClearCell;
-        private Button btnToolCheckL5Invalid;
+        private Button btnMapValidate;
         private Button btnToolCheckL1;
         private Button btnToolCheckL2;
         private Button btnToolCheckL3;
@@ -229,7 +229,7 @@ namespace L1FlyMapViewer
             this.btnToolAddS32 = new Button();
             this.btnToolClearLayer7 = new Button();
             this.btnToolClearCell = new Button();
-            this.btnToolCheckL5Invalid = new Button();
+            this.btnMapValidate = new Button();
             this.btnToolCheckL1 = new Button();
             this.btnToolCheckL2 = new Button();
             this.btnToolCheckL3 = new Button();
@@ -1407,7 +1407,7 @@ namespace L1FlyMapViewer
             this.toolbarPanel.Controls.Add(this.btnToolAddS32);
             this.toolbarPanel.Controls.Add(this.btnToolClearLayer7);
             this.toolbarPanel.Controls.Add(this.btnToolClearCell);
-            this.toolbarPanel.Controls.Add(this.btnToolCheckL5Invalid);
+            this.toolbarPanel.Controls.Add(this.btnMapValidate);
             this.toolbarPanel.Dock = DockStyle.Left;
             this.toolbarPanel.Location = new Point(0, 0);
             this.toolbarPanel.Name = "toolbarPanel";
@@ -1576,19 +1576,19 @@ namespace L1FlyMapViewer
             this.btnToolClearCell.Click += new System.EventHandler(this.btnToolClearCell_Click);
 
             //
-            // btnToolCheckL5Invalid
+            // btnMapValidate
             //
-            this.btnToolCheckL5Invalid.Location = new Point(2, 481);
-            this.btnToolCheckL5Invalid.Name = "btnToolCheckL5Invalid";
-            this.btnToolCheckL5Invalid.Size = new Size(34, 34);
-            this.btnToolCheckL5Invalid.TabIndex = 13;
-            this.btnToolCheckL5Invalid.Text = "⚠";
-            this.btnToolCheckL5Invalid.ForeColor = Color.Red;
-            this.btnToolCheckL5Invalid.Font = new Font(this.btnToolCheckL5Invalid.Font.FontFamily, 14, FontStyle.Bold);
-            this.btnToolCheckL5Invalid.UseVisualStyleBackColor = true;
-            this.btnToolCheckL5Invalid.Visible = false;  // 預設隱藏，有異常時才顯示
-            this.toolTip1.SetToolTip(this.btnToolCheckL5Invalid, "檢查 Layer5 無效的 ObjectIndex");
-            this.btnToolCheckL5Invalid.Click += new System.EventHandler(this.btnToolCheckL5Invalid_Click);
+            this.btnMapValidate.Location = new Point(2, 481);
+            this.btnMapValidate.Name = "btnMapValidate";
+            this.btnMapValidate.Size = new Size(34, 34);
+            this.btnMapValidate.TabIndex = 13;
+            this.btnMapValidate.Text = "⚠";
+            this.btnMapValidate.ForeColor = Color.Red;
+            this.btnMapValidate.Font = new Font(this.btnMapValidate.Font.FontFamily, 14, FontStyle.Bold);
+            this.btnMapValidate.UseVisualStyleBackColor = true;
+            this.btnMapValidate.Visible = false;  // 預設隱藏，有異常時才顯示
+            this.toolTip1.SetToolTip(this.btnMapValidate, "地圖驗證 (L5/Tile/L8 異常檢查)");
+            this.btnMapValidate.Click += new System.EventHandler(this.btnMapValidate_Click);
 
             //
             // btnToolCheckL1
