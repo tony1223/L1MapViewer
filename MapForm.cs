@@ -12415,14 +12415,15 @@ namespace L1FlyMapViewer
                 listView.View = View.Details;
                 listView.FullRowSelect = true;
                 listView.GridLines = true;
+                listView.Scrollable = true;
                 listView.Font = new Font("Consolas", 9, FontStyle.Regular);
 
-                listView.Columns.Add("來源", 120);
-                listView.Columns.Add("索引", 40);
-                listView.Columns.Add("X", 35);
-                listView.Columns.Add("Y", 35);
-                listView.Columns.Add("ObjIdx", 50);
-                listView.Columns.Add("Type", 40);
+                listView.Columns.Add("來源", -2);  // -2 = 自動調整寬度
+                listView.Columns.Add("索引", -2);
+                listView.Columns.Add("X", -2);
+                listView.Columns.Add("Y", -2);
+                listView.Columns.Add("ObjIdx", -2);
+                listView.Columns.Add("Type", -2);
 
                 foreach (var (s32Name, s32Data, idx, item5) in cellLayer5Items)
                 {
@@ -12434,6 +12435,12 @@ namespace L1FlyMapViewer
                     lvItem.SubItems.Add(item5.Type.ToString());
                     lvItem.Tag = (s32Data, idx);  // 保存來源 S32 和索引
                     listView.Items.Add(lvItem);
+                }
+
+                // 自動調整所有欄位寬度以顯示完整內容
+                foreach (ColumnHeader col in listView.Columns)
+                {
+                    col.Width = -2;
                 }
 
                 // 右鍵選單 - 刪除 L5
