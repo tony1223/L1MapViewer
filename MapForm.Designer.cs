@@ -60,6 +60,7 @@ namespace L1FlyMapViewer
         private ListView lvMaterials;
         private Button btnMoreMaterials;
         private Label lblGroupThumbnails;
+        private TextBox txtGroupSearch;
         private Button btnShowAllGroups;
         private ListView lvGroupThumbnails;
 
@@ -209,6 +210,7 @@ namespace L1FlyMapViewer
             this.lvMaterials = new ListView();
             this.btnMoreMaterials = new Button();
             this.lblGroupThumbnails = new Label();
+            this.txtGroupSearch = new TextBox();
             this.btnShowAllGroups = new Button();
             this.lvGroupThumbnails = new ListView();
 
@@ -1263,6 +1265,7 @@ namespace L1FlyMapViewer
             this.rightPanel.Controls.Add(this.lvMaterials);
             this.rightPanel.Controls.Add(this.btnMoreMaterials);
             this.rightPanel.Controls.Add(this.lblGroupThumbnails);
+            this.rightPanel.Controls.Add(this.txtGroupSearch);
             this.rightPanel.Controls.Add(this.btnShowAllGroups);
             this.rightPanel.Controls.Add(this.lvGroupThumbnails);
             this.rightPanel.Dock = DockStyle.Right;
@@ -1354,11 +1357,21 @@ namespace L1FlyMapViewer
             this.lblGroupThumbnails.TextAlign = ContentAlignment.MiddleLeft;
 
             //
+            // txtGroupSearch
+            //
+            this.txtGroupSearch.Location = new Point(5, 358);
+            this.txtGroupSearch.Name = "txtGroupSearch";
+            this.txtGroupSearch.Size = new Size(145, 23);
+            this.txtGroupSearch.TabIndex = 8;
+            this.txtGroupSearch.PlaceholderText = "搜尋 GroupId...";
+            this.txtGroupSearch.TextChanged += new System.EventHandler(this.txtGroupSearch_TextChanged);
+
+            //
             // btnShowAllGroups
             //
-            this.btnShowAllGroups.Location = new Point(150, 335);
+            this.btnShowAllGroups.Location = new Point(155, 358);
             this.btnShowAllGroups.Name = "btnShowAllGroups";
-            this.btnShowAllGroups.Size = new Size(60, 20);
+            this.btnShowAllGroups.Size = new Size(55, 23);
             this.btnShowAllGroups.TabIndex = 6;
             this.btnShowAllGroups.Text = "全部";
             this.btnShowAllGroups.UseVisualStyleBackColor = true;
@@ -1367,9 +1380,9 @@ namespace L1FlyMapViewer
             //
             // lvGroupThumbnails
             //
-            this.lvGroupThumbnails.Location = new Point(5, 360);
+            this.lvGroupThumbnails.Location = new Point(5, 385);
             this.lvGroupThumbnails.Name = "lvGroupThumbnails";
-            this.lvGroupThumbnails.Size = new Size(210, 285);
+            this.lvGroupThumbnails.Size = new Size(210, 260);
             this.lvGroupThumbnails.TabIndex = 5;
             this.lvGroupThumbnails.View = View.LargeIcon;
             this.lvGroupThumbnails.MultiSelect = true;

@@ -18,8 +18,8 @@ namespace L1MapViewer.Helper
         {
             foreach (var s32Data in allS32DataDict.Values)
             {
-                if (gameX >= s32Data.SegInfo.nLinBeginX && gameX <= s32Data.SegInfo.nLinEndX &&
-                    gameY >= s32Data.SegInfo.nLinBeginY && gameY <= s32Data.SegInfo.nLinEndY)
+                // 使用 ContainsGameCoord 檢查實際邊界
+                if (s32Data.ContainsGameCoord(gameX, gameY))
                 {
                     return s32Data;
                 }

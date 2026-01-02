@@ -163,6 +163,9 @@ namespace L1MapViewer.CLI
             // Layer2 項目會覆蓋 Layer1 對應位置的 TileId 和 IndexId
             // ApplyLayer2ToLayer1(s32Data);
 
+            // 計算實際邊界 (根據各層資料的最大 X, Y)
+            s32Data.CalculateRealBounds();
+
             return s32Data;
         }
 

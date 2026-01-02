@@ -22,6 +22,16 @@ namespace L1MapViewer.Models
     /// </summary>
     public class S32Data
     {
+        /// <summary>
+        /// 標準寬度 (Layer1 本地座標)
+        /// </summary>
+        public const int StandardWidth = 128;
+
+        /// <summary>
+        /// 標準高度 (Layer1 本地座標)
+        /// </summary>
+        public const int StandardHeight = 64;
+
         // 第一層（地板）- 64x128
         public TileCell[,] Layer1 { get; set; } = new TileCell[64, 128];
 
@@ -71,6 +81,96 @@ namespace L1MapViewer.Models
 
         // 是否已修改
         public bool IsModified { get; set; }
+
+        /// <summary>
+        /// 實際資料寬度 - Layer1 本地座標系統
+        /// 包含 L2, L4, L5, L8 超出標準範圍的資料
+        /// </summary>
+        public int RealLocalWidth { get; set; } = StandardWidth;
+
+        /// <summary>
+        /// 實際資料高度 - Layer1 本地座標系統
+        /// </summary>
+        public int RealLocalHeight { get; set; } = StandardHeight;
+
+        /// <summary>
+        /// 實際資料寬度 - 遊戲座標系統
+        /// </summary>
+        public int RealGameWidth => (RealLocalWidth + 1) / 2;
+
+        /// <summary>
+        /// 實際資料高度 - 遊戲座標系統
+        /// </summary>
+        public int RealGameHeight => RealLocalHeight;
+
+        /// <summary>
+        /// 實際遊戲座標終點 X
+        /// </summary>
+        public int RealGameEndX => SegInfo != null ? SegInfo.nLinBeginX + RealGameWidth - 1 : -1;
+
+        /// <summary>
+        /// 實際遊戲座標終點 Y
+        /// </summary>
+        public int RealGameEndY => SegInfo != null ? SegInfo.nLinBeginY + RealGameHeight - 1 : -1;
+
+        /// <summary>
+        /// 計算實際邊界 (根據各層資料的最大 X, Y)
+        /// </summary>
+        public void CalculateRealBounds()
+        {
+            int maxX = StandardWidth - 1;   // 127
+            int maxY = StandardHeight - 1;  // 63
+
+            // Layer2 (byte X, Y)
+            foreach (var item in Layer2)
+            {
+                if (item.X > maxX) maxX = item.X;
+                if (item.Y > maxY) maxY = item.Y;
+            }
+
+            // Layer4 (int X, Y - 從 byte 解析)
+            foreach (var item in Layer4)
+            {
+                if (item.X > maxX) maxX = item.X;
+                if (item.Y > maxY) maxY = item.Y;
+            }
+
+            // Layer5 (byte X, Y)
+            foreach (var item in Layer5)
+            {
+                if (item.X > maxX) maxX = item.X;
+                if (item.Y > maxY) maxY = item.Y;
+            }
+
+            // Layer8 (ushort X, Y - 可能很大)
+            foreach (var item in Layer8)
+            {
+                if (item.X > maxX) maxX = item.X;
+                if (item.Y > maxY) maxY = item.Y;
+            }
+
+            RealLocalWidth = maxX + 1;
+            RealLocalHeight = maxY + 1;
+        }
+
+        /// <summary>
+        /// 檢查遊戲座標是否在實際範圍內
+        /// </summary>
+        public bool ContainsGameCoord(int gameX, int gameY)
+        {
+            if (SegInfo == null) return false;
+            return gameX >= SegInfo.nLinBeginX && gameX <= RealGameEndX &&
+                   gameY >= SegInfo.nLinBeginY && gameY <= RealGameEndY;
+        }
+
+        /// <summary>
+        /// 檢查本地座標是否在實際範圍內
+        /// </summary>
+        public bool ContainsLocalCoord(int localX, int localY)
+        {
+            return localX >= 0 && localX < RealLocalWidth &&
+                   localY >= 0 && localY < RealLocalHeight;
+        }
     }
 
     /// <summary>

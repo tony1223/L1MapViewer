@@ -7471,8 +7471,8 @@ namespace L1FlyMapViewer
                             int X = mx + localBaseX + x * 24 + y * 24;
                             int Y = my + localBaseY + y * 12;
 
-                            // 計算實際遊戲座標
-                            int gameX = s32Data.SegInfo.nLinBeginX + x;
+                            // 計算實際遊戲座標 (Layer1 座標轉遊戲座標)
+                            int gameX = s32Data.SegInfo.nLinBeginX + x / 2;
                             int gameY = s32Data.SegInfo.nLinBeginY + y;
 
                             // 繪製座標文字
@@ -7718,6 +7718,8 @@ namespace L1FlyMapViewer
                 {
                     foreach (var s32Data in _document.S32Files.Values)
                     {
+                        // 只繪製已啟用的 S32
+                        if (!_checkedS32Files.Contains(s32Data.FilePath)) continue;
                         if (s32Data.Layer5.Count == 0) continue;
 
                         int[] loc = s32Data.SegInfo.GetLoc(1.0);
@@ -7828,6 +7830,9 @@ namespace L1FlyMapViewer
             {
                 foreach (var s32Data in _document.S32Files.Values)
                 {
+                    // 只繪製已啟用的 S32
+                    if (!_checkedS32Files.Contains(s32Data.FilePath)) continue;
+
                     int[] loc = s32Data.SegInfo.GetLoc(1.0);
                     int mx = loc[0];
                     int my = loc[1];
@@ -8292,7 +8297,7 @@ namespace L1FlyMapViewer
                             if (X + 24 < 0 || X > worldRect.Width || Y + 24 < 0 || Y > worldRect.Height)
                                 continue;
 
-                            int gameX = s32Data.SegInfo.nLinBeginX + x;
+                            int gameX = s32Data.SegInfo.nLinBeginX + x / 2;  // Layer1 座標轉遊戲座標
                             int gameY = s32Data.SegInfo.nLinBeginY + y;
 
                             string coordText = $"{gameX},{gameY}";
@@ -14614,6 +14619,10 @@ namespace L1FlyMapViewer
             _groupThumbnailCts = new System.Threading.CancellationTokenSource();
             var cancellationToken = _groupThumbnailCts.Token;
 
+            // 清空快取和搜尋框
+            _cachedGroupItems.Clear();
+            txtGroupSearch.Text = "";
+
             int totalGroups = sortedGroups.Count;
 
             // 在背景執行緒並行產生縮圖
@@ -14698,6 +14707,10 @@ namespace L1FlyMapViewer
 
                                 thumbnailIndex++;
                             }
+
+                            // 快取項目和 ImageList（用於過濾）
+                            _cachedGroupItems = items;
+                            _cachedGroupImageList = imageList;
 
                             // 批量添加
                             lvGroupThumbnails.Items.AddRange(items.ToArray());
@@ -16355,6 +16368,10 @@ namespace L1FlyMapViewer
             _groupThumbnailCts = new System.Threading.CancellationTokenSource();
             var cancellationToken = _groupThumbnailCts.Token;
 
+            // 清空快取和搜尋框
+            _cachedGroupItems.Clear();
+            txtGroupSearch.Text = "";
+
             lvGroupThumbnails.Items.Clear();
 
             if (lvGroupThumbnails.LargeImageList != null)
@@ -16633,6 +16650,10 @@ namespace L1FlyMapViewer
                                 thumbnailIndex++;
                             }
 
+                            // 快取項目和 ImageList（用於過濾）
+                            _cachedGroupItems = items;
+                            _cachedGroupImageList = imageList;
+
                             // 批量添加
                             lvGroupThumbnails.Items.AddRange(items.ToArray());
                             lvGroupThumbnails.LargeImageList = imageList;
@@ -16673,9 +16694,56 @@ namespace L1FlyMapViewer
             public byte Layer5Type { get; set; }        // Layer5 Type (0=半透明, 1=其他)
         }
 
+        // 群組縮圖快取（用於過濾）
+        private List<ListViewItem> _cachedGroupItems = new List<ListViewItem>();
+        private ImageList _cachedGroupImageList = null;
+
+        // 群組搜尋過濾
+        private void txtGroupSearch_TextChanged(object sender, EventArgs e)
+        {
+            FilterGroupThumbnails(txtGroupSearch.Text);
+        }
+
+        // 過濾群組縮圖列表
+        private void FilterGroupThumbnails(string searchText)
+        {
+            if (_cachedGroupItems.Count == 0) return;
+
+            lvGroupThumbnails.BeginUpdate();
+            try
+            {
+                lvGroupThumbnails.Items.Clear();
+
+                if (string.IsNullOrWhiteSpace(searchText))
+                {
+                    // 無搜尋條件，顯示全部
+                    lvGroupThumbnails.Items.AddRange(_cachedGroupItems.ToArray());
+                }
+                else
+                {
+                    // 過濾符合條件的項目
+                    var filteredItems = _cachedGroupItems
+                        .Where(item =>
+                        {
+                            var info = item.Tag as GroupThumbnailInfo;
+                            if (info == null) return false;
+                            // 搜尋 GroupId
+                            return info.GroupId.ToString().Contains(searchText);
+                        })
+                        .ToArray();
+                    lvGroupThumbnails.Items.AddRange(filteredItems);
+                }
+            }
+            finally
+            {
+                lvGroupThumbnails.EndUpdate();
+            }
+        }
+
         // 「全部」按鈕點擊事件 - 顯示全部群組
         private void btnShowAllGroups_Click(object sender, EventArgs e)
         {
+            txtGroupSearch.Text = "";  // 清空搜尋框
             UpdateGroupThumbnailsList(null);  // 傳入 null 顯示全部
         }
 
