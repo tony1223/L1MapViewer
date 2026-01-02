@@ -11992,7 +11992,9 @@ namespace L1FlyMapViewer
 
             // 預先檢查各層是否有資料
             int normX = (cellX / 2) * 2;
-            bool hasL1 = cellX < 128 && cellY < 64 && currentS32Data.Layer1[cellY, cellX]?.TileId > 0;
+            int leftX = normX, rightX = normX + 1;
+            bool hasL1 = (leftX < 128 && cellY < 64 && currentS32Data.Layer1[cellY, leftX]?.TileId > 0) ||
+                         (rightX < 128 && cellY < 64 && currentS32Data.Layer1[cellY, rightX]?.TileId > 0);
             bool hasL2 = currentS32Data.Layer2.Any(i => (i.X / 2) * 2 == normX && i.Y == cellY);
             bool hasL3 = cellY < 64 && layer3X < 64 && currentS32Data.Layer3[cellY, layer3X] != null;
             bool hasL4 = currentS32Data.Layer4.Any(o => (o.X / 2) * 2 == normX && o.Y == cellY);
@@ -12099,7 +12101,7 @@ namespace L1FlyMapViewer
             return false;
         }
 
-        // 創建第一層面板（含 S32 檔案資訊）
+        // 創建第一層面板（含 S32 檔案資訊，分左右三角顯示）
         private Panel CreateLayerPanel(int x, int y, int layer)
         {
             Panel panel = new Panel();
@@ -12110,7 +12112,7 @@ namespace L1FlyMapViewer
             string s32Name = System.IO.Path.GetFileName(currentS32Data.FilePath);
             int gameX = currentS32FileItem.SegInfo.nLinBeginX + x / 2;
             int gameY = currentS32FileItem.SegInfo.nLinBeginY + y;
-            s32Info.Text = $"S32: {s32Name} | 遊戲座標: ({gameX}, {gameY}) | L1座標: ({x}, {y})";
+            s32Info.Text = $"S32: {s32Name} | 遊戲座標: ({gameX}, {gameY})";
             s32Info.Dock = DockStyle.Top;
             s32Info.Height = 20;
             s32Info.BackColor = Color.FromArgb(60, 60, 60);
@@ -12118,62 +12120,82 @@ namespace L1FlyMapViewer
             s32Info.TextAlign = ContentAlignment.MiddleCenter;
             s32Info.Font = new Font("Consolas", 9);
 
-            PictureBox pb = new PictureBox();
-            pb.Dock = DockStyle.Fill;
-            pb.SizeMode = PictureBoxSizeMode.Zoom;
-            pb.BackColor = Color.Black;
+            // 左右三角並排顯示
+            int leftX = (x / 2) * 2;      // 偶數 X（左三角）
+            int rightX = leftX + 1;        // 奇數 X（右三角）
 
-            var cell = currentS32Data.Layer1[y, x];
-            if (cell != null && cell.TileId > 0)
+            SplitContainer split = new SplitContainer();
+            split.Dock = DockStyle.Fill;
+            split.Orientation = Orientation.Vertical;
+            split.SplitterDistance = 350;
+
+            // 左三角面板
+            Panel leftPanel = new Panel();
+            leftPanel.Dock = DockStyle.Fill;
+
+            Label leftTitle = new Label();
+            leftTitle.Text = $"◀ 左三角 (X={leftX})";
+            leftTitle.Dock = DockStyle.Top;
+            leftTitle.Height = 22;
+            leftTitle.BackColor = Color.LightBlue;
+            leftTitle.TextAlign = ContentAlignment.MiddleCenter;
+
+            var leftCell = (leftX < 128 && y < 64) ? currentS32Data.Layer1[y, leftX] : null;
+            PictureBox leftPb = new PictureBox();
+            leftPb.Dock = DockStyle.Fill;
+            leftPb.SizeMode = PictureBoxSizeMode.Zoom;
+            leftPb.BackColor = Color.Black;
+
+            if (leftCell != null && leftCell.TileId > 0)
             {
-                pb.Image = LoadTileEnlarged(cell.TileId, cell.IndexId, 128);
+                leftPb.Image = LoadTileEnlarged(leftCell.TileId, leftCell.IndexId, 100);
 
-                Panel bottomPanel = new Panel();
-                bottomPanel.Dock = DockStyle.Bottom;
-                bottomPanel.Height = 55;
-
-                Label info = new Label();
-                info.Text = $"Tile: {cell.TileId} | Index: {cell.IndexId}";
-                info.Dock = DockStyle.Top;
-                info.Height = 25;
-                info.TextAlign = ContentAlignment.MiddleCenter;
-                bottomPanel.Controls.Add(info);
-
-                // 刪除按鈕
-                Button btnDelete = new Button();
-                btnDelete.Text = "刪除此 Tile";
-                btnDelete.Dock = DockStyle.Bottom;
-                btnDelete.Height = 25;
-                btnDelete.BackColor = Color.IndianRed;
-                btnDelete.ForeColor = Color.White;
-                btnDelete.Click += (s, e) =>
-                {
-                    if (MessageBox.Show("確定要刪除此 Tile 嗎？", "確認", MessageBoxButtons.YesNo, MessageBoxIcon.Question) == DialogResult.Yes)
-                    {
-                        currentS32Data.Layer1[y, x] = new TileCell { X = x, Y = y, TileId = 0, IndexId = 0 };
-                        isS32Modified = true;
-                        RenderS32Map();
-                        this.toolStripStatusLabel1.Text = $"已刪除第1層 ({x},{y}) 的 Tile";
-
-                        pb.Image = null;
-                        info.Text = "已刪除";
-                        btnDelete.Enabled = false;
-                    }
-                };
-                bottomPanel.Controls.Add(btnDelete);
-
-                panel.Controls.Add(pb);
-                panel.Controls.Add(bottomPanel);
-            }
-            else
-            {
-                Label noData = new Label();
-                noData.Text = "此格無地板資料";
-                noData.Dock = DockStyle.Fill;
-                noData.TextAlign = ContentAlignment.MiddleCenter;
-                panel.Controls.Add(noData);
+                Label leftInfo = new Label();
+                leftInfo.Text = $"Tile: {leftCell.TileId} | Idx: {leftCell.IndexId}";
+                leftInfo.Dock = DockStyle.Bottom;
+                leftInfo.Height = 22;
+                leftInfo.TextAlign = ContentAlignment.MiddleCenter;
+                leftPanel.Controls.Add(leftInfo);
             }
 
+            leftPanel.Controls.Add(leftPb);
+            leftPanel.Controls.Add(leftTitle);
+            split.Panel1.Controls.Add(leftPanel);
+
+            // 右三角面板
+            Panel rightPanel = new Panel();
+            rightPanel.Dock = DockStyle.Fill;
+
+            Label rightTitle = new Label();
+            rightTitle.Text = $"▶ 右三角 (X={rightX})";
+            rightTitle.Dock = DockStyle.Top;
+            rightTitle.Height = 22;
+            rightTitle.BackColor = Color.LightGreen;
+            rightTitle.TextAlign = ContentAlignment.MiddleCenter;
+
+            var rightCell = (rightX < 128 && y < 64) ? currentS32Data.Layer1[y, rightX] : null;
+            PictureBox rightPb = new PictureBox();
+            rightPb.Dock = DockStyle.Fill;
+            rightPb.SizeMode = PictureBoxSizeMode.Zoom;
+            rightPb.BackColor = Color.Black;
+
+            if (rightCell != null && rightCell.TileId > 0)
+            {
+                rightPb.Image = LoadTileEnlarged(rightCell.TileId, rightCell.IndexId, 100);
+
+                Label rightInfo = new Label();
+                rightInfo.Text = $"Tile: {rightCell.TileId} | Idx: {rightCell.IndexId}";
+                rightInfo.Dock = DockStyle.Bottom;
+                rightInfo.Height = 22;
+                rightInfo.TextAlign = ContentAlignment.MiddleCenter;
+                rightPanel.Controls.Add(rightInfo);
+            }
+
+            rightPanel.Controls.Add(rightPb);
+            rightPanel.Controls.Add(rightTitle);
+            split.Panel2.Controls.Add(rightPanel);
+
+            panel.Controls.Add(split);
             panel.Controls.Add(s32Info);
             return panel;
         }
