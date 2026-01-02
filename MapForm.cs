@@ -21239,7 +21239,7 @@ namespace L1FlyMapViewer
             btnClearSelected.Enabled = s32WithL8.Count > 0;
             btnClearSelected.Click += (s, args) =>
             {
-                ListView currentLv = tabControl.SelectedIndex == 0 ? lvSelected : lvAll;
+                ListView currentLv = tabControl.SelectedIndex == 0 ? lvAll : lvSelected;
                 int checkedCount = currentLv.CheckedItems.Count;
                 if (checkedCount == 0)
                 {
