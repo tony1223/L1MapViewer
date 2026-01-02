@@ -17772,6 +17772,53 @@ namespace L1FlyMapViewer
             this.toolStripStatusLabel1.Text = $"跳轉到群組 {info.DistanceCode}:G{info.GroupId}，位置 ({obj.X}, {obj.Y})，共 {info.Objects.Count} 個物件";
         }
 
+        // 顯示 Layer4 群組所在的所有格子（綠色高亮）
+        private void ShowLayer4GroupCells(GroupThumbnailInfo info)
+        {
+            if (info.Objects.Count == 0 || info.S32Data == null)
+                return;
+
+            var highlightCells = new List<(int globalX, int globalY)>();
+            var s32Data = info.S32Data;
+
+            // 計算 S32 的全域座標起點
+            int s32StartX = s32Data.SegInfo.nLinBeginX * 2;
+            int s32StartY = s32Data.SegInfo.nLinBeginY;
+
+            // 收集該群組所有物件所在的唯一格子
+            foreach (var obj in info.Objects)
+            {
+                // obj.X 是 Layer1 座標 (0-127)，obj.Y 是 0-63
+                // 正規化為偶數（同一格的左半）
+                int normalizedX = (obj.X / 2) * 2;
+                int globalX = s32StartX + normalizedX;
+                int globalY = s32StartY + obj.Y;
+
+                var cellCoord = (globalX, globalY);
+                if (!highlightCells.Contains(cellCoord))
+                {
+                    highlightCells.Add(cellCoord);
+                }
+            }
+
+            if (highlightCells.Count == 0)
+            {
+                this.toolStripStatusLabel1.Text = $"找不到群組 {info.GroupId} 的位置";
+                return;
+            }
+
+            // 設定高亮狀態
+            _editState.GroupHighlightCells = highlightCells;
+
+            // 跳轉到第一個位置
+            JumpToGroupLocation(info);
+
+            // 重新渲染
+            RenderS32Map();
+
+            this.toolStripStatusLabel1.Text = $"顯示群組 {info.DistanceCode}:G{info.GroupId} 的 {highlightCells.Count} 個格子（點擊其他地方清除）";
+        }
+
         // 群組縮圖雙擊事件 - 顯示放大預覽
         private void lvGroupThumbnails_DoubleClick(object sender, EventArgs e)
         {
@@ -17823,6 +17870,9 @@ namespace L1FlyMapViewer
                 ToolStripMenuItem gotoItem = new ToolStripMenuItem("跳轉到位置");
                 gotoItem.Click += (s, ev) => JumpToGroupLocation(info);
 
+                ToolStripMenuItem showCellsItem = new ToolStripMenuItem("顯示群組所在格子");
+                showCellsItem.Click += (s, ev) => ShowLayer4GroupCells(info);
+
                 ToolStripMenuItem detailItem = new ToolStripMenuItem($"列出 L4 明細 ({info.Objects.Count} 個物件)");
                 detailItem.Click += (s, ev) => ShowLayer4Details(info);
 
@@ -17831,6 +17881,7 @@ namespace L1FlyMapViewer
 
                 menu.Items.Add(copyItem);
                 menu.Items.Add(gotoItem);
+                menu.Items.Add(showCellsItem);
                 menu.Items.Add(detailItem);
                 menu.Items.Add(new ToolStripSeparator());
 
