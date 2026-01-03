@@ -293,7 +293,7 @@ namespace L1MapViewer.Controls
         private void NavigateToPosition(Point mouseLocation)
         {
             if (ViewState == null || _document == null || _miniMapBitmap == null) return;
-            if (ViewState.MapWidth <= 0 || ViewState.MapHeight <= 0) return;
+            if (_bounds == null || _bounds.ContentWidth <= 0 || _bounds.ContentHeight <= 0) return;
 
             // 計算 minimap bitmap 在控制項上的顯示區域
             float scaleX = (float)this.Width / _miniMapBitmap.Width;
@@ -305,13 +305,12 @@ namespace L1MapViewer.Controls
             int offsetX = (this.Width - drawWidth) / 2;
             int offsetY = (this.Height - drawHeight) / 2;
 
-            // 滑鼠位置在 bitmap 顯示區域內的比例
-            float ratioX = (float)(mouseLocation.X - offsetX) / drawWidth;
-            float ratioY = (float)(mouseLocation.Y - offsetY) / drawHeight;
+            // 滑鼠位置在 bitmap 顯示區域內的位置
+            float miniMapX = (mouseLocation.X - offsetX) / displayScale;
+            float miniMapY = (mouseLocation.Y - offsetY) / displayScale;
 
-            // 比例 → 世界座標
-            int worldX = (int)(ratioX * ViewState.MapWidth);
-            int worldY = (int)(ratioY * ViewState.MapHeight);
+            // 使用 MiniMapBounds 轉換為世界座標（與 DrawViewportRect 一致）
+            var (worldX, worldY) = _bounds.MiniMapToWorld(miniMapX, miniMapY);
 
             // 限制在有效範圍內
             worldX = Math.Max(0, Math.Min(ViewState.MapWidth, worldX));
