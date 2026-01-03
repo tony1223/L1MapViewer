@@ -4560,7 +4560,195 @@ namespace L1FlyMapViewer
             importFs32Item.Click += (s, args) => ImportFs32ToCurrentMap();
             menu.Items.Add(importFs32Item);
 
+            menu.Items.Add(new ToolStripSeparator());
+
+            // ⚠ 危險操作區
+            // 清空 S32 資料
+            ToolStripMenuItem clearS32Item = new ToolStripMenuItem("⚠ 清空此區塊資料...");
+            clearS32Item.ForeColor = Color.Red;
+            clearS32Item.Click += (s, args) => ClearS32Data(item);
+            menu.Items.Add(clearS32Item);
+
+            // 刪除 S32 檔案
+            ToolStripMenuItem deleteS32Item = new ToolStripMenuItem("⚠ 刪除此區塊...");
+            deleteS32Item.ForeColor = Color.Red;
+            deleteS32Item.Click += (s, args) => DeleteS32File(item);
+            menu.Items.Add(deleteS32Item);
+
             menu.Show(lstS32Files, e.Location);
+        }
+
+        // 清空 S32 區塊資料（危險操作）
+        private void ClearS32Data(S32FileItem item)
+        {
+            if (item == null || !_document.S32Files.TryGetValue(item.FilePath, out var s32Data))
+            {
+                MessageBox.Show("找不到指定的 S32 檔案", "錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return;
+            }
+
+            string fileName = Path.GetFileName(item.FilePath);
+
+            // 第一次確認
+            var result1 = MessageBox.Show(
+                $"⚠ 警告：這是危險操作！\n\n" +
+                $"確定要清空 [{fileName}] 的所有資料嗎？\n\n" +
+                $"這將清除：\n" +
+                $"• Layer1 (地板): {s32Data.Layer1?.Length ?? 0} 格\n" +
+                $"• Layer2 (裝飾): {s32Data.Layer2?.Count ?? 0} 個\n" +
+                $"• Layer3 (屬性): {s32Data.Layer3?.Length ?? 0} 格\n" +
+                $"• Layer4 (物件): {s32Data.Layer4?.Count ?? 0} 個\n" +
+                $"• Layer5 (透明): {s32Data.Layer5?.Count ?? 0} 個\n" +
+                $"• Layer6 (光源): {s32Data.Layer6?.Count ?? 0} 個\n" +
+                $"• Layer7 (傳送): {s32Data.Layer7?.Count ?? 0} 個\n" +
+                $"• Layer8 (事件): {s32Data.Layer8?.Count ?? 0} 個\n\n" +
+                $"此操作無法復原！",
+                "⚠ 危險操作確認",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Warning,
+                MessageBoxDefaultButton.Button2);
+
+            if (result1 != DialogResult.Yes)
+                return;
+
+            // 第二次確認
+            var result2 = MessageBox.Show(
+                $"⚠ 最後確認！\n\n" +
+                $"真的要清空 [{fileName}] 的所有資料嗎？\n\n" +
+                $"請輸入 [是] 繼續執行。",
+                "⚠ 最終確認",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Stop,
+                MessageBoxDefaultButton.Button2);
+
+            if (result2 != DialogResult.Yes)
+                return;
+
+            // 執行清空
+            // Layer1: 全部設為空 (2D array [64, 128])
+            if (s32Data.Layer1 != null)
+            {
+                for (int y = 0; y < 64; y++)
+                {
+                    for (int x = 0; x < 128; x++)
+                    {
+                        s32Data.Layer1[y, x] = new TileCell { X = x, Y = y, TileId = 0, IndexId = 0 };
+                    }
+                }
+            }
+
+            // Layer2: 清空列表
+            s32Data.Layer2?.Clear();
+
+            // Layer3: 全部設為空 (2D array [64, 64])
+            if (s32Data.Layer3 != null)
+            {
+                for (int y = 0; y < 64; y++)
+                {
+                    for (int x = 0; x < 64; x++)
+                    {
+                        s32Data.Layer3[y, x] = new MapAttribute { Attribute1 = 0, Attribute2 = 0 };
+                    }
+                }
+            }
+
+            // Layer4-8: 清空列表
+            s32Data.Layer4?.Clear();
+            s32Data.Layer5?.Clear();
+            s32Data.Layer6?.Clear();
+            s32Data.Layer7?.Clear();
+            s32Data.Layer8?.Clear();
+
+            s32Data.IsModified = true;
+
+            // 重新渲染
+            ClearS32BlockCache();
+            RenderS32Map();
+            lstS32Files.Invalidate(); // 刷新列表顯示
+
+            MessageBox.Show(
+                $"已清空 [{fileName}] 的所有資料。\n\n請記得儲存變更。",
+                "清空完成",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
+        }
+
+        // 刪除 S32 檔案（危險操作）
+        private void DeleteS32File(S32FileItem item)
+        {
+            if (item == null || !_document.S32Files.ContainsKey(item.FilePath))
+            {
+                MessageBox.Show("找不到指定的 S32 檔案", "錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return;
+            }
+
+            string fileName = Path.GetFileName(item.FilePath);
+
+            // 第一次確認
+            var result1 = MessageBox.Show(
+                $"⚠ 警告：這是危險操作！\n\n" +
+                $"確定要刪除 [{fileName}] 嗎？\n\n" +
+                $"這將從地圖中移除此區塊，並刪除磁碟上的檔案。\n\n" +
+                $"此操作無法復原！",
+                "⚠ 危險操作確認",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Warning,
+                MessageBoxDefaultButton.Button2);
+
+            if (result1 != DialogResult.Yes)
+                return;
+
+            // 第二次確認
+            var result2 = MessageBox.Show(
+                $"⚠ 最後確認！\n\n" +
+                $"真的要刪除 [{fileName}] 嗎？\n" +
+                $"檔案路徑: {item.FilePath}\n\n" +
+                $"請輸入 [是] 繼續執行。",
+                "⚠ 最終確認",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Stop,
+                MessageBoxDefaultButton.Button2);
+
+            if (result2 != DialogResult.Yes)
+                return;
+
+            try
+            {
+                // 從記憶體中移除
+                _document.S32Files.Remove(item.FilePath);
+                _checkedS32Files.Remove(item.FilePath);
+
+                // 從列表中移除
+                lstS32Files.Items.Remove(item);
+
+                // 刪除磁碟上的檔案
+                if (File.Exists(item.FilePath))
+                {
+                    File.Delete(item.FilePath);
+                }
+
+                // 更新列表計數標籤
+                lblS32Files.Text = $"S32 檔案清單 ({lstS32Files.Items.Count})";
+
+                // 重新渲染
+                ClearS32BlockCache();
+                RenderS32Map();
+                UpdateMiniMap();
+
+                MessageBox.Show(
+                    $"已刪除 [{fileName}]。",
+                    "刪除完成",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(
+                    $"刪除檔案時發生錯誤：\n{ex.Message}",
+                    "錯誤",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
+            }
         }
 
         // 匯出當前地圖為 fs32
