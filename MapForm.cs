@@ -39,9 +39,17 @@ namespace L1FlyMapViewer
         /// </summary>
         private readonly ViewState _viewState = new ViewState();
 
-        // Layer8 SPR 顯示相關
-        private readonly Dictionary<int, List<Image>> _layer8SprCache = new Dictionary<int, List<Image>>();
-        private readonly Dictionary<(string, int), int> _layer8AnimFrame = new Dictionary<(string, int), int>();
+        /// <summary>
+        /// 互動狀態 Model - 管理拖曳、選取等互動狀態
+        /// </summary>
+        private readonly InteractionState _interaction = new InteractionState();
+
+        /// <summary>
+        /// 渲染快取 Model - 管理 Bitmap 和 Tile 資料快取
+        /// </summary>
+        private readonly RenderCache _renderCache = new RenderCache();
+
+        // Layer8 動畫 Timer（快取已移至 _renderCache）
         private System.Windows.Forms.Timer _layer8AnimTimer;
 
         // IMapViewer 介面實作 - 明確公開控制項屬性
@@ -58,8 +66,6 @@ namespace L1FlyMapViewer
         ToolStripStatusLabel IMapViewer.toolStripStatusLabel3 => this.toolStripStatusLabel3;
         Panel IMapViewer.panel1 => this.panel1;
 
-        private Point mouseDownPoint;
-        private bool isMouseDrag;
         private const int DRAG_THRESHOLD = 5;
 
         // 縮放相關（地圖預覽）
@@ -76,8 +82,7 @@ namespace L1FlyMapViewer
         private Image originalS32Image;
         private double pendingS32ZoomLevel = 1.0;
 
-        // 小地圖完整渲染 Bitmap（整張地圖的縮圖）
-        private Bitmap _miniMapFullBitmap = null;
+        // 小地圖完整渲染 Bitmap - 已移至 _renderCache
 
         // 小地圖渲染器（與 CLI 共用邏輯）
         private MiniMapRenderer _miniMapRenderer = new MiniMapRenderer();
@@ -133,33 +138,14 @@ namespace L1FlyMapViewer
         // Undo 相關常數
         private const int MAX_UNDO_HISTORY = 5;
 
-        // 小地圖拖拽
-        private bool isMiniMapDragging = false;
-        // 小地圖是否有焦點（用於方向鍵導航）
-        private bool isMiniMapFocused = false;
-
-        // 主地圖拖拽（中鍵拖拽移動視圖）
-        private bool isMainMapDragging = false;
-        private Point mainMapDragStartPoint;
-        private Point mainMapDragStartScroll;
+        // 拖曳相關狀態 - 已移至 _interaction
 
         // 拖曳效能監控
         private int _dragMoveCount = 0;
         private int _dragPaintCount = 0;
         private Stopwatch _dragSessionSw = new Stopwatch();
 
-        // Viewport 渲染相關
-        private Bitmap _viewportBitmap;  // 當前渲染的 Viewport Bitmap
-        private readonly object _viewportBitmapLock = new object();  // 保護 _viewportBitmap 的鎖
-
-        // Tile 資料快取 - key: "tileId_indexId" (使用 ConcurrentDictionary 支援多執行緒)
-        private System.Collections.Concurrent.ConcurrentDictionary<string, byte[]> tileDataCache = new System.Collections.Concurrent.ConcurrentDictionary<string, byte[]>();
-
-        // 整個 .til 檔案快取 - key: tileId, value: parsed tile array
-        private System.Collections.Concurrent.ConcurrentDictionary<int, List<byte[]>> _tilFileCache = new System.Collections.Concurrent.ConcurrentDictionary<int, List<byte[]>>();
-
-        // R 版 tile 快取 - key: tileId, value: isRemaster
-        private System.Collections.Concurrent.ConcurrentDictionary<int, bool> _tilRemasterCache = new System.Collections.Concurrent.ConcurrentDictionary<int, bool>();
+        // Viewport 和 Tile 快取 - 已移至 _renderCache
 
         // list.til 快取 - 儲存 Tile.pak 中 list.til 記錄的最大 TileId 數字
         private int? _listTilMaxId = null;
@@ -199,7 +185,7 @@ namespace L1FlyMapViewer
                 int loadedCount = 0;
                 System.Threading.Tasks.Parallel.ForEach(tileIds, tileId =>
                 {
-                    _tilFileCache.GetOrAdd(tileId, _ =>
+                    _renderCache.TilFileCache.GetOrAdd(tileId, _ =>
                     {
                         string key = $"{tileId}.til";
                         byte[] data = L1PakReader.UnPack("Tile", key);
@@ -308,8 +294,7 @@ namespace L1FlyMapViewer
             return result;
         }
 
-        // S32 Block 渲染快取 - key: filePath, value: rendered bitmap (Layer1+Layer4)
-        private System.Collections.Concurrent.ConcurrentDictionary<string, Bitmap> _s32BlockCache = new System.Collections.Concurrent.ConcurrentDictionary<string, Bitmap>();
+        // S32 Block 渲染快取 - 已移至 _renderCache
 
         // 記錄已經繪製到 viewport bitmap 的 S32 檔案路徑（用於增量渲染）
         private HashSet<string> _renderedS32Blocks = new HashSet<string>();
@@ -421,10 +406,10 @@ namespace L1FlyMapViewer
                 }
 
                 // 更新所有啟用項目的帧索引
-                var keys = _layer8AnimFrame.Keys.ToList();
+                var keys = _renderCache.Layer8AnimFrame.Keys.ToList();
                 foreach (var key in keys)
                 {
-                    _layer8AnimFrame[key]++;
+                    _renderCache.Layer8AnimFrame[key]++;
                 }
 
                 // 只重繪 L8 動畫覆蓋層，不影響地圖和其他圖層
@@ -797,7 +782,7 @@ namespace L1FlyMapViewer
                 }
             }
             // 方向鍵：小地圖焦點時移動視圖
-            else if (isMiniMapFocused && (e.KeyCode == Keys.Up || e.KeyCode == Keys.Down ||
+            else if (_interaction.IsMiniMapFocused && (e.KeyCode == Keys.Up || e.KeyCode == Keys.Down ||
                                           e.KeyCode == Keys.Left || e.KeyCode == Keys.Right))
             {
                 e.Handled = true;
@@ -808,7 +793,7 @@ namespace L1FlyMapViewer
         // 刪除選取區域內的 Layer4 物件
         private void DeleteSelectedLayer4Objects()
         {
-            if (!isLayer4CopyMode || _editState.SelectedCells.Count == 0)
+            if (!_interaction.IsLayer4CopyMode || _editState.SelectedCells.Count == 0)
             {
                 this.toolStripStatusLabel1.Text = "請先使用左鍵選取要刪除的區域";
                 return;
@@ -818,7 +803,7 @@ namespace L1FlyMapViewer
             DeleteAllLayer4ObjectsInRegion(_editState.SelectedCells);
 
             // 清除選取狀態
-            isLayer4CopyMode = false;
+            _interaction.IsLayer4CopyMode = false;
             selectedRegion = new Rectangle();
             copyRegionBounds = new Rectangle();
             _editState.SelectedCells.Clear();
@@ -828,7 +813,7 @@ namespace L1FlyMapViewer
         // 複製 Layer4 物件
         private void CopySelectedCells()
         {
-            if (!isLayer4CopyMode || copyRegionBounds.Width == 0 || copyRegionBounds.Height == 0)
+            if (!_interaction.IsLayer4CopyMode || copyRegionBounds.Width == 0 || copyRegionBounds.Height == 0)
             {
                 this.toolStripStatusLabel1.Text = "請先使用 左鍵 選取要複製的區域";
                 return;
@@ -1180,7 +1165,7 @@ namespace L1FlyMapViewer
             this.toolStripStatusLabel1.Text = $"已複製 {selectedCells.Count} 格 ({layerInfo}) 來源: {_document.MapId}，左鍵選取貼上位置後按 Ctrl+V";
 
             // 清除選取框但保留複製資料
-            isLayer4CopyMode = false;
+            _interaction.IsLayer4CopyMode = false;
             selectedRegion = new Rectangle();
             copyRegionBounds = new Rectangle();
             _editState.SelectedCells.Clear();
@@ -1558,7 +1543,7 @@ namespace L1FlyMapViewer
             }
 
             // 清除選取模式
-            isLayer4CopyMode = false;
+            _interaction.IsLayer4CopyMode = false;
             selectedRegion = new Rectangle();
             copyRegionBounds = new Rectangle();
             _editState.SelectedCells.Clear();
@@ -1596,7 +1581,7 @@ namespace L1FlyMapViewer
         // 取消複製/貼上模式
         private void CancelLayer4CopyPaste()
         {
-            isLayer4CopyMode = false;
+            _interaction.IsLayer4CopyMode = false;
             // 恢復顯示全部群組
             UpdateGroupThumbnailsList();
             selectedRegion = new Rectangle();
@@ -2131,7 +2116,7 @@ namespace L1FlyMapViewer
             }
 
             // 清除快取
-            tileDataCache.Clear();
+            _renderCache.TileDataCache.Clear();
             _editState.HighlightedS32Data = null;
             _editState.HighlightedCellX = -1;
             _editState.HighlightedCellY = -1;
@@ -2375,8 +2360,8 @@ namespace L1FlyMapViewer
                         {
                             // Attribute1 用於上下方向 (t1), Attribute2 用於左右方向 (t3)
                             // 需要經過 replaceException 處理（與 MapTool 相同）
-                            int attr1Value = ReplaceException(attr.Attribute1);
-                            int attr2Value = ReplaceException(attr.Attribute2);
+                            int attr1Value = PassabilityService.ReplaceException(attr.Attribute1);
+                            int attr2Value = PassabilityService.ReplaceException(attr.Attribute2);
                             tileList_t1[gx, gy] = attr1Value;
                             tileList_t3[gx, gy] = attr2Value;
                         }
@@ -2407,20 +2392,20 @@ namespace L1FlyMapViewer
                             tileList[x, y] += 8;
 
                         // D1: 左下對角 - isPassable_D1(x - 1, y + 1)
-                        if (IsPassable_D1(tileList_t1, tileList_t3, x - 1, y + 1, xLength, yLength))
+                        if (PassabilityService.IsPassable_D1(tileList_t1, tileList_t3, x - 1, y + 1, xLength, yLength))
                             tileList[x, y] += 16;
                         // D3: 左上對角 - isPassable_D3(x - 1, y - 1)
-                        if (IsPassable_D3(tileList_t1, tileList_t3, x - 1, y - 1, xLength, yLength))
+                        if (PassabilityService.IsPassable_D3(tileList_t1, tileList_t3, x - 1, y - 1, xLength, yLength))
                             tileList[x, y] += 32;
                         // D5: 右上對角 - isPassable_D5(x + 1, y - 1)
-                        if (IsPassable_D5(tileList_t1, tileList_t3, x + 1, y - 1, xLength, yLength))
+                        if (PassabilityService.IsPassable_D5(tileList_t1, tileList_t3, x + 1, y - 1, xLength, yLength))
                             tileList[x, y] += 64;
                         // D7: 右下對角 - isPassable_D7(x + 1, y + 1)
-                        if (IsPassable_D7(tileList_t1, tileList_t3, x + 1, y + 1, xLength, yLength))
+                        if (PassabilityService.IsPassable_D7(tileList_t1, tileList_t3, x + 1, y + 1, xLength, yLength))
                             tileList[x, y] += 128;
 
                         // 區域類型 - getZone(x, y) 使用 tileList_t1[x, y]
-                        tileList[x, y] += GetZone(tileList_t1[x, y]);
+                        tileList[x, y] += PassabilityService.GetZone(tileList_t1[x, y]);
                     }
                 }
             }
@@ -2457,66 +2442,7 @@ namespace L1FlyMapViewer
             this.toolStripStatusLabel1.Text = $"已匯出 {_document.MapId}.txt ({xLength}x{yLength})";
         }
 
-        // 對角方向通行性判斷
-        // 注意：根據客戶端逆向分析，t1 和 t3 現在都使用 Attribute1 的值
-        // isPassable_D1(x, y) => 檢查相關格子的 Attribute1
-        private bool IsPassable_D1(int[,] t1, int[,] t3, int x, int y, int xLen, int yLen)
-        {
-            if (x < 0 || x + 1 >= xLen || y < 0 || y >= yLen || y - 1 < 0) return false;
-            return (t1[x, y] & 1) == 0 && (t1[x + 1, y] & 1) == 0 &&
-                   (t3[x + 1, y] & 1) == 0 && (t3[x + 1, y - 1] & 1) == 0;
-        }
-
-        // isPassable_D3(x, y) => 檢查相關格子的 Attribute1
-        private bool IsPassable_D3(int[,] t1, int[,] t3, int x, int y, int xLen, int yLen)
-        {
-            if (x < 0 || x + 1 >= xLen || y < 0 || y + 1 >= yLen) return false;
-            return (t1[x, y + 1] & 1) == 0 && (t1[x + 1, y + 1] & 1) == 0 &&
-                   (t3[x, y] & 1) == 0 && (t3[x, y + 1] & 1) == 0;
-        }
-
-        // isPassable_D5(x, y) => 檢查相關格子的 Attribute1
-        private bool IsPassable_D5(int[,] t1, int[,] t3, int x, int y, int xLen, int yLen)
-        {
-            if (x < 1 || x >= xLen || y < 0 || y + 1 >= yLen) return false;
-            return (t1[x, y + 1] & 1) == 0 && (t1[x - 1, y + 1] & 1) == 0 &&
-                   (t3[x - 1, y] & 1) == 0 && (t3[x - 1, y + 1] & 1) == 0;
-        }
-
-        // isPassable_D7(x, y) => 檢查相關格子的 Attribute1
-        private bool IsPassable_D7(int[,] t1, int[,] t3, int x, int y, int xLen, int yLen)
-        {
-            if (x < 1 || x >= xLen || y < 1 || y >= yLen) return false;
-            return (t1[x, y] & 1) == 0 && (t1[x - 1, y] & 1) == 0 &&
-                   (t3[x - 1, y] & 1) == 0 && (t3[x - 1, y - 1] & 1) == 0;
-        }
-
-        // 替換例外值（完全按照 MapTool 的 replaceException 邏輯）
-        // 某些特殊屬性值需要替換為 5
-        private int ReplaceException(int value)
-        {
-            if (value == 65 || value == 69 || value == 73 || value == 33 || value == 77)
-                return 5;
-            return value;
-        }
-
-        // 取得區域類型（完全按照 MapTool 的 getZone 邏輯）
-        // 看 tileList_t1[x,y] 的低 4 位元（十六進位的最後一位）
-        private int GetZone(int tileValue)
-        {
-            string hex = (tileValue & 0x0F).ToString("X1");
-            // 0-3: 一般區域 (256)
-            if (hex == "0" || hex == "1" || hex == "2" || hex == "3")
-                return 256;
-            // 4-7, C-F: 安全區域 (512)
-            else if (hex == "4" || hex == "5" || hex == "6" || hex == "7" ||
-                     hex == "C" || hex == "D" || hex == "E" || hex == "F")
-                return 512;
-            // 8-B: 戰鬥區域 (1024)
-            else if (hex == "8" || hex == "9" || hex == "A" || hex == "B")
-                return 1024;
-            return 256;
-        }
+        // 對角方向通行性判斷 - 已移至 Helper/PassabilityService.cs
 
         // 轉換為 L1J 格式（完全按照 MapTool 的 formate_L1J 邏輯）
         private int[,] FormatL1J(int[,] tileList, int xLength, int yLength)
@@ -2572,9 +2498,9 @@ namespace L1FlyMapViewer
             }
 
             // 切換資料夾時清除所有快取（不同資料夾的 tile/idx 內容不同）
-            _tilFileCache.Clear();
-            _tilRemasterCache.Clear();
-            tileDataCache.Clear();
+            _renderCache.TilFileCache.Clear();
+            _renderCache.TilRemasterCache.Clear();
+            _renderCache.TileDataCache.Clear();
             cachedAggregatedTiles.Clear();
             Share.IdxDataList.Clear();  // 清除 idx 快取，強制重新讀取新資料夾的 idx
             Share.MapDataList.Clear();  // 清除地圖快取，強制重新讀取新資料夾的地圖
@@ -2592,12 +2518,12 @@ namespace L1FlyMapViewer
             ClearMiniMapCache();
 
             // 清除 viewport
-            lock (_viewportBitmapLock)
+            lock (_renderCache.ViewportBitmapLock)
             {
-                if (_viewportBitmap != null)
+                if (_renderCache.ViewportBitmap != null)
                 {
-                    _viewportBitmap.Dispose();
-                    _viewportBitmap = null;
+                    _renderCache.ViewportBitmap.Dispose();
+                    _renderCache.ViewportBitmap = null;
                 }
             }
             pictureBox1.Invalidate();
@@ -3129,7 +3055,7 @@ namespace L1FlyMapViewer
                     return;
 
                 // 如果沒有快取且沒有在渲染中，啟動背景渲染
-                if (_miniMapFullBitmap == null && !_miniMapRendering)
+                if (_renderCache.MiniMapFullBitmap == null && !_miniMapRendering)
                 {
                     LogPerf($"[MINIMAP-UPDATE] starting full render (no cache)");
                     // 先顯示一個「渲染中」的佔位圖
@@ -3234,9 +3160,9 @@ namespace L1FlyMapViewer
                     {
                         lock (_miniMapLock)
                         {
-                            if (_miniMapFullBitmap != null)
-                                _miniMapFullBitmap.Dispose();
-                            _miniMapFullBitmap = miniBitmap;
+                            if (_renderCache.MiniMapFullBitmap != null)
+                                _renderCache.MiniMapFullBitmap.Dispose();
+                            _renderCache.MiniMapFullBitmap = miniBitmap;
                         }
                         _miniMapRendering = false;
 
@@ -3258,7 +3184,7 @@ namespace L1FlyMapViewer
         {
             lock (_miniMapLock)
             {
-                if (_miniMapFullBitmap == null)
+                if (_renderCache.MiniMapFullBitmap == null)
                     return;
 
                 // 建立顯示圖（底圖 + 紅框）
@@ -3268,7 +3194,7 @@ namespace L1FlyMapViewer
                     g.Clear(Color.Black);
 
                     // 繪製小地圖底圖（置中）
-                    g.DrawImage(_miniMapFullBitmap, _miniMapOffsetX, _miniMapOffsetY);
+                    g.DrawImage(_renderCache.MiniMapFullBitmap, _miniMapOffsetX, _miniMapOffsetY);
 
                     // 繪製視窗位置紅框
                     if (s32MapPanel.Width > 0 && s32MapPanel.Height > 0)
@@ -3303,10 +3229,10 @@ namespace L1FlyMapViewer
         {
             lock (_miniMapLock)
             {
-                if (_miniMapFullBitmap != null)
+                if (_renderCache.MiniMapFullBitmap != null)
                 {
-                    _miniMapFullBitmap.Dispose();
-                    _miniMapFullBitmap = null;
+                    _renderCache.MiniMapFullBitmap.Dispose();
+                    _renderCache.MiniMapFullBitmap = null;
                 }
             }
         }
@@ -3366,14 +3292,14 @@ namespace L1FlyMapViewer
         public void vScrollBar1_Scroll(object sender, ScrollEventArgs e)
         {
             this.pictureBox1.Top = -this.vScrollBar1.Value;
-            if (!this.isMouseDrag)
+            if (!this._interaction.IsMouseDrag)
                 UpdateMiniMap();
         }
 
         public void hScrollBar1_Scroll(object sender, ScrollEventArgs e)
         {
             this.pictureBox1.Left = -this.hScrollBar1.Value;
-            if (!this.isMouseDrag)
+            if (!this._interaction.IsMouseDrag)
                 UpdateMiniMap();
         }
 
@@ -3381,8 +3307,8 @@ namespace L1FlyMapViewer
         {
             if (e.Button == MouseButtons.Left)
             {
-                this.mouseDownPoint = Cursor.Position;
-                this.isMouseDrag = true;
+                this._interaction.MouseDownPoint = Cursor.Position;
+                this._interaction.IsMouseDrag = true;
                 this.Cursor = Cursors.Hand;
             }
             else if (e.Button == MouseButtons.Right)
@@ -3398,10 +3324,10 @@ namespace L1FlyMapViewer
 
             this.Cursor = Cursors.Default;
 
-            if (this.isMouseDrag)
+            if (this._interaction.IsMouseDrag)
             {
-                int dragDistance = Math.Abs(Cursor.Position.X - this.mouseDownPoint.X) +
-                                  Math.Abs(Cursor.Position.Y - this.mouseDownPoint.Y);
+                int dragDistance = Math.Abs(Cursor.Position.X - this._interaction.MouseDownPoint.X) +
+                                  Math.Abs(Cursor.Position.Y - this._interaction.MouseDownPoint.Y);
 
                 if (dragDistance < DRAG_THRESHOLD)
                 {
@@ -3415,18 +3341,18 @@ namespace L1FlyMapViewer
                 }
 
                 UpdateMiniMap();
-                this.isMouseDrag = false;
+                this._interaction.IsMouseDrag = false;
             }
         }
 
         private void pictureBox2_MouseMove(object sender, MouseEventArgs e)
         {
-            if (this.isMouseDrag)
+            if (this._interaction.IsMouseDrag)
             {
                 try
                 {
-                    int deltaX = Cursor.Position.X - this.mouseDownPoint.X;
-                    int deltaY = Cursor.Position.Y - this.mouseDownPoint.Y;
+                    int deltaX = Cursor.Position.X - this._interaction.MouseDownPoint.X;
+                    int deltaY = Cursor.Position.Y - this._interaction.MouseDownPoint.Y;
 
                     int newScrollX = this.hScrollBar1.Value - deltaX;
                     int newScrollY = this.vScrollBar1.Value - deltaY;
@@ -3446,7 +3372,7 @@ namespace L1FlyMapViewer
                     this.vScrollBar1_Scroll(null, null);
                     this.hScrollBar1_Scroll(null, null);
 
-                    this.mouseDownPoint = Cursor.Position;
+                    this._interaction.MouseDownPoint = Cursor.Position;
                 }
                 catch
                 {
@@ -3668,11 +3594,11 @@ namespace L1FlyMapViewer
         private void miniMapPictureBox_MouseDown(object sender, MouseEventArgs e)
         {
             // 設定小地圖焦點標記，讓 Form 的 KeyDown 處理方向鍵
-            isMiniMapFocused = true;
+            _interaction.IsMiniMapFocused = true;
 
             if (e.Button == MouseButtons.Left)
             {
-                isMiniMapDragging = true;
+                _interaction.StartMiniMapDrag();
                 MoveMainMapFromMiniMap(e.X, e.Y, true);
             }
         }
@@ -3680,7 +3606,7 @@ namespace L1FlyMapViewer
         // 小地圖滑鼠移動 - 拖拽時只更新小地圖紅框
         private void miniMapPictureBox_MouseMove(object sender, MouseEventArgs e)
         {
-            if (isMiniMapDragging && e.Button == MouseButtons.Left)
+            if (_interaction.IsMiniMapDragging && e.Button == MouseButtons.Left)
             {
                 MoveMainMapFromMiniMap(e.X, e.Y, false);  // 拖拽中不重繪主地圖
             }
@@ -3689,9 +3615,9 @@ namespace L1FlyMapViewer
         // 小地圖滑鼠放開 - 結束拖拽，更新主地圖
         private void miniMapPictureBox_MouseUp(object sender, MouseEventArgs e)
         {
-            if (isMiniMapDragging)
+            if (_interaction.IsMiniMapDragging)
             {
-                isMiniMapDragging = false;
+                _interaction.EndDrag();
                 // 拖拽結束時更新小地圖（主地圖已經捲動到正確位置）
                 UpdateMiniMap();
             }
@@ -3912,12 +3838,12 @@ namespace L1FlyMapViewer
 
         // 區域選擇相關變量
         private bool isSelectingRegion = false;
-        private Point regionStartPoint;
+        // regionStartPoint 已移至 _interaction.RegionStartPoint
         private Point regionEndPoint;
         private Rectangle selectedRegion;
 
         // Layer4 複製貼上相關變數
-        private bool isLayer4CopyMode = false;           // 是否在複製選取模式
+        // isLayer4CopyMode 已移至 _interaction.IsLayer4CopyMode
         private bool hasLayer4Clipboard = false;         // 剪貼簿是否有資料
         private Rectangle copyRegionBounds;               // 複製區域的範圍（螢幕座標）
 
@@ -4085,18 +4011,18 @@ namespace L1FlyMapViewer
             ClearS32BlockCache();
             ClearMiniMapCache();
             cachedAggregatedTiles.Clear();
-            tileDataCache.Clear();
-            _tilFileCache.Clear();
-            _tilRemasterCache.Clear();
+            _renderCache.TileDataCache.Clear();
+            _renderCache.TilFileCache.Clear();
+            _renderCache.TilRemasterCache.Clear();
             LogPerf($"[LOAD-S32-LIST] Caches cleared: {totalStopwatch.ElapsedMilliseconds}ms");
 
             // 清除 viewport bitmap
-            lock (_viewportBitmapLock)
+            lock (_renderCache.ViewportBitmapLock)
             {
-                if (_viewportBitmap != null)
+                if (_renderCache.ViewportBitmap != null)
                 {
-                    _viewportBitmap.Dispose();
-                    _viewportBitmap = null;
+                    _renderCache.ViewportBitmap.Dispose();
+                    _renderCache.ViewportBitmap = null;
                 }
             }
 
@@ -4116,7 +4042,7 @@ namespace L1FlyMapViewer
             _editState.RedoHistory.Clear();
             _editState.SelectedLayer4Groups.Clear();
             // hasLayer4Clipboard 也保留，不清除
-            isLayer4CopyMode = false;
+            _interaction.IsLayer4CopyMode = false;
             selectedRegion = new Rectangle();
             copyRegionBounds = new Rectangle();
 
@@ -4384,7 +4310,7 @@ namespace L1FlyMapViewer
             sb.AppendLine("【左上邊 (Attribute1) 統計】");
             foreach (var kvp in attr1Values.OrderByDescending(x => x.Value).Take(15))
             {
-                string flags = GetAttributeFlags(kvp.Key);
+                string flags = Layer3AttributeDecoder.GetAttributeFlags(kvp.Key);
                 sb.AppendLine($"  0x{kvp.Key:X4}: {kvp.Value} 個 | {flags}");
             }
             if (attr1Values.Count > 15)
@@ -4394,7 +4320,7 @@ namespace L1FlyMapViewer
             sb.AppendLine("【右上邊 (Attribute2) 統計】");
             foreach (var kvp in attr2Values.OrderByDescending(x => x.Value).Take(15))
             {
-                string flags = GetAttributeFlags(kvp.Key);
+                string flags = Layer3AttributeDecoder.GetAttributeFlags(kvp.Key);
                 sb.AppendLine($"  0x{kvp.Key:X4}: {kvp.Value} 個 | {flags}");
             }
             if (attr2Values.Count > 15)
@@ -4403,34 +4329,7 @@ namespace L1FlyMapViewer
             MessageBox.Show(sb.ToString(), "第三層屬性分析", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
 
-        // 取得屬性標記說明
-        private string GetAttributeFlags(short value)
-        {
-            List<string> flags = new List<string>();
-
-            if ((value & 0x0001) != 0) flags.Add("不可通行");
-            // MapTool 邏輯: 低4位 4-7,C-F=安全, 8-B=戰鬥
-            int lowNibble = value & 0x0F;
-            if ((lowNibble & 0x04) != 0) flags.Add("安全區");
-            else if ((lowNibble & 0x0C) == 0x08) flags.Add("戰鬥區");
-            if ((value & 0x0002) != 0) flags.Add("bit1");
-            if ((value & 0x0010) != 0) flags.Add("bit4");
-            if ((value & 0x0020) != 0) flags.Add("bit5");
-            if ((value & 0x0040) != 0) flags.Add("bit6");
-            if ((value & 0x0080) != 0) flags.Add("bit7");
-            if ((value & 0x0100) != 0) flags.Add("bit8");
-            if ((value & 0x0200) != 0) flags.Add("bit9");
-            if ((value & 0x0400) != 0) flags.Add("bit10");
-            if ((value & 0x0800) != 0) flags.Add("bit11");
-            if ((value & 0x1000) != 0) flags.Add("bit12");
-            if ((value & 0x2000) != 0) flags.Add("bit13");
-            if ((value & 0x4000) != 0) flags.Add("bit14");
-            if ((value & 0x8000) != 0) flags.Add("bit15");
-
-            if (flags.Count == 0) flags.Add("無標記(可通行)");
-
-            return string.Join(", ", flags);
-        }
+        // 取得屬性標記說明 - 已移至 Helper/Layer3AttributeDecoder.cs
 
         // s32 檔案選擇變更事件
         private void lstS32Files_SelectedIndexChanged(object sender, EventArgs e)
@@ -5157,9 +5056,9 @@ namespace L1FlyMapViewer
                     // 清除 Tile 相關快取（匯入新 Tile 後需要重新讀取）
                     Console.WriteLine($"[ImportFs32] Clearing tile caches");
                     TileHashManager.ClearCache();
-                    _tilFileCache.Clear();
-                    _tilRemasterCache.Clear();
-                    tileDataCache.Clear();
+                    _renderCache.TilFileCache.Clear();
+                    _renderCache.TilRemasterCache.Clear();
+                    _renderCache.TileDataCache.Clear();
                     cachedAggregatedTiles.Clear();
 
                     // 重新載入 S32 檔案清單
@@ -6881,9 +6780,9 @@ namespace L1FlyMapViewer
                 drawSw.Stop();
                 totalDrawImageMs = drawSw.ElapsedMilliseconds;
                 renderSw.Stop();
-                LogPerf($"[RENDER] total={renderSw.ElapsedMilliseconds}ms | createBmp={createBmpMs}ms, getBlock={totalGetBlockMs}ms, drawImage={totalDrawImageMs}ms | blocks={renderedCount}, cacheHit={_cacheHits}, cacheMiss={_cacheMisses}");
-                _cacheHits = 0;
-                _cacheMisses = 0;
+                LogPerf($"[RENDER] total={renderSw.ElapsedMilliseconds}ms | createBmp={createBmpMs}ms, getBlock={totalGetBlockMs}ms, drawImage={totalDrawImageMs}ms | blocks={renderedCount}, cacheHit={_renderCache.CacheHits}, cacheMiss={_renderCache.CacheMisses}");
+                _renderCache.CacheHits = 0;
+                _renderCache.CacheMisses = 0;
 
                 // 更新已渲染的 S32 清單
                 lock (_renderedS32Blocks)
@@ -7005,13 +6904,13 @@ namespace L1FlyMapViewer
         // 檢查是否需要重新渲染並執行
         private void CheckAndRerenderIfNeeded()
         {
-            LogPerf($"[CHECK-RERENDER] start, s32Count={_document.S32Files.Count}, isDragging={isMainMapDragging}");
+            LogPerf($"[CHECK-RERENDER] start, s32Count={_document.S32Files.Count}, isDragging={_interaction.IsMainMapDragging}");
 
             if (_document.S32Files.Count == 0 || string.IsNullOrEmpty(_document.MapId))
                 return;
 
             // 拖曳中不重新渲染，只更新顯示
-            if (isMainMapDragging)
+            if (_interaction.IsMainMapDragging)
             {
                 _mapViewerControl.Refresh();
                 return;
@@ -7041,25 +6940,22 @@ namespace L1FlyMapViewer
         /// <summary>
         /// 取得快取的 S32 Block 或渲染新的（用於 Viewport 渲染）
         /// </summary>
-        private int _cacheHits = 0;
-        private int _cacheMisses = 0;
-
         private Bitmap GetOrRenderS32Block(S32Data s32Data, bool showLayer1, bool showLayer2, bool showLayer4)
         {
             // 只有 Layer1+Layer2+Layer4 都開啟時才使用快取
             if (showLayer1 && showLayer2 && showLayer4)
             {
                 string cacheKey = s32Data.FilePath;
-                if (_s32BlockCache.TryGetValue(cacheKey, out Bitmap cached))
+                if (_renderCache.S32BlockCache.TryGetValue(cacheKey, out Bitmap cached))
                 {
-                    _cacheHits++;
+                    _renderCache.CacheHits++;
                     return cached;
                 }
 
-                _cacheMisses++;
+                _renderCache.CacheMisses++;
                 // 渲染並快取
                 Bitmap rendered = RenderS32Block(s32Data, showLayer1, showLayer2, showLayer4);
-                _s32BlockCache.TryAdd(cacheKey, rendered);
+                _renderCache.S32BlockCache.TryAdd(cacheKey, rendered);
                 return rendered;
             }
 
@@ -7088,11 +6984,11 @@ namespace L1FlyMapViewer
         /// </summary>
         private void ClearS32BlockCache()
         {
-            foreach (var bmp in _s32BlockCache.Values)
+            foreach (var bmp in _renderCache.S32BlockCache.Values)
             {
                 bmp?.Dispose();
             }
-            _s32BlockCache.Clear();
+            _renderCache.S32BlockCache.Clear();
             lock (_renderedS32Blocks)
             {
                 _renderedS32Blocks.Clear();
@@ -7106,7 +7002,7 @@ namespace L1FlyMapViewer
         /// </summary>
         private void InvalidateS32BlockCache(string filePath)
         {
-            if (_s32BlockCache.TryRemove(filePath, out Bitmap bmp))
+            if (_renderCache.S32BlockCache.TryRemove(filePath, out Bitmap bmp))
             {
                 bmp?.Dispose();
             }
@@ -8336,20 +8232,20 @@ namespace L1FlyMapViewer
         private void DrawLayer8Sprite(Graphics g, int sprId, int x, int y, string s32Path, int itemIndex)
         {
             // 載入 SPR 帧（如果還沒載入）
-            if (!_layer8SprCache.TryGetValue(sprId, out var frames))
+            if (!_renderCache.Layer8SprCache.TryGetValue(sprId, out var frames))
             {
                 frames = LoadLayer8SprFrames(sprId);
-                _layer8SprCache[sprId] = frames;
+                _renderCache.Layer8SprCache[sprId] = frames;
             }
 
             if (frames == null || frames.Count == 0) return;
 
             // 取得當前帧索引
             var key = (s32Path, itemIndex);
-            if (!_layer8AnimFrame.TryGetValue(key, out int frameIdx))
+            if (!_renderCache.Layer8AnimFrame.TryGetValue(key, out int frameIdx))
             {
                 frameIdx = 0;
-                _layer8AnimFrame[key] = 0;
+                _renderCache.Layer8AnimFrame[key] = 0;
             }
 
             Image frame = frames[frameIdx % frames.Count];
@@ -8704,7 +8600,7 @@ namespace L1FlyMapViewer
             {
                 // 使用快取減少重複讀取（ConcurrentDictionary.GetOrAdd 是執行緒安全的）
                 string cacheKey = $"{tileId}_{indexId}";
-                byte[] tilData = tileDataCache.GetOrAdd(cacheKey, _ =>
+                byte[] tilData = _renderCache.TileDataCache.GetOrAdd(cacheKey, _ =>
                 {
                     string key = $"{tileId}.til";
                     byte[] data = L1PakReader.UnPack("Tile", key);
@@ -8848,7 +8744,7 @@ namespace L1FlyMapViewer
             try
             {
                 // 先從 til 檔案快取取得整個 til array
-                List<byte[]> tilArray = _tilFileCache.GetOrAdd(tileId, _ =>
+                List<byte[]> tilArray = _renderCache.TilFileCache.GetOrAdd(tileId, _ =>
                 {
                     string key = $"{tileId}.til";
                     byte[] data = L1PakReader.UnPack("Tile", key);
@@ -8862,7 +8758,7 @@ namespace L1FlyMapViewer
                     if (tileId != 0)
                     {
                         // 載入 0.til 作為預設填補
-                        tilArray = _tilFileCache.GetOrAdd(0, _ =>
+                        tilArray = _renderCache.TilFileCache.GetOrAdd(0, _ =>
                         {
                             string key = "0.til";
                             byte[] data = L1PakReader.UnPack("Tile", key);
@@ -9090,7 +8986,7 @@ namespace L1FlyMapViewer
                                 imageList.Images.Add(tile.Thumbnail);
 
                                 // 檢查是否為 R 版
-                                bool isRemaster = _tilRemasterCache.TryGetValue(tile.TileId, out bool r) && r;
+                                bool isRemaster = _renderCache.TilRemasterCache.TryGetValue(tile.TileId, out bool r) && r;
                                 string rMark = isRemaster ? "(R)" : "";
 
                                 var item = new ListViewItem
@@ -9235,7 +9131,7 @@ namespace L1FlyMapViewer
                         imageList.Images.Add(tile.Thumbnail);
 
                         // 檢查是否為 R 版
-                        bool isRemaster = _tilRemasterCache.TryGetValue(tile.TileId, out bool r) && r;
+                        bool isRemaster = _renderCache.TilRemasterCache.TryGetValue(tile.TileId, out bool r) && r;
                         string rMark = isRemaster ? "(R)" : "";
 
                         var item = new ListViewItem
@@ -9462,7 +9358,7 @@ namespace L1FlyMapViewer
             try
             {
                 // 檢查是否已有快取的版本資訊
-                bool isRemaster = _tilRemasterCache.GetOrAdd(tileId, _ =>
+                bool isRemaster = _renderCache.TilRemasterCache.GetOrAdd(tileId, _ =>
                 {
                     string key = $"{tileId}.til";
                     byte[] rawData = L1PakReader.UnPack("Tile", key);
@@ -9470,7 +9366,7 @@ namespace L1FlyMapViewer
                 });
 
                 // 使用已存在的 til 檔案快取
-                List<byte[]> tilArray = _tilFileCache.GetOrAdd(tileId, _ =>
+                List<byte[]> tilArray = _renderCache.TilFileCache.GetOrAdd(tileId, _ =>
                 {
                     string key = $"{tileId}.til";
                     byte[] data = L1PakReader.UnPack("Tile", key);
@@ -9635,7 +9531,7 @@ namespace L1FlyMapViewer
                     if (_editState.EnabledLayer8Items.Contains((s32Path, index)))
                     {
                         _editState.EnabledLayer8Items.Remove((s32Path, index));
-                        _layer8AnimFrame.Remove((s32Path, index));
+                        _renderCache.Layer8AnimFrame.Remove((s32Path, index));
 
                         if (_editState.EnabledLayer8Items.Count == 0 && _layer8AnimTimer != null)
                         {
@@ -9646,7 +9542,7 @@ namespace L1FlyMapViewer
                     else
                     {
                         _editState.EnabledLayer8Items.Add((s32Path, index));
-                        _layer8AnimFrame[(s32Path, index)] = 0;
+                        _renderCache.Layer8AnimFrame[(s32Path, index)] = 0;
 
                         if (_layer8AnimTimer != null && !_layer8AnimTimer.Enabled)
                         {
@@ -9794,19 +9690,19 @@ namespace L1FlyMapViewer
         // 在覆蓋層上繪製 Layer8 SPR 動畫帧
         private void DrawLayer8SpriteOnOverlay(Graphics g, int sprId, int x, int y, string s32Path, int itemIndex)
         {
-            if (!_layer8SprCache.TryGetValue(sprId, out var frames))
+            if (!_renderCache.Layer8SprCache.TryGetValue(sprId, out var frames))
             {
                 frames = LoadLayer8SprFrames(sprId);
-                _layer8SprCache[sprId] = frames;
+                _renderCache.Layer8SprCache[sprId] = frames;
             }
 
             if (frames == null || frames.Count == 0) return;
 
             var key = (s32Path, itemIndex);
-            if (!_layer8AnimFrame.TryGetValue(key, out int frameIdx))
+            if (!_renderCache.Layer8AnimFrame.TryGetValue(key, out int frameIdx))
             {
                 frameIdx = 0;
-                _layer8AnimFrame[key] = 0;
+                _renderCache.Layer8AnimFrame[key] = 0;
             }
 
             Image frame = frames[frameIdx % frames.Count];
@@ -9903,7 +9799,7 @@ namespace L1FlyMapViewer
         private void s32PictureBox_MouseClick(object sender, MouseEventArgs e)
         {
             var sw = Stopwatch.StartNew();
-            LogPerf($"[MOUSE-CLICK] start, button={e.Button}, isDragging={isMainMapDragging}");
+            LogPerf($"[MOUSE-CLICK] start, button={e.Button}, isDragging={_interaction.IsMainMapDragging}");
 
             // 如果正在選擇區域，不處理點擊
             if (isSelectingRegion)
@@ -9938,7 +9834,7 @@ namespace L1FlyMapViewer
                     if (_editState.EnabledLayer8Items.Contains((s32Path, index)))
                     {
                         _editState.EnabledLayer8Items.Remove((s32Path, index));
-                        _layer8AnimFrame.Remove((s32Path, index));
+                        _renderCache.Layer8AnimFrame.Remove((s32Path, index));
 
                         // 如果沒有啟用的項目，停止動畫計時器
                         if (_editState.EnabledLayer8Items.Count == 0 && _layer8AnimTimer != null)
@@ -9949,7 +9845,7 @@ namespace L1FlyMapViewer
                     else
                     {
                         _editState.EnabledLayer8Items.Add((s32Path, index));
-                        _layer8AnimFrame[(s32Path, index)] = 0;
+                        _renderCache.Layer8AnimFrame[(s32Path, index)] = 0;
 
                         // 啟動動畫計時器
                         if (_layer8AnimTimer != null && !_layer8AnimTimer.Enabled)
@@ -10638,7 +10534,7 @@ namespace L1FlyMapViewer
         private void s32PictureBox_MouseDown(object sender, MouseEventArgs e)
         {
             // 點擊主地圖時清除小地圖焦點
-            isMiniMapFocused = false;
+            _interaction.IsMiniMapFocused = false;
 
             // 清除群組高亮（點擊地圖任意位置時）
             if (_editState.GroupHighlightCells.Count > 0)
@@ -10650,10 +10546,7 @@ namespace L1FlyMapViewer
             // 中鍵拖拽移動視圖
             if (e.Button == MouseButtons.Middle)
             {
-                isMainMapDragging = true;
-                mainMapDragStartPoint = e.Location;
-                // 使用 ViewState 的捲動位置
-                mainMapDragStartScroll = new Point(_viewState.ScrollX, _viewState.ScrollY);
+                _interaction.StartMainMapDrag(e.Location, _viewState.ScrollX, _viewState.ScrollY);
                 this._mapViewerControl.Cursor = Cursors.SizeAll;
 
                 // 停止渲染計時器，避免拖曳中觸發新渲染
@@ -10694,7 +10587,7 @@ namespace L1FlyMapViewer
                     if (_editState.EnabledLayer8Items.Contains((s32Path, index)))
                     {
                         _editState.EnabledLayer8Items.Remove((s32Path, index));
-                        _layer8AnimFrame.Remove((s32Path, index));
+                        _renderCache.Layer8AnimFrame.Remove((s32Path, index));
 
                         if (_editState.EnabledLayer8Items.Count == 0 && _layer8AnimTimer != null)
                         {
@@ -10705,7 +10598,7 @@ namespace L1FlyMapViewer
                     else
                     {
                         _editState.EnabledLayer8Items.Add((s32Path, index));
-                        _layer8AnimFrame[(s32Path, index)] = 0;
+                        _renderCache.Layer8AnimFrame[(s32Path, index)] = 0;
 
                         if (_layer8AnimTimer != null && !_layer8AnimTimer.Enabled)
                         {
@@ -10727,8 +10620,8 @@ namespace L1FlyMapViewer
             if (e.Button == MouseButtons.Left && Control.ModifierKeys == Keys.None && _pendingMaterial == null)
             {
                 isSelectingRegion = true;
-                isLayer4CopyMode = true;  // 進入複製模式
-                regionStartPoint = e.Location;
+                _interaction.IsLayer4CopyMode = true;  // 進入複製模式
+                _interaction.RegionStartPoint = e.Location;
                 regionEndPoint = e.Location;
                 selectedRegion = new Rectangle();
                 this.toolStripStatusLabel1.Text = "選取區域... (放開後按 Ctrl+C 複製)";
@@ -10741,7 +10634,7 @@ namespace L1FlyMapViewer
             var totalSw = Stopwatch.StartNew();
 
             // 中鍵拖拽移動視圖
-            if (isMainMapDragging)
+            if (_interaction.IsMainMapDragging)
             {
                 // 每 50 次記錄一次，避免 log 過多
                 if (_dragMoveCount % 50 == 0)
@@ -10749,12 +10642,12 @@ namespace L1FlyMapViewer
                     LogPerf($"[DRAG-MOVE] count={_dragMoveCount}");
                 }
 
-                int deltaX = e.X - mainMapDragStartPoint.X;
-                int deltaY = e.Y - mainMapDragStartPoint.Y;
+                int deltaX = e.X - _interaction.MainMapDragStartPoint.X;
+                int deltaY = e.Y - _interaction.MainMapDragStartPoint.Y;
 
                 // 計算新的捲動位置（世界座標，需要除以縮放）
-                int newScrollX = mainMapDragStartScroll.X - (int)(deltaX / s32ZoomLevel);
-                int newScrollY = mainMapDragStartScroll.Y - (int)(deltaY / s32ZoomLevel);
+                int newScrollX = _interaction.MainMapDragStartScroll.X - (int)(deltaX / s32ZoomLevel);
+                int newScrollY = _interaction.MainMapDragStartScroll.Y - (int)(deltaY / s32ZoomLevel);
 
                 // 限制在有效範圍內（使用世界座標）
                 int maxScrollX = Math.Max(0, _viewState.MapWidth - (int)(s32MapPanel.Width / s32ZoomLevel));
@@ -10782,7 +10675,7 @@ namespace L1FlyMapViewer
 
                 // 計算起點到終點之間的格子範圍（所有模式都對齊格線）
                 var cellsSw = Stopwatch.StartNew();
-                _editState.SelectedCells = GetCellsInIsometricRange(regionStartPoint, regionEndPoint);
+                _editState.SelectedCells = GetCellsInIsometricRange(_interaction.RegionStartPoint, regionEndPoint);
                 cellsSw.Stop();
 
                 var boundsSw = Stopwatch.StartNew();
@@ -10822,7 +10715,7 @@ namespace L1FlyMapViewer
             var totalSw = Stopwatch.StartNew();
 
             // 結束中鍵拖拽
-            if (e.Button == MouseButtons.Middle && isMainMapDragging)
+            if (e.Button == MouseButtons.Middle && _interaction.IsMainMapDragging)
             {
                 var upSw = Stopwatch.StartNew();
                 _dragSessionSw.Stop();
@@ -10832,7 +10725,7 @@ namespace L1FlyMapViewer
                 // 輸出拖曳效能統計
                 LogPerf($"[DRAG-END] duration={dragMs}ms, moves={_dragMoveCount}, paints={_dragPaintCount}, FPS={fps:F1}");
 
-                isMainMapDragging = false;
+                _interaction.EndDrag();
                 this._mapViewerControl.Cursor = Cursors.Default;
 
                 // 延遲更新 MiniMap，避免阻塞拖曳結束事件
@@ -10869,7 +10762,7 @@ namespace L1FlyMapViewer
                 isSelectingRegion = false;
 
                 // Layer4 複製模式：保留選取範圍，等待 Ctrl+C 或 Ctrl+V
-                if (isLayer4CopyMode)
+                if (_interaction.IsLayer4CopyMode)
                 {
                     var boundsSw = Stopwatch.StartNew();
                     // _editState.SelectedCells 已在 MouseMove 中更新
@@ -10976,7 +10869,7 @@ namespace L1FlyMapViewer
             }
 
             // 右鍵顯示選取區域操作選單（通行編輯模式時會包含通行設定選項）
-            if (e.Button == MouseButtons.Right && isLayer4CopyMode && _editState.SelectedCells.Count > 0)
+            if (e.Button == MouseButtons.Right && _interaction.IsLayer4CopyMode && _editState.SelectedCells.Count > 0)
             {
                 ShowSelectionContextMenu(e.Location);
                 return;
@@ -11520,9 +11413,9 @@ namespace L1FlyMapViewer
                     g.Clear(Color.Transparent);
 
                     // 如果有 viewport bitmap，從中截取
-                    lock (_viewportBitmapLock)
+                    lock (_renderCache.ViewportBitmapLock)
                     {
-                        if (_viewportBitmap != null)
+                        if (_renderCache.ViewportBitmap != null)
                         {
                             // 計算源區域在 viewport bitmap 中的位置
                             int srcX = minWorldX - _viewState.RenderOriginX;
@@ -11531,7 +11424,7 @@ namespace L1FlyMapViewer
                             var srcRect = new Rectangle(srcX, srcY, width, height);
                             var destRect = new Rectangle(0, 0, thumbWidth, thumbHeight);
 
-                            g.DrawImage(_viewportBitmap, destRect, srcRect, GraphicsUnit.Pixel);
+                            g.DrawImage(_renderCache.ViewportBitmap, destRect, srcRect, GraphicsUnit.Pixel);
                         }
                     }
                 }
@@ -11612,7 +11505,7 @@ namespace L1FlyMapViewer
         // S32 PictureBox 繪製事件 - 繪製 Viewport 和選擇框或多邊形
         private void s32PictureBox_Paint(object sender, PaintEventArgs e)
         {
-            if (isMainMapDragging)
+            if (_interaction.IsMainMapDragging)
             {
                 LogPerf($"[PAINT-ENTER] dragging, moves={_dragMoveCount}");
             }
@@ -11625,7 +11518,7 @@ namespace L1FlyMapViewer
 
             // 繪製 Viewport Bitmap（加鎖保護避免多執行緒衝突）
             var lockSw = Stopwatch.StartNew();
-            lock (_viewportBitmapLock)
+            lock (_renderCache.ViewportBitmapLock)
             {
                 lockSw.Stop();
                 lockWaitMs = lockSw.ElapsedMilliseconds;
@@ -11634,10 +11527,10 @@ namespace L1FlyMapViewer
                     LogPerf($"[PAINT-LOCK] waited {lockWaitMs}ms for lock");
                 }
             
-                if (_viewportBitmap != null && _viewState.RenderWidth > 0)
+                if (_renderCache.ViewportBitmap != null && _viewState.RenderWidth > 0)
                 {
-                    bmpW = _viewportBitmap.Width;
-                    bmpH = _viewportBitmap.Height;
+                    bmpW = _renderCache.ViewportBitmap.Width;
+                    bmpH = _renderCache.ViewportBitmap.Height;
             
                     // 計算 Viewport Bitmap 在 PictureBox 上的繪製位置
                     // _viewState.RenderOriginX/Y 是已渲染區域的世界座標原點
@@ -11651,30 +11544,30 @@ namespace L1FlyMapViewer
                     drawH = (int)(_viewState.RenderHeight * s32ZoomLevel);
             
                     var drawSw = Stopwatch.StartNew();
-                    e.Graphics.DrawImage(_viewportBitmap, drawX, drawY, drawW, drawH);
+                    e.Graphics.DrawImage(_renderCache.ViewportBitmap, drawX, drawY, drawW, drawH);
                     drawSw.Stop();
                     drawImageMs = drawSw.ElapsedMilliseconds;
             
                     // 拖曳時計數 Paint 次數
-                    if (isMainMapDragging)
+                    if (_interaction.IsMainMapDragging)
                     {
                         _dragPaintCount++;
                     }
                 }
                 else
                 {
-                    LogPerf($"[PAINT] no bitmap, _viewportBitmap={(_viewportBitmap != null ? "exists" : "null")}, RenderWidth={_viewState.RenderWidth}");
+                    LogPerf($"[PAINT] no bitmap, _renderCache.ViewportBitmap={(_renderCache.ViewportBitmap != null ? "exists" : "null")}, RenderWidth={_viewState.RenderWidth}");
                 }
             }
 
             paintSw.Stop();
             // 拖曳時記錄慢的 Paint（> 30ms）或每 20 次記一次
-            if (isMainMapDragging && (paintSw.ElapsedMilliseconds > 30 || _dragPaintCount % 20 == 1))
+            if (_interaction.IsMainMapDragging && (paintSw.ElapsedMilliseconds > 30 || _dragPaintCount % 20 == 1))
             {
                 LogPerf($"[PAINT-DRAG] total={paintSw.ElapsedMilliseconds}ms, lockWait={lockWaitMs}ms, drawImage={drawImageMs}ms, bmp={bmpW}x{bmpH}, draw={drawW}x{drawH}");
             }
             // 非拖曳時只在超過 10ms 時記錄
-            else if (!isMainMapDragging && paintSw.ElapsedMilliseconds > 10)
+            else if (!_interaction.IsMainMapDragging && paintSw.ElapsedMilliseconds > 10)
             {
                 LogPerf($"[PAINT] total={paintSw.ElapsedMilliseconds}ms, lockWait={lockWaitMs}ms, drawImage={drawImageMs}ms, bmp={bmpW}x{bmpH}, draw={drawW}x{drawH}");
             }
@@ -13939,7 +13832,7 @@ namespace L1FlyMapViewer
 
             // 檢查是否有 R 版 Tile
             var distinctTileIds = tiles.Select(t => t.TileId).Distinct().ToList();
-            int remasterCount = distinctTileIds.Count(id => _tilRemasterCache.TryGetValue(id, out bool r) && r);
+            int remasterCount = distinctTileIds.Count(id => _renderCache.TilRemasterCache.TryGetValue(id, out bool r) && r);
             bool hasRemasterTiles = remasterCount > 0;
 
             // 詢問匯出選項
@@ -14348,8 +14241,8 @@ namespace L1FlyMapViewer
 
                 // 清除快取
                 cachedAggregatedTiles.Clear();
-                _tilFileCache.Clear();
-                _tilRemasterCache.Clear();
+                _renderCache.TilFileCache.Clear();
+                _renderCache.TilRemasterCache.Clear();
 
                 // 重新整理 Tile 列表（兩者並行執行）
                 UpdateGroupThumbnailsList();  // 異步，立即返回
@@ -14856,7 +14749,7 @@ namespace L1FlyMapViewer
                     if (!_editState.EnabledLayer8Items.Contains(key))
                     {
                         _editState.EnabledLayer8Items.Add(key);
-                        _layer8AnimFrame[key] = 0;
+                        _renderCache.Layer8AnimFrame[key] = 0;
                         addedCount++;
                     }
                 }
@@ -22295,7 +22188,7 @@ namespace L1FlyMapViewer
                         if (!_editState.EnabledLayer8Items.Contains(key))
                         {
                             _editState.EnabledLayer8Items.Add(key);
-                            _layer8AnimFrame[key] = 0;
+                            _renderCache.Layer8AnimFrame[key] = 0;
                             enabledCount++;
                         }
                     }
