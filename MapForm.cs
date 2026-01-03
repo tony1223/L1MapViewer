@@ -730,6 +730,12 @@ namespace L1FlyMapViewer
                 if (globalY < minGlobalY) minGlobalY = globalY;
             }
 
+            // 確保 minGlobalX 是偶數，以保持相對座標的奇偶性
+            if (minGlobalX % 2 != 0)
+            {
+                minGlobalX -= 1;
+            }
+
             int layer1Count = 0, layer3Count = 0, layer4Count = 0;
 
             // 收集每個格子的資料
@@ -18821,6 +18827,13 @@ namespace L1FlyMapViewer
                         if (worldY < minWorldY) minWorldY = worldY;
                         if (worldX > maxWorldX) maxWorldX = worldX;
                         if (worldY > maxWorldY) maxWorldY = worldY;
+                    }
+
+                    // 確保 minWorldX 是偶數，以保持相對座標的奇偶性
+                    // 這樣原本在偶數位置的物件，相對座標也會是偶數
+                    if (minWorldX % 2 != 0)
+                    {
+                        minWorldX -= 1;
                     }
 
                     // 建立 fs3p 資料 - OriginOffset 設為 0,0（RelativeX/Y 已經是相對座標）
