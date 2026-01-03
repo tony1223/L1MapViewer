@@ -36,7 +36,6 @@ namespace L1MapViewer.Controls
         // 防抖計時器
         private System.Windows.Forms.Timer _zoomDebounceTimer;
         private System.Windows.Forms.Timer _dragRenderTimer;
-        private double _pendingZoomLevel;
 
         // 地圖資料
         private MapDocument _document;
@@ -461,13 +460,19 @@ namespace L1MapViewer.Controls
         {
             if (Control.ModifierKeys == Keys.Control)
             {
-                // Ctrl + 滾輪 = 縮放
+                // Ctrl + 滾輪 = 縮放（直接設定 _viewState.ZoomLevel）
                 double delta = e.Delta > 0 ? 0.2 : -0.2;
-                _pendingZoomLevel = Math.Max(_viewState.ZoomMin,
+                double newZoom = Math.Max(_viewState.ZoomMin,
                     Math.Min(_viewState.ZoomMax, _viewState.ZoomLevel + delta));
 
-                _zoomDebounceTimer.Stop();
-                _zoomDebounceTimer.Start();
+                if (Math.Abs(newZoom - _viewState.ZoomLevel) > 0.001)
+                {
+                    var oldZoom = _viewState.ZoomLevel;
+                    _viewState.ZoomLevel = newZoom;
+                    _zoomDebounceTimer.Stop();
+                    _zoomDebounceTimer.Start();
+                    ZoomChanged?.Invoke(this, new ZoomChangedEventArgs(newZoom, oldZoom));
+                }
             }
             else if (Control.ModifierKeys == Keys.Shift)
             {
@@ -504,15 +509,8 @@ namespace L1MapViewer.Controls
         private void ZoomDebounceTimer_Tick(object sender, EventArgs e)
         {
             _zoomDebounceTimer.Stop();
-
-            var oldZoom = _viewState.ZoomLevel;
-            _viewState.ZoomLevel = _pendingZoomLevel;
-
-            if (Math.Abs(_viewState.ZoomLevel - oldZoom) > 0.001)
-            {
-                ZoomChanged?.Invoke(this, new ZoomChangedEventArgs(_viewState.ZoomLevel, oldZoom));
-                RequestRender();
-            }
+            // 縮放已在滾輪事件中立即設定，這裡只需要觸發渲染
+            RequestRender();
         }
 
         private void DragRenderTimer_Tick(object sender, EventArgs e)

@@ -76,10 +76,8 @@ namespace L1FlyMapViewer
         private const double ZOOM_STEP = 0.2;
         private Image originalMapImage;
 
-        // S32 編輯器縮放相關
-        // 注意：縮放值統一使用 _viewState.ZoomLevel，_pendingZoom 僅用於 debounce
+        // S32 編輯器縮放相關（統一使用 _viewState.ZoomLevel）
         private Image originalS32Image;
-        private double _pendingZoom = 1.0;
 
         // MiniMapControl（取代原本的 PictureBox 和渲染邏輯）
         private L1MapViewer.Controls.MiniMapControl _miniMapControl;
@@ -375,7 +373,8 @@ namespace L1FlyMapViewer
             zoomDebounceTimer.Tick += (s, e) =>
             {
                 zoomDebounceTimer.Stop();
-                ApplyS32Zoom(_pendingZoom);
+                // 縮放已在滾輪事件中立即設定，這裡只需要觸發渲染
+                CheckAndRerenderIfNeeded();
             };
             
             // 初始化拖曳渲染延遲Timer（150ms延遲）
@@ -2632,8 +2631,8 @@ namespace L1FlyMapViewer
             }
 
             // 重置 S32 編輯器縮放級別
+            LogPerf($"[ZOOM-RESET] listBox selection, old={_viewState.ZoomLevel}");
             _viewState.ZoomLevel = 1.0;
-            _pendingZoom = 1.0;
             if (originalS32Image != null)
             {
                 originalS32Image.Dispose();
@@ -2854,8 +2853,8 @@ namespace L1FlyMapViewer
             }
 
             // 重置 S32 編輯器縮放級別
+            LogPerf($"[ZOOM-RESET] comboBox selection, old={_viewState.ZoomLevel}");
             _viewState.ZoomLevel = 1.0;
-            _pendingZoom = 1.0;
             if (originalS32Image != null)
             {
                 originalS32Image.Dispose();
@@ -3117,25 +3116,28 @@ namespace L1FlyMapViewer
                     return;
                 }
 
-                double oldZoom = _pendingZoom;
+                double oldZoom = _viewState.ZoomLevel;
+                double newZoom;
                 if (e.Delta > 0)
                 {
-                    _pendingZoom = Math.Min(ZOOM_MAX, _pendingZoom + ZOOM_STEP);
+                    newZoom = Math.Min(ZOOM_MAX, oldZoom + ZOOM_STEP);
                 }
                 else
                 {
-                    _pendingZoom = Math.Max(ZOOM_MIN, _pendingZoom - ZOOM_STEP);
+                    newZoom = Math.Max(ZOOM_MIN, oldZoom - ZOOM_STEP);
                 }
 
-                LogPerf($"[MOUSE-WHEEL] zoom oldZoom={oldZoom}, newZoom={_pendingZoom}");
-
-                if (Math.Abs(oldZoom - _pendingZoom) < 0.001)
+                if (Math.Abs(oldZoom - newZoom) < 0.001)
                     return;
 
-                // 立即更新狀態欄顯示縮放級別（給用戶即時反饋）
-                this.lblS32Info.Text = $"縮放: {_pendingZoom:P0}";
+                // 立即設定縮放值
+                _viewState.ZoomLevel = newZoom;
+                LogPerf($"[ZOOM-WHEEL] {oldZoom} -> {newZoom}");
 
-                // 使用防抖計時器延遲執行實際的縮放操作
+                // 立即更新狀態欄顯示縮放級別
+                this.lblS32Info.Text = $"縮放: {newZoom:P0}";
+
+                // 使用防抖計時器延遲執行渲染
                 zoomDebounceTimer.Stop();
                 zoomDebounceTimer.Start();
 
@@ -3190,7 +3192,7 @@ namespace L1FlyMapViewer
                 }
 
                 // 更新縮放級別（統一在 _viewState 中管理）
-                _viewState.ZoomLevel = targetZoomLevel;
+                _viewState.ZoomLevel = 1.0 + targetZoomLevel;
 
                 // 注意：不要清除舊的渲染狀態，讓舊 bitmap 繼續顯示直到新的準備好
                 // NeedsRerender() 會檢測到縮放改變並觸發重新渲染
@@ -9737,11 +9739,11 @@ namespace L1FlyMapViewer
             // 中鍵拖拽移動視圖
             if (e.Button == MouseButtons.Middle)
             {
-                // 如果有待處理的縮放，立即套用（避免拖曳時縮放看起來重置）
-                if (Math.Abs(_pendingZoom - _viewState.ZoomLevel) > 0.001)
+                // 如果縮放 timer 正在運行，立即觸發渲染
+                if (zoomDebounceTimer.Enabled)
                 {
                     zoomDebounceTimer.Stop();
-                    _viewState.ZoomLevel = _pendingZoom;
+                    CheckAndRerenderIfNeeded();
                 }
 
                 _interaction.StartMainMapDrag(e.Location, _viewState.ScrollX, _viewState.ScrollY);
