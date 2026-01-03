@@ -699,9 +699,10 @@ namespace L1FlyMapViewer
             bool copyLayer3 = copySettingLayer3;
             bool copyLayer4 = copySettingLayer4;
             bool copyLayer5 = copySettingLayer5;
-            bool copyLayer6to8 = copySettingLayer6to8;
+            bool copyLayer7 = copySettingLayer7;
+            bool copyLayer8 = copySettingLayer8;
 
-            if (!copyLayer1 && !copyLayer3 && !copyLayer4 && !copyLayer5 && !copyLayer6to8)
+            if (!copyLayer1 && !copyLayer3 && !copyLayer4 && !copyLayer5 && !copyLayer7 && !copyLayer8)
             {
                 this.toolStripStatusLabel1.Text = "請點擊「複製設定...」按鈕選擇要複製的圖層";
                 return;
@@ -923,7 +924,7 @@ namespace L1FlyMapViewer
             }
 
             // Layer5-8：只複製座標落在選取格子範圍內的項目
-            if (copyLayer5 || copyLayer6to8)
+            if (copyLayer5 || copyLayer7 || copyLayer8)
             {
                 // 建立選取格子的本地座標集合（按 S32 檔案分組）
                 // Layer5 使用 Layer1 座標系 (X=0-127, Y=0-63)
@@ -980,20 +981,10 @@ namespace L1FlyMapViewer
                         }
                     }
 
-                    // Layer6 - 使用的 TilId（合併不重複的，這個是整個 S32 的）
-                    if (copyLayer6to8)
-                    {
-                        foreach (var tilId in s32Data.Layer6)
-                        {
-                            if (!_editState.Layer6Clipboard.Contains(tilId))
-                            {
-                                _editState.Layer6Clipboard.Add(tilId);
-                            }
-                        }
-                    }
+                    // Layer6 不再複製（由 Layer1/Layer2/Layer4 的 TileId 決定）
 
                     // Layer7 - 傳送點（檢查 X, Y 是否在選取範圍內）
-                    if (copyLayer6to8)
+                    if (copyLayer7)
                     {
                         foreach (var item in s32Data.Layer7)
                         {
@@ -1012,8 +1003,11 @@ namespace L1FlyMapViewer
                                 }
                             }
                         }
+                    }
 
-                        // Layer8 - 特效（檢查 X, Y 是否在選取範圍內）
+                    // Layer8 - 特效（檢查 X, Y 是否在選取範圍內）
+                    if (copyLayer8)
+                    {
                         // Layer8 的 X, Y 可能是像素座標，需要轉換為格子座標
                         foreach (var item in s32Data.Layer8)
                         {
@@ -1049,7 +1043,6 @@ namespace L1FlyMapViewer
             hasLayer4Clipboard = _editState.CellClipboard.Count > 0 ||
                                  _editState.Layer2Clipboard.Count > 0 ||
                                  _editState.Layer5Clipboard.Count > 0 ||
-                                 _editState.Layer6Clipboard.Count > 0 ||
                                  _editState.Layer7Clipboard.Count > 0 ||
                                  _editState.Layer8Clipboard.Count > 0;
 
@@ -1060,8 +1053,8 @@ namespace L1FlyMapViewer
             if (copyLayer3 && layer3Count > 0) parts.Add($"L3:{layer3Count}");
             if (copyLayer4 && layer4Count > 0) parts.Add($"L4:{layer4Count}");
             if (copyLayer5 && _editState.Layer5Clipboard.Count > 0) parts.Add($"L5:{_editState.Layer5Clipboard.Count}");
-            if (copyLayer6to8 && (_editState.Layer6Clipboard.Count > 0 || _editState.Layer7Clipboard.Count > 0 || _editState.Layer8Clipboard.Count > 0))
-                parts.Add($"L6:{_editState.Layer6Clipboard.Count} L7:{_editState.Layer7Clipboard.Count} L8:{_editState.Layer8Clipboard.Count}");
+            if (copyLayer7 && _editState.Layer7Clipboard.Count > 0) parts.Add($"L7:{_editState.Layer7Clipboard.Count}");
+            if (copyLayer8 && _editState.Layer8Clipboard.Count > 0) parts.Add($"L8:{_editState.Layer8Clipboard.Count}");
 
             string layerInfo = parts.Count > 0 ? string.Join(", ", parts) : "無資料";
             this.toolStripStatusLabel1.Text = $"已複製 {selectedCells.Count} 格 ({layerInfo}) 來源: {_document.MapId}，左鍵選取貼上位置後按 Ctrl+V";
@@ -1539,24 +1532,7 @@ namespace L1FlyMapViewer
                 }
             }
 
-            foreach (var targetS32 in affectedS32Set)
-            {
-                // Layer6 - 使用的 TilId（合併不重複的）- 根據設定
-                if (copySettingLayer6to8)
-                {
-                    int layer6Added = 0;
-                    foreach (var tilId in _editState.Layer6Clipboard)
-                    {
-                        if (!targetS32.Layer6.Contains(tilId))
-                        {
-                            targetS32.Layer6.Add(tilId);
-                            targetS32.IsModified = true;
-                            layer6Added++;
-                        }
-                    }
-                    if (layer6Added > 0) layer5to8CopiedCount++;
-                }
-            }
+            // Layer6 不再複製（由 Layer1/Layer2/Layer4 的 TileId 決定）
 
             // Layer5 - 透明圖塊（需要計算正確的目標座標）- 根據設定
             if (copySettingLayer5 && _editState.Layer5Clipboard.Count > 0)
@@ -1597,7 +1573,7 @@ namespace L1FlyMapViewer
             }
 
             // Layer7 - 傳送點（需要計算正確的目標座標）- 根據設定
-            if (copySettingLayer6to8 && _editState.Layer7Clipboard.Count > 0)
+            if (copySettingLayer7 && _editState.Layer7Clipboard.Count > 0)
             {
                 foreach (var item in _editState.Layer7Clipboard)
                 {
@@ -1637,7 +1613,7 @@ namespace L1FlyMapViewer
             }
 
             // Layer8 - 特效（需要計算正確的目標座標）- 根據設定
-            if (copySettingLayer6to8 && _editState.Layer8Clipboard.Count > 0)
+            if (copySettingLayer8 && _editState.Layer8Clipboard.Count > 0)
             {
                 foreach (var item in _editState.Layer8Clipboard)
                 {
@@ -3507,9 +3483,10 @@ namespace L1FlyMapViewer
         private bool copySettingLayer3 = true;
         private bool copySettingLayer4 = true;
         private bool copySettingLayer5 = true;
-        private bool copySettingLayer6to8 = true;
+        private bool copySettingLayer7 = true;
+        private bool copySettingLayer8 = true;
         // 向後相容屬性
-        private bool copySettingLayer5to8 => copySettingLayer5 || copySettingLayer6to8;
+        private bool copySettingLayer5to8 => copySettingLayer5 || copySettingLayer7 || copySettingLayer8;
 
         // 根據遊戲座標找到對應的 S32Data
         private S32Data GetS32DataByGameCoords(int gameX, int gameY)
@@ -5415,7 +5392,7 @@ namespace L1FlyMapViewer
         // 複製設定按鈕點擊事件
         private void btnCopySettings_Click(object sender, EventArgs e)
         {
-            using (var dialog = new CopySettingsDialog(copySettingLayer1, copySettingLayer2, copySettingLayer3, copySettingLayer4, copySettingLayer5, copySettingLayer6to8))
+            using (var dialog = new CopySettingsDialog(copySettingLayer1, copySettingLayer2, copySettingLayer3, copySettingLayer4, copySettingLayer5, copySettingLayer7, copySettingLayer8))
             {
                 if (dialog.ShowDialog(this) == DialogResult.OK)
                 {
@@ -5424,7 +5401,8 @@ namespace L1FlyMapViewer
                     copySettingLayer3 = dialog.CopyLayer3;
                     copySettingLayer4 = dialog.CopyLayer4;
                     copySettingLayer5 = dialog.CopyLayer5;
-                    copySettingLayer6to8 = dialog.CopyLayer6to8;
+                    copySettingLayer7 = dialog.CopyLayer7;
+                    copySettingLayer8 = dialog.CopyLayer8;
 
                     // 更新按鈕文字顯示目前設定
                     var layers = new List<string>();
@@ -5433,7 +5411,8 @@ namespace L1FlyMapViewer
                     if (copySettingLayer3) layers.Add("L3");
                     if (copySettingLayer4) layers.Add("L4");
                     if (copySettingLayer5) layers.Add("L5");
-                    if (copySettingLayer6to8) layers.Add("L6-8");
+                    if (copySettingLayer7) layers.Add("L7");
+                    if (copySettingLayer8) layers.Add("L8");
                     string layerInfo = layers.Count > 0 ? string.Join(",", layers) : "無";
 
                     this.toolStripStatusLabel1.Text = $"複製/刪除設定已更新: {layerInfo}";

@@ -12,7 +12,8 @@ namespace L1FlyMapViewer
         private CheckBox chkLayer3 = null!;
         private CheckBox chkLayer4 = null!;
         private CheckBox chkLayer5 = null!;
-        private CheckBox chkLayer6to8 = null!;
+        private CheckBox chkLayer7 = null!;
+        private CheckBox chkLayer8 = null!;
         private Button btnOK = null!;
         private Button btnCancel = null!;
         private Label lblDescription = null!;
@@ -22,19 +23,21 @@ namespace L1FlyMapViewer
         public bool CopyLayer3 { get; private set; }
         public bool CopyLayer4 { get; private set; }
         public bool CopyLayer5 { get; private set; }
-        public bool CopyLayer6to8 { get; private set; }
+        public bool CopyLayer7 { get; private set; }
+        public bool CopyLayer8 { get; private set; }
 
         // 保持向後相容
-        public bool CopyLayer5to8 => CopyLayer5 || CopyLayer6to8;
+        public bool CopyLayer5to8 => CopyLayer5 || CopyLayer7 || CopyLayer8;
 
-        public CopySettingsDialog(bool currentLayer1, bool currentLayer2, bool currentLayer3, bool currentLayer4, bool currentLayer5, bool currentLayer6to8)
+        public CopySettingsDialog(bool currentLayer1, bool currentLayer2, bool currentLayer3, bool currentLayer4, bool currentLayer5, bool currentLayer7, bool currentLayer8)
         {
             CopyLayer1 = currentLayer1;
             CopyLayer2 = currentLayer2;
             CopyLayer3 = currentLayer3;
             CopyLayer4 = currentLayer4;
             CopyLayer5 = currentLayer5;
-            CopyLayer6to8 = currentLayer6to8;
+            CopyLayer7 = currentLayer7;
+            CopyLayer8 = currentLayer8;
             InitializeComponent();
             UpdateLocalization();
             LocalizationManager.LanguageChanged += OnLanguageChanged;
@@ -50,14 +53,14 @@ namespace L1FlyMapViewer
 
         // 舊版建構子（向後相容）
         public CopySettingsDialog(bool currentLayer1, bool currentLayer2, bool currentLayer3, bool currentLayer4, bool currentLayer5to8)
-            : this(currentLayer1, currentLayer2, currentLayer3, currentLayer4, currentLayer5to8, currentLayer5to8)
+            : this(currentLayer1, currentLayer2, currentLayer3, currentLayer4, currentLayer5to8, currentLayer5to8, currentLayer5to8)
         {
         }
 
         private void InitializeComponent()
         {
             this.Text = "複製/刪除設定";
-            this.Size = new Size(300, 310);
+            this.Size = new Size(300, 340);
             this.FormBorderStyle = FormBorderStyle.FixedDialog;
             this.MaximizeBox = false;
             this.MinimizeBox = false;
@@ -117,20 +120,29 @@ namespace L1FlyMapViewer
                 Checked = CopyLayer5
             };
 
-            // Layer 6-8 選項
-            chkLayer6to8 = new CheckBox
+            // Layer 7 選項
+            chkLayer7 = new CheckBox
             {
-                Text = "Layer 6-8 - Til索引/傳送點/特效",
+                Text = "Layer 7 - 傳送點",
                 Location = new Point(25, 180),
                 Size = new Size(240, 24),
-                Checked = CopyLayer6to8
+                Checked = CopyLayer7
+            };
+
+            // Layer 8 選項
+            chkLayer8 = new CheckBox
+            {
+                Text = "Layer 8 - 特效",
+                Location = new Point(25, 207),
+                Size = new Size(240, 24),
+                Checked = CopyLayer8
             };
 
             // 確定按鈕
             btnOK = new Button
             {
                 Text = "確定",
-                Location = new Point(100, 225),
+                Location = new Point(100, 255),
                 Size = new Size(75, 28),
                 DialogResult = DialogResult.OK
             };
@@ -140,7 +152,7 @@ namespace L1FlyMapViewer
             btnCancel = new Button
             {
                 Text = "取消",
-                Location = new Point(190, 225),
+                Location = new Point(190, 255),
                 Size = new Size(75, 28),
                 DialogResult = DialogResult.Cancel
             };
@@ -155,7 +167,8 @@ namespace L1FlyMapViewer
                 chkLayer3,
                 chkLayer4,
                 chkLayer5,
-                chkLayer6to8,
+                chkLayer7,
+                chkLayer8,
                 btnOK,
                 btnCancel
             });
@@ -163,7 +176,7 @@ namespace L1FlyMapViewer
 
         private void BtnOK_Click(object? sender, EventArgs e)
         {
-            if (!chkLayer1.Checked && !chkLayer2.Checked && !chkLayer3.Checked && !chkLayer4.Checked && !chkLayer5.Checked && !chkLayer6to8.Checked)
+            if (!chkLayer1.Checked && !chkLayer2.Checked && !chkLayer3.Checked && !chkLayer4.Checked && !chkLayer5.Checked && !chkLayer7.Checked && !chkLayer8.Checked)
             {
                 MessageBox.Show(LocalizationManager.L("Message_SelectAtLeastOneLayer"),
                     LocalizationManager.L("Title_Info"), MessageBoxButtons.OK, MessageBoxIcon.Warning);
@@ -176,7 +189,8 @@ namespace L1FlyMapViewer
             CopyLayer3 = chkLayer3.Checked;
             CopyLayer4 = chkLayer4.Checked;
             CopyLayer5 = chkLayer5.Checked;
-            CopyLayer6to8 = chkLayer6to8.Checked;
+            CopyLayer7 = chkLayer7.Checked;
+            CopyLayer8 = chkLayer8.Checked;
         }
 
         private void UpdateLocalization()
@@ -188,7 +202,8 @@ namespace L1FlyMapViewer
             chkLayer3.Text = LocalizationManager.L("CopySettings_Layer3_Desc");
             chkLayer4.Text = LocalizationManager.L("CopySettings_Layer4_Desc");
             chkLayer5.Text = LocalizationManager.L("CopySettings_Layer5_Desc");
-            chkLayer6to8.Text = LocalizationManager.L("CopySettings_Layer6to8_Desc");
+            chkLayer7.Text = LocalizationManager.L("CopySettings_Layer7_Desc");
+            chkLayer8.Text = LocalizationManager.L("CopySettings_Layer8_Desc");
             btnOK.Text = LocalizationManager.L("Button_OK");
             btnCancel.Text = LocalizationManager.L("Button_Cancel");
         }
