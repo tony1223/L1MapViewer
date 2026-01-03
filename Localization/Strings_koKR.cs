@@ -369,6 +369,8 @@ namespace L1MapViewer.Localization
             { "CopySettings_Layer4_Desc", "레이어 4 (오브젝트)" },
             { "CopySettings_Layer5_Desc", "레이어 5 (조명)" },
             { "CopySettings_Layer6to8_Desc", "레이어 6-8 (기타)" },
+            { "CopySettings_Layer7_Desc", "레이어 7 (포탈)" },
+            { "CopySettings_Layer8_Desc", "레이어 8 (이펙트)" },
 
             // === Material Browser ===
             { "Material_Search", "소재 검색" },

@@ -369,6 +369,8 @@ namespace L1MapViewer.Localization
             { "CopySettings_Layer4_Desc", "Layer 4 (Objects)" },
             { "CopySettings_Layer5_Desc", "Layer 5 (Lighting)" },
             { "CopySettings_Layer6to8_Desc", "Layer 6-8 (Other)" },
+            { "CopySettings_Layer7_Desc", "Layer 7 (Portals)" },
+            { "CopySettings_Layer8_Desc", "Layer 8 (Effects)" },
 
             // === Material Browser ===
             { "Material_Search", "Search Material" },

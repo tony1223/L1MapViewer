@@ -321,6 +321,7 @@ namespace L1MapViewer.Models
         public string Description { get; set; } = string.Empty;
         public List<UndoObjectInfo> AddedObjects { get; set; } = new List<UndoObjectInfo>();
         public List<UndoObjectInfo> RemovedObjects { get; set; } = new List<UndoObjectInfo>();
+        public List<UndoLayer2Info> AddedLayer2Items { get; set; } = new List<UndoLayer2Info>();
         public List<UndoLayer7Info> RemovedLayer7Items { get; set; } = new List<UndoLayer7Info>();
         public List<UndoLayer1Info> ModifiedLayer1 { get; set; } = new List<UndoLayer1Info>();
         public List<UndoLayer3Info> ModifiedLayer3 { get; set; } = new List<UndoLayer3Info>();
@@ -338,6 +339,19 @@ namespace L1MapViewer.Models
         public int OldIndexId { get; set; }
         public int NewTileId { get; set; }
         public int NewIndexId { get; set; }
+    }
+
+    /// <summary>
+    /// Undo 第二層資訊（Tile索引表）
+    /// </summary>
+    public class UndoLayer2Info
+    {
+        public string S32FilePath { get; set; } = string.Empty;
+        public byte X { get; set; }
+        public byte Y { get; set; }
+        public int IndexId { get; set; }
+        public int TileId { get; set; }
+        public int UK { get; set; }
     }
 
     /// <summary>

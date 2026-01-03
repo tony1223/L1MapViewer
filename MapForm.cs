@@ -696,13 +696,14 @@ namespace L1FlyMapViewer
 
             // 檢查是否有選擇任何層
             bool copyLayer1 = copySettingLayer1;
+            bool copyLayer2 = copySettingLayer2;
             bool copyLayer3 = copySettingLayer3;
             bool copyLayer4 = copySettingLayer4;
             bool copyLayer5 = copySettingLayer5;
             bool copyLayer7 = copySettingLayer7;
             bool copyLayer8 = copySettingLayer8;
 
-            if (!copyLayer1 && !copyLayer3 && !copyLayer4 && !copyLayer5 && !copyLayer7 && !copyLayer8)
+            if (!copyLayer1 && !copyLayer2 && !copyLayer3 && !copyLayer4 && !copyLayer5 && !copyLayer7 && !copyLayer8)
             {
                 this.toolStripStatusLabel1.Text = "請點擊「複製設定...」按鈕選擇要複製的圖層";
                 return;
@@ -866,7 +867,6 @@ namespace L1FlyMapViewer
             _editState.Layer6Clipboard.Clear();
             _editState.Layer7Clipboard.Clear();
             _editState.Layer8Clipboard.Clear();
-            bool copyLayer2 = copySettingLayer2;
 
             // 建立選取格子的全域 Layer1 座標集合（用於 Layer2 跨區塊搜索）
             var selectedGlobalL1Cells = new HashSet<(int x, int y)>();
@@ -895,9 +895,8 @@ namespace L1FlyMapViewer
                         int itemGlobalX = s32StartX + item.X;
                         int itemGlobalY = s32StartY + item.Y;
 
-                        // 檢查是否落在選取範圍內
-                        if (selectedGlobalL1Cells.Contains((itemGlobalX, itemGlobalY)) ||
-                            selectedGlobalL1Cells.Contains((itemGlobalX - 1, itemGlobalY)))
+                        // 檢查是否落在選取範圍內（selectedGlobalL1Cells 已包含 X 和 X+1）
+                        if (selectedGlobalL1Cells.Contains((itemGlobalX, itemGlobalY)))
                         {
                             // 計算相對於複製原點的座標
                             int relativeX = itemGlobalX - minGlobalX;
@@ -1518,16 +1517,28 @@ namespace L1FlyMapViewer
                     // 檢查是否已存在
                     if (!l2TargetS32.Layer2.Any(l => l.X == localL1X && l.Y == localY && l.TileId == item.TileId))
                     {
-                        l2TargetS32.Layer2.Add(new Layer2Item
+                        var newLayer2Item = new Layer2Item
                         {
                             X = (byte)localL1X,
                             Y = (byte)localY,
                             IndexId = item.IndexId,
                             TileId = item.TileId,
                             UK = item.UK
-                        });
+                        };
+                        l2TargetS32.Layer2.Add(newLayer2Item);
                         layer2AddedCount++;
                         l2TargetS32.IsModified = true;
+
+                        // 記錄 Undo 資訊
+                        undoAction.AddedLayer2Items.Add(new UndoLayer2Info
+                        {
+                            S32FilePath = l2TargetS32.FilePath,
+                            X = newLayer2Item.X,
+                            Y = newLayer2Item.Y,
+                            IndexId = newLayer2Item.IndexId,
+                            TileId = newLayer2Item.TileId,
+                            UK = newLayer2Item.UK
+                        });
                     }
                 }
             }
@@ -1771,6 +1782,26 @@ namespace L1FlyMapViewer
                     {
                         targetS32.Layer4.Remove(objToRemove);
                         Layer4Index_Remove(targetS32, objToRemove);
+                        targetS32.IsModified = true;
+                    }
+                }
+            }
+
+            // 還原新增的第二層資料（刪除）
+            foreach (var layer2Info in action.AddedLayer2Items)
+            {
+                S32Data targetS32 = null;
+                if (_document.S32Files.TryGetValue(layer2Info.S32FilePath, out targetS32))
+                {
+                    var itemToRemove = targetS32.Layer2.FirstOrDefault(l =>
+                        l.X == layer2Info.X &&
+                        l.Y == layer2Info.Y &&
+                        l.TileId == layer2Info.TileId &&
+                        l.IndexId == layer2Info.IndexId);
+
+                    if (itemToRemove != null)
+                    {
+                        targetS32.Layer2.Remove(itemToRemove);
                         targetS32.IsModified = true;
                     }
                 }
@@ -11464,12 +11495,47 @@ namespace L1FlyMapViewer
                 }
             }
 
-            // Layer2 統計（整個 S32 共用的資料）
-            if (deleteLayer2)
+            // Layer2 統計（跨 S32 搜索覆蓋選取格子的 Layer2 項目）
+            Dictionary<S32Data, List<Layer2Item>> layer2ToDeleteByS32 = new Dictionary<S32Data, List<Layer2Item>>();
+            if (deleteLayer2 && cells.Count > 0)
             {
-                foreach (var s32 in affectedS32)
+                // 建立選取格子的全域 Layer1 座標集合
+                var selectedGlobalL1Cells = new HashSet<(int x, int y)>();
+                foreach (var cell in cells)
                 {
-                    layer2Count += s32.Layer2.Count;
+                    int globalX = cell.S32Data.SegInfo.nLinBeginX * 2 + cell.LocalX;
+                    int globalY = cell.S32Data.SegInfo.nLinBeginY + cell.LocalY;
+                    selectedGlobalL1Cells.Add((globalX, globalY));
+                    // Layer2 項目可能落在 X 或 X+1 的位置
+                    selectedGlobalL1Cells.Add((globalX + 1, globalY));
+                }
+
+                // 遍歷所有 S32 檔案搜索 L2 項目（跨 S32 搜索）
+                foreach (var s32Data in _document.S32Files.Values)
+                {
+                    int s32StartX = s32Data.SegInfo.nLinBeginX * 2;
+                    int s32StartY = s32Data.SegInfo.nLinBeginY;
+
+                    foreach (var item2 in s32Data.Layer2)
+                    {
+                        // 計算 L2 項目的全域 Layer1 座標
+                        int itemGlobalX = s32StartX + item2.X;
+                        int itemGlobalY = s32StartY + item2.Y;
+
+                        // 檢查是否在選取的格子內（selectedGlobalL1Cells 已包含 X 和 X+1）
+                        if (selectedGlobalL1Cells.Contains((itemGlobalX, itemGlobalY)))
+                        {
+                            if (!layer2ToDeleteByS32.ContainsKey(s32Data))
+                            {
+                                layer2ToDeleteByS32[s32Data] = new List<Layer2Item>();
+                            }
+                            if (!layer2ToDeleteByS32[s32Data].Contains(item2))
+                            {
+                                layer2ToDeleteByS32[s32Data].Add(item2);
+                                layer2Count++;
+                            }
+                        }
+                    }
                 }
             }
 
@@ -11525,7 +11591,7 @@ namespace L1FlyMapViewer
             // 組合確認訊息
             var deleteParts = new List<string>();
             if (deleteLayer1 && layer1Count > 0) deleteParts.Add($"L1:{layer1Count}");
-            if (deleteLayer2 && layer2Count > 0) deleteParts.Add($"L2:{layer2Count} (整個S32)");
+            if (deleteLayer2 && layer2Count > 0) deleteParts.Add($"L2:{layer2Count}");
             if (deleteLayer3 && layer3Count > 0) deleteParts.Add($"L3:{layer3Count}");
             if (deleteLayer4 && layer4Count > 0) deleteParts.Add($"L4:{layer4Count}");
             if (deleteLayer5to8 && layer5to8Count > 0) deleteParts.Add($"L5:{layer5to8Count}");
@@ -11626,15 +11692,19 @@ namespace L1FlyMapViewer
                     }
                 }
 
-                // 刪除 Layer2（整個 S32 的資料）
+                // 刪除 Layer2（按格子刪除）
                 int layer2Deleted = 0;
                 if (deleteLayer2)
                 {
-                    foreach (var s32 in affectedS32)
+                    foreach (var kvp in layer2ToDeleteByS32)
                     {
-                        layer2Deleted += s32.Layer2.Count;
-                        s32.Layer2.Clear();
-                        s32.IsModified = true;
+                        S32Data s32Data = kvp.Key;
+                        foreach (var item in kvp.Value)
+                        {
+                            s32Data.Layer2.Remove(item);
+                            layer2Deleted++;
+                        }
+                        s32Data.IsModified = true;
                     }
                 }
 
