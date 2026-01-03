@@ -3223,22 +3223,19 @@ namespace L1FlyMapViewer
             int currentX = _viewState.ScrollX;
             int currentY = _viewState.ScrollY;
 
-            // 計算最大捲動值（世界座標）
-            int maxScrollX = Math.Max(0, _viewState.MapWidth - (int)(s32MapPanel.Width / s32ZoomLevel));
-            int maxScrollY = Math.Max(0, _viewState.MapHeight - (int)(s32MapPanel.Height / s32ZoomLevel));
-
+            // 使用 ViewState 的捲動限制（已包含緩衝區）
             if (Control.ModifierKeys == Keys.Shift)
             {
                 // 左右捲動
                 int newX = currentX - (e.Delta > 0 ? scrollAmount : -scrollAmount);
-                newX = Math.Max(0, Math.Min(newX, maxScrollX));
+                newX = Math.Max(_viewState.MinScrollX, Math.Min(newX, _viewState.MaxScrollX));
                 _viewState.SetScrollSilent(newX, currentY);
             }
             else
             {
                 // 上下捲動
                 int newY = currentY - (e.Delta > 0 ? scrollAmount : -scrollAmount);
-                newY = Math.Max(0, Math.Min(newY, maxScrollY));
+                newY = Math.Max(_viewState.MinScrollY, Math.Min(newY, _viewState.MaxScrollY));
                 _viewState.SetScrollSilent(currentX, newY);
             }
 
@@ -6505,11 +6502,9 @@ namespace L1FlyMapViewer
             int centerX = mapWidth / 2 - viewportWidthWorld / 2;
             int centerY = mapHeight / 2 - viewportHeightWorld / 2;
 
-            // 限制在有效範圍內
-            int maxScrollX = Math.Max(0, mapWidth - viewportWidthWorld);
-            int maxScrollY = Math.Max(0, mapHeight - viewportHeightWorld);
-            centerX = Math.Max(0, Math.Min(centerX, maxScrollX));
-            centerY = Math.Max(0, Math.Min(centerY, maxScrollY));
+            // 限制在有效範圍內（使用 ViewState 的限制，含緩衝區）
+            centerX = Math.Max(_viewState.MinScrollX, Math.Min(centerX, _viewState.MaxScrollX));
+            centerY = Math.Max(_viewState.MinScrollY, Math.Min(centerY, _viewState.MaxScrollY));
 
             // 設定 ViewState 的捲動位置
             _viewState.SetScrollSilent(centerX, centerY);
@@ -9918,11 +9913,9 @@ namespace L1FlyMapViewer
                 int newScrollX = _interaction.MainMapDragStartScroll.X - (int)(deltaX / s32ZoomLevel);
                 int newScrollY = _interaction.MainMapDragStartScroll.Y - (int)(deltaY / s32ZoomLevel);
 
-                // 限制在有效範圍內（使用世界座標）
-                int maxScrollX = Math.Max(0, _viewState.MapWidth - (int)(s32MapPanel.Width / s32ZoomLevel));
-                int maxScrollY = Math.Max(0, _viewState.MapHeight - (int)(s32MapPanel.Height / s32ZoomLevel));
-                newScrollX = Math.Max(0, Math.Min(newScrollX, maxScrollX));
-                newScrollY = Math.Max(0, Math.Min(newScrollY, maxScrollY));
+                // 限制在有效範圍內（使用 ViewState 的限制，含緩衝區）
+                newScrollX = Math.Max(_viewState.MinScrollX, Math.Min(newScrollX, _viewState.MaxScrollX));
+                newScrollY = Math.Max(_viewState.MinScrollY, Math.Min(newScrollY, _viewState.MaxScrollY));
 
                 // 更新 ViewState 的捲動位置
                 _viewState.SetScrollSilent(newScrollX, newScrollY);
@@ -17684,10 +17677,9 @@ namespace L1FlyMapViewer
             int scrollX = worldX - viewportWidthWorld / 2;
             int scrollY = worldY - viewportHeightWorld / 2;
 
-            int maxScrollX = Math.Max(0, _viewState.MapWidth - viewportWidthWorld);
-            int maxScrollY = Math.Max(0, _viewState.MapHeight - viewportHeightWorld);
-            scrollX = Math.Max(0, Math.Min(scrollX, maxScrollX));
-            scrollY = Math.Max(0, Math.Min(scrollY, maxScrollY));
+            // 限制在有效範圍內（使用 ViewState 的限制，含緩衝區）
+            scrollX = Math.Max(_viewState.MinScrollX, Math.Min(scrollX, _viewState.MaxScrollX));
+            scrollY = Math.Max(_viewState.MinScrollY, Math.Min(scrollY, _viewState.MaxScrollY));
 
             _viewState.SetScrollSilent(scrollX, scrollY);
 

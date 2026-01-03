@@ -376,15 +376,22 @@ namespace L1MapViewer.Models
 
         /// <summary>
         /// 取得需要渲染的範圍（含緩衝區，世界座標）
+        /// 注意：會限制在地圖實際範圍內，緩衝區只是允許捲動超出，不會渲染地圖外的內容
         /// </summary>
         public Rectangle GetRenderWorldRect()
         {
             var viewport = GetViewportWorldRect();
+            // 計算渲染範圍，但限制在地圖實際內容範圍 [0, MapWidth/Height]
             int x = Math.Max(0, viewport.X - RenderBufferMargin);
             int y = Math.Max(0, viewport.Y - RenderBufferMargin);
             int right = Math.Min(MapWidth, viewport.Right + RenderBufferMargin);
             int bottom = Math.Min(MapHeight, viewport.Bottom + RenderBufferMargin);
-            return new Rectangle(x, y, right - x, bottom - y);
+
+            // 確保寬高不為負數
+            int width = Math.Max(0, right - x);
+            int height = Math.Max(0, bottom - y);
+
+            return new Rectangle(x, y, width, height);
         }
 
         /// <summary>

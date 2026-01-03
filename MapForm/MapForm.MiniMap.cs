@@ -65,9 +65,9 @@ namespace L1FlyMapViewer
             int newScrollX = worldPos.X - viewportWidthWorld / 2;
             int newScrollY = worldPos.Y - viewportHeightWorld / 2;
 
-            // 限制在有效範圍內
-            newScrollX = Math.Max(0, Math.Min(newScrollX, _viewState.MaxScrollX));
-            newScrollY = Math.Max(0, Math.Min(newScrollY, _viewState.MaxScrollY));
+            // 限制在有效範圍內（含緩衝區）
+            newScrollX = Math.Max(_viewState.MinScrollX, Math.Min(newScrollX, _viewState.MaxScrollX));
+            newScrollY = Math.Max(_viewState.MinScrollY, Math.Min(newScrollY, _viewState.MaxScrollY));
 
             _viewState.SetScrollSilent(newScrollX, newScrollY);
 
