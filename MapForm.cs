@@ -5869,9 +5869,11 @@ namespace L1FlyMapViewer
                 int blockWidth = 64 * 24 * 2;  // 3072
                 int blockHeight = 64 * 12 * 2; // 1536
 
-                // 地圖像素大小（與 L1MapHelper.LoadMap 相同）
-                int mapWidth = currentMap.nBlockCountX * blockWidth;
-                int mapHeight = currentMap.nBlockCountX * blockHeight / 2 + currentMap.nBlockCountY * blockHeight / 2;
+                // 地圖像素大小
+                // 注意：由於菱形地圖的特性，右邊界 = (maxBlockX + maxBlockY) * (blockWidth/2) + blockWidth
+                // 額外加一個 S32 區塊寬度，確保最右邊的內容完整顯示
+                int mapWidth = (currentMap.nBlockCountX + currentMap.nBlockCountY) * blockWidth / 2 + blockWidth;
+                int mapHeight = (currentMap.nBlockCountX + currentMap.nBlockCountY) * blockHeight / 2 + blockHeight;
 
                 // 更新 ViewState 的地圖大小
                 _viewState.MapWidth = mapWidth;
@@ -6442,10 +6444,11 @@ namespace L1FlyMapViewer
         private void SetInitialScrollToCenter(Struct.L1Map currentMap)
         {
             // 計算地圖像素大小
+            // 注意：菱形地圖的邊界取決於 (blockX + blockY)，額外加一個 S32 區塊確保完整顯示
             int blockWidth = 64 * 24 * 2;  // 3072
             int blockHeight = 64 * 12 * 2; // 1536
-            int mapWidth = currentMap.nBlockCountX * blockWidth;
-            int mapHeight = currentMap.nBlockCountX * blockHeight / 2 + currentMap.nBlockCountY * blockHeight / 2;
+            int mapWidth = (currentMap.nBlockCountX + currentMap.nBlockCountY) * blockWidth / 2 + blockWidth;
+            int mapHeight = (currentMap.nBlockCountX + currentMap.nBlockCountY) * blockHeight / 2 + blockHeight;
 
             // 更新 ViewState（RenderS32Map 會用到）
             _viewState.MapWidth = mapWidth;

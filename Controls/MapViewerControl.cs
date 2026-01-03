@@ -611,10 +611,26 @@ namespace L1MapViewer.Controls
                     int drawW = (int)(_viewState.RenderWidth * _viewState.ZoomLevel);
                     int drawH = (int)(_viewState.RenderHeight * _viewState.ZoomLevel);
 
-                    Console.WriteLine($"[MapViewerControl.Paint] bmp={_viewportBitmap.Width}x{_viewportBitmap.Height}, draw=({drawX},{drawY},{drawW},{drawH}), scroll=({_viewState.ScrollX},{_viewState.ScrollY}), zoom={_viewState.ZoomLevel}");
+                    // DEBUG: 計算 bitmap 右邊緣和 viewport 右邊緣
+                    int bitmapRightEdge = drawX + drawW;
+                    int viewportWidth = _mapPictureBox.Width;
+                    int gap = viewportWidth - bitmapRightEdge;
+
+                    Console.WriteLine($"[Paint] bmp={_viewportBitmap.Width}x{_viewportBitmap.Height}, draw=({drawX},{drawY},{drawW},{drawH}), scroll=({_viewState.ScrollX},{_viewState.ScrollY}), bmpRight={bitmapRightEdge}, vpWidth={viewportWidth}, gap={gap}");
 
                     e.Graphics.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.NearestNeighbor;
                     e.Graphics.DrawImage(_viewportBitmap, drawX, drawY, drawW, drawH);
+
+                    // DEBUG: 如果 bitmap 沒有覆蓋整個 viewport，顯示提示
+                    if (gap > 10)
+                    {
+                        using (var font = new Font("Consolas", 9))
+                        using (var brush = new SolidBrush(Color.Orange))
+                        {
+                            string info = $"Gap: {gap}px | RenderOrigin=({_viewState.RenderOriginX},{_viewState.RenderOriginY}) | Map={_viewState.MapWidth}x{_viewState.MapHeight}";
+                            e.Graphics.DrawString(info, font, brush, bitmapRightEdge + 5, 30);
+                        }
+                    }
                 }
                 else
                 {

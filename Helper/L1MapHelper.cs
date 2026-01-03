@@ -860,8 +860,9 @@ namespace L1MapViewer.Helper {
 
 
 
-                int width = (int)((pMap.nBlockCountX * blockWidth) * rate);
-                int height = (int)((pMap.nBlockCountX * blockHeight / 2 + pMap.nBlockCountY * blockHeight / 2) * rate);
+                // 菱形地圖的邊界取決於 (blockX + blockY)，額外加一個區塊確保完整顯示
+                int width = (int)(((pMap.nBlockCountX + pMap.nBlockCountY) * blockWidth / 2 + blockWidth) * rate);
+                int height = (int)(((pMap.nBlockCountX + pMap.nBlockCountY) * blockHeight / 2 + blockHeight) * rate);
 
                 Bitmap bitmap = new Bitmap(width, height, PixelFormat.Format16bppRgb555);
 

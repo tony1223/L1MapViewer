@@ -185,27 +185,38 @@ namespace L1MapViewer.Models
         /// </summary>
         public void ScrollToCenter(int worldX, int worldY)
         {
-            ScrollX = worldX - ViewportWidth / 2;
-            ScrollY = worldY - ViewportHeight / 2;
+            // ViewportWidth/Height 是螢幕像素，需轉換為世界座標
+            int halfViewportWorldW = (int)(ViewportWidth / (2 * ZoomLevel));
+            int halfViewportWorldH = (int)(ViewportHeight / (2 * ZoomLevel));
+            ScrollX = worldX - halfViewportWorldW;
+            ScrollY = worldY - halfViewportWorldH;
         }
 
         /// <summary>
         /// 更新最大捲動值（含緩衝區）
+        /// 注意：ScrollX/ScrollY 是世界座標，所有計算都在世界座標系進行
         /// </summary>
         public void UpdateScrollLimits(int mapWidth, int mapHeight)
         {
-            // 計算緩衝區大小（一個 S32 區塊，依縮放比例調整）
-            int bufferX = (int)(S32BlockWidth * ZoomLevel);
-            int bufferY = (int)(S32BlockHeight * ZoomLevel);
+            // Viewport 尺寸轉換為世界座標（受縮放影響）
+            int viewportWorldWidth = (int)(ViewportWidth / ZoomLevel);
+            int viewportWorldHeight = (int)(ViewportHeight / ZoomLevel);
 
-            int scaledWidth = (int)(mapWidth * ZoomLevel);
-            int scaledHeight = (int)(mapHeight * ZoomLevel);
+            // 緩衝區大小（世界座標，一個 S32 區塊）
+            // 但限制緩衝區最多只佔 viewport 的一半，確保地圖內容始終佔據至少一半 viewport
+            int bufferX = Math.Min(S32BlockWidth, viewportWorldWidth / 2);
+            int bufferY = Math.Min(S32BlockHeight, viewportWorldHeight / 2);
 
-            // 上下左右各留一個 S32 區塊的緩衝區
+            // 捲動限制（世界座標）
             MinScrollX = -bufferX;
             MinScrollY = -bufferY;
-            MaxScrollX = Math.Max(0, scaledWidth - ViewportWidth + bufferX);
-            MaxScrollY = Math.Max(0, scaledHeight - ViewportHeight + bufferY);
+
+            // MaxScrollX: 確保在最右側時，地圖右邊緣位於 viewport 中央左側
+            // 這樣至少有一半的 viewport 顯示地圖內容
+            int normalMaxX = Math.Max(0, mapWidth - viewportWorldWidth);
+            int normalMaxY = Math.Max(0, mapHeight - viewportWorldHeight);
+            MaxScrollX = normalMaxX + bufferX;
+            MaxScrollY = normalMaxY + bufferY;
 
             // 確保當前位置在新限制範圍內
             if (_scrollX > MaxScrollX) _scrollX = MaxScrollX;
@@ -422,11 +433,22 @@ namespace L1MapViewer.Models
             var viewport = GetViewportWorldRect();
             int safeMargin = RenderBufferMargin / 2;
 
-            // 檢查 Viewport 是否超出已渲染範圍的安全區域
-            return viewport.X < RenderOriginX + safeMargin ||
-                   viewport.Y < RenderOriginY + safeMargin ||
-                   viewport.Right > RenderOriginX + RenderWidth - safeMargin ||
-                   viewport.Bottom > RenderOriginY + RenderHeight - safeMargin;
+            // 計算 viewport 與地圖實際內容的交集
+            // 超出地圖範圍的部分是緩衝區（空白），不需要重新渲染
+            int effectiveLeft = Math.Max(0, viewport.X);
+            int effectiveTop = Math.Max(0, viewport.Y);
+            int effectiveRight = Math.Min(MapWidth, viewport.Right);
+            int effectiveBottom = Math.Min(MapHeight, viewport.Bottom);
+
+            // 如果 viewport 完全在地圖外（純緩衝區），不需要重新渲染
+            if (effectiveRight <= effectiveLeft || effectiveBottom <= effectiveTop)
+                return false;
+
+            // 檢查有效 Viewport 區域是否超出已渲染範圍的安全區域
+            return effectiveLeft < RenderOriginX + safeMargin ||
+                   effectiveTop < RenderOriginY + safeMargin ||
+                   effectiveRight > RenderOriginX + RenderWidth - safeMargin ||
+                   effectiveBottom > RenderOriginY + RenderHeight - safeMargin;
         }
 
         /// <summary>
