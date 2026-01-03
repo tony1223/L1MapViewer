@@ -40,10 +40,10 @@ namespace L1MapViewer.Helper
                 int mx = loc[0];
                 int my = loc[1];
 
-                // 使用 Layer3 格子
-                for (int y = 0; y < 64; y++)
+                // 使用 Layer3 格子（擴展到 128x128 支援邊緣延伸區域）
+                for (int y = 0; y < 128; y++)
                 {
-                    for (int x3 = 0; x3 < 64; x3++)
+                    for (int x3 = 0; x3 < 128; x3++)
                     {
                         int x = x3 * 2;  // Layer1 座標
 
@@ -155,9 +155,10 @@ namespace L1MapViewer.Helper
                 int mx = loc[0];
                 int my = loc[1];
 
-                for (int y = 0; y < 64; y++)
+                // 擴展到 128x256 支援邊緣延伸區域
+                for (int y = 0; y < 128; y++)
                 {
-                    for (int x = 0; x < 128; x++)
+                    for (int x = 0; x < 256; x++)
                     {
                         int localBaseX = 0;
                         int localBaseY = 63 * 12;
@@ -201,9 +202,10 @@ namespace L1MapViewer.Helper
                 int mx = loc[0];
                 int my = loc[1];
 
-                for (int y = 0; y < 64; y++)
+                // 擴展到 128x256 支援邊緣延伸區域
+                for (int y = 0; y < 128; y++)
                 {
-                    for (int x = 0; x < 128; x++)
+                    for (int x = 0; x < 256; x++)
                     {
                         int localBaseX = 0;
                         int localBaseY = 63 * 12;
@@ -233,19 +235,17 @@ namespace L1MapViewer.Helper
         }
 
         /// <summary>
-        /// 從螢幕起點到終點，計算等距投影矩形範圍內的所有格子
+        /// 從螢幕起點到終點，計算等距投影矩形範圍內的所有格子（簡化版）
         /// </summary>
         public static List<SelectedCell> GetCellsInIsometricRange(
             Point startPoint, Point endPoint,
             Dictionary<string, S32Data> allS32DataDict)
         {
-            List<SelectedCell> result = new List<SelectedCell>();
-
             var startCoords = ScreenToGameCoords(startPoint.X, startPoint.Y, allS32DataDict);
             var endCoords = ScreenToGameCoords(endPoint.X, endPoint.Y, allS32DataDict);
 
             if (startCoords.gameX < 0)
-                return result;
+                return new List<SelectedCell>();
 
             if (endCoords.gameX < 0)
             {
@@ -257,30 +257,97 @@ namespace L1MapViewer.Helper
             int minGameY = Math.Min(startCoords.gameY, endCoords.gameY);
             int maxGameY = Math.Max(startCoords.gameY, endCoords.gameY);
 
-            foreach (var s32Data in allS32DataDict.Values)
-            {
-                for (int y = 0; y < 64; y++)
-                {
-                    for (int x3 = 0; x3 < 64; x3++)
-                    {
-                        int gameX = s32Data.SegInfo.nLinBeginX + x3;
-                        int gameY = s32Data.SegInfo.nLinBeginY + y;
+            return GetCellsInGameCoordRange(minGameX, maxGameX, minGameY, maxGameY,
+                                            allS32DataDict.Values, null);
+        }
 
-                        if (gameX >= minGameX && gameX <= maxGameX &&
-                            gameY >= minGameY && gameY <= maxGameY)
+        /// <summary>
+        /// 根據遊戲座標範圍收集格子（優化版，支援擴展區域）
+        /// </summary>
+        /// <param name="minGameX">最小遊戲座標 X</param>
+        /// <param name="maxGameX">最大遊戲座標 X</param>
+        /// <param name="minGameY">最小遊戲座標 Y</param>
+        /// <param name="maxGameY">最大遊戲座標 Y</param>
+        /// <param name="candidateS32s">候選的 S32 檔案集合</param>
+        /// <param name="priorityS32">優先處理的 S32（通常是當前選中的），可為 null</param>
+        /// <returns>選取的格子列表</returns>
+        public static List<SelectedCell> GetCellsInGameCoordRange(
+            int minGameX, int maxGameX, int minGameY, int maxGameY,
+            IEnumerable<S32Data> candidateS32s,
+            S32Data priorityS32)
+        {
+            // 使用字典來追蹤每個遊戲座標只選取一次
+            var selectedCoords = new Dictionary<(int gameX, int gameY), SelectedCell>();
+
+            // 擴展範圍常數（支援邊緣延伸區域）
+            const int ExtendedRange = 127;  // 0-127 共 128 格
+
+            // 先處理優先 S32（如果有的話）
+            if (priorityS32 != null)
+            {
+                CollectCellsFromS32(priorityS32, minGameX, maxGameX, minGameY, maxGameY,
+                                    ExtendedRange, selectedCoords);
+            }
+
+            // 再處理其他 S32 檔案
+            foreach (var s32Data in candidateS32s)
+            {
+                // 跳過已處理的優先 S32
+                if (priorityS32 != null && s32Data.FilePath == priorityS32.FilePath)
+                    continue;
+
+                CollectCellsFromS32(s32Data, minGameX, maxGameX, minGameY, maxGameY,
+                                    ExtendedRange, selectedCoords);
+            }
+
+            return new List<SelectedCell>(selectedCoords.Values);
+        }
+
+        /// <summary>
+        /// 從單一 S32 收集符合範圍的格子
+        /// </summary>
+        private static void CollectCellsFromS32(
+            S32Data s32Data,
+            int minGameX, int maxGameX, int minGameY, int maxGameY,
+            int extendedRange,
+            Dictionary<(int gameX, int gameY), SelectedCell> selectedCoords)
+        {
+            // S32 的擴展遊戲座標範圍
+            int s32MinGameX = s32Data.SegInfo.nLinBeginX;
+            int s32MaxGameX = s32Data.SegInfo.nLinBeginX + extendedRange;
+            int s32MinGameY = s32Data.SegInfo.nLinBeginY;
+            int s32MaxGameY = s32Data.SegInfo.nLinBeginY + extendedRange;
+
+            // 快速排除不相交的 S32
+            if (s32MaxGameX < minGameX || s32MinGameX > maxGameX ||
+                s32MaxGameY < minGameY || s32MinGameY > maxGameY)
+                return;
+
+            // 計算在這個 S32 內需要檢查的範圍
+            int localMinX3 = Math.Max(0, minGameX - s32Data.SegInfo.nLinBeginX);
+            int localMaxX3 = Math.Min(extendedRange, maxGameX - s32Data.SegInfo.nLinBeginX);
+            int localMinY = Math.Max(0, minGameY - s32Data.SegInfo.nLinBeginY);
+            int localMaxY = Math.Min(extendedRange, maxGameY - s32Data.SegInfo.nLinBeginY);
+
+            for (int y = localMinY; y <= localMaxY; y++)
+            {
+                for (int x3 = localMinX3; x3 <= localMaxX3; x3++)
+                {
+                    int gameX = s32Data.SegInfo.nLinBeginX + x3;
+                    int gameY = s32Data.SegInfo.nLinBeginY + y;
+
+                    // 只有當這個座標尚未被選取時才加入
+                    if (!selectedCoords.ContainsKey((gameX, gameY)))
+                    {
+                        selectedCoords[(gameX, gameY)] = new SelectedCell
                         {
-                            result.Add(new SelectedCell
-                            {
-                                S32Data = s32Data,
-                                LocalX = x3 * 2,
-                                LocalY = y
-                            });
-                        }
+                            S32Data = s32Data,
+                            LocalX = x3 * 2,  // 轉換為 Layer1 座標
+                            LocalY = y
+                        };
                     }
                 }
             }
-
-            return result;
         }
 
         /// <summary>

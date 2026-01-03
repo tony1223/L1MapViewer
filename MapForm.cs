@@ -1898,10 +1898,8 @@ namespace L1FlyMapViewer
         // 從螢幕起點到終點，計算等距投影矩形範圍內的所有格子
         private List<SelectedCell> GetCellsInIsometricRange(Point startPoint, Point endPoint)
         {
-            List<SelectedCell> result = new List<SelectedCell>();
-
             if (string.IsNullOrEmpty(_document.MapId) || !Share.MapDataList.ContainsKey(_document.MapId))
-                return result;
+                return new List<SelectedCell>();
 
             // 找出起點和終點對應的遊戲座標
             var (startGameX, startGameY, _, _, _) = ScreenToGameCoords(startPoint.X, startPoint.Y);
@@ -1909,7 +1907,7 @@ namespace L1FlyMapViewer
 
             // 如果起點找不到，返回空
             if (startGameX < 0)
-                return result;
+                return new List<SelectedCell>();
 
             // 如果終點找不到，使用起點
             if (endGameX < 0)
@@ -1935,99 +1933,26 @@ namespace L1FlyMapViewer
             int worldRight = (int)(maxScreenX / s32ZoomLevel) + _viewState.ScrollX;
             int worldBottom = (int)(maxScreenY / s32ZoomLevel) + _viewState.ScrollY;
 
-            // 擴大查詢範圍以確保不漏掉邊界的 S32
-            Rectangle queryRect = new Rectangle(worldLeft - 3072, worldTop - 1536,
-                                                 worldRight - worldLeft + 6144,
-                                                 worldBottom - worldTop + 3072);
+            // 擴大查詢範圍以確保不漏掉邊界的 S32（含擴展區域）
+            Rectangle queryRect = new Rectangle(worldLeft - 6144, worldTop - 3072,
+                                                 worldRight - worldLeft + 12288,
+                                                 worldBottom - worldTop + 6144);
             var candidateFiles = GetS32FilesInRect(queryRect);
 
-            // 使用字典來追蹤每個遊戲座標只選取一次，優先使用 currentS32Data
-            var selectedCoords = new Dictionary<(int gameX, int gameY), SelectedCell>();
-
-            // 先處理 currentS32Data（如果有的話）
-            if (currentS32Data != null)
-            {
-                int s32MinGameX = currentS32Data.SegInfo.nLinBeginX;
-                int s32MaxGameX = currentS32Data.SegInfo.nLinBeginX + 63;  // 標準 64 格範圍
-                int s32MinGameY = currentS32Data.SegInfo.nLinBeginY;
-                int s32MaxGameY = currentS32Data.SegInfo.nLinBeginY + 63;
-
-                // 檢查是否有交集
-                if (!(s32MaxGameX < minGameX || s32MinGameX > maxGameX ||
-                      s32MaxGameY < minGameY || s32MinGameY > maxGameY))
-                {
-                    int localMinX3 = Math.Max(0, minGameX - currentS32Data.SegInfo.nLinBeginX);
-                    int localMaxX3 = Math.Min(63, maxGameX - currentS32Data.SegInfo.nLinBeginX);
-                    int localMinY = Math.Max(0, minGameY - currentS32Data.SegInfo.nLinBeginY);
-                    int localMaxY = Math.Min(63, maxGameY - currentS32Data.SegInfo.nLinBeginY);
-
-                    for (int y = localMinY; y <= localMaxY; y++)
-                    {
-                        for (int x3 = localMinX3; x3 <= localMaxX3; x3++)
-                        {
-                            int gameX = currentS32Data.SegInfo.nLinBeginX + x3;
-                            int gameY = currentS32Data.SegInfo.nLinBeginY + y;
-                            selectedCoords[(gameX, gameY)] = new SelectedCell
-                            {
-                                S32Data = currentS32Data,
-                                LocalX = x3 * 2,  // 轉換為 Layer1 座標
-                                LocalY = y
-                            };
-                        }
-                    }
-                }
-            }
-
-            // 再處理其他 S32 檔案，只填補尚未選取的座標
+            // 收集候選 S32 資料
+            var candidateS32s = new List<S32Data>();
             foreach (var filePath in candidateFiles)
             {
-                if (!_document.S32Files.TryGetValue(filePath, out var s32Data))
-                    continue;
-
-                // 跳過 currentS32Data（已處理）
-                if (currentS32Data != null && s32Data.FilePath == currentS32Data.FilePath)
-                    continue;
-
-                // 先檢查這個 S32 的遊戲座標範圍是否與選取範圍有交集
-                int s32MinGameX = s32Data.SegInfo.nLinBeginX;
-                int s32MaxGameX = s32Data.SegInfo.nLinBeginX + 63;  // 標準 64 格範圍
-                int s32MinGameY = s32Data.SegInfo.nLinBeginY;
-                int s32MaxGameY = s32Data.SegInfo.nLinBeginY + 63;
-
-                // 快速排除不相交的 S32
-                if (s32MaxGameX < minGameX || s32MinGameX > maxGameX ||
-                    s32MaxGameY < minGameY || s32MinGameY > maxGameY)
-                    continue;
-
-                // 計算在這個 S32 內需要檢查的範圍
-                int localMinX3 = Math.Max(0, minGameX - s32Data.SegInfo.nLinBeginX);
-                int localMaxX3 = Math.Min(63, maxGameX - s32Data.SegInfo.nLinBeginX);
-                int localMinY = Math.Max(0, minGameY - s32Data.SegInfo.nLinBeginY);
-                int localMaxY = Math.Min(63, maxGameY - s32Data.SegInfo.nLinBeginY);
-
-                for (int y = localMinY; y <= localMaxY; y++)
+                if (_document.S32Files.TryGetValue(filePath, out var s32Data))
                 {
-                    for (int x3 = localMinX3; x3 <= localMaxX3; x3++)
-                    {
-                        int gameX = s32Data.SegInfo.nLinBeginX + x3;
-                        int gameY = s32Data.SegInfo.nLinBeginY + y;
-
-                        // 只有當這個座標尚未被選取時才加入
-                        if (!selectedCoords.ContainsKey((gameX, gameY)))
-                        {
-                            selectedCoords[(gameX, gameY)] = new SelectedCell
-                            {
-                                S32Data = s32Data,
-                                LocalX = x3 * 2,  // 轉換為 Layer1 座標
-                                LocalY = y
-                            };
-                        }
-                    }
+                    candidateS32s.Add(s32Data);
                 }
             }
 
-            result.AddRange(selectedCoords.Values);
-            return result;
+            // 使用 CoordinateHelper 的優化版本收集格子（支援擴展區域）
+            return CoordinateHelper.GetCellsInGameCoordRange(
+                minGameX, maxGameX, minGameY, maxGameY,
+                candidateS32s, currentS32Data);
         }
 
         // 重新載入當前地圖
