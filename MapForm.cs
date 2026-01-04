@@ -1011,26 +1011,24 @@ namespace L1FlyMapViewer
                     }
 
                     // Layer8 - 特效（檢查 X, Y 是否在選取範圍內）
+                    // 注意：Layer8 的 X, Y 是全域遊戲座標（絕對座標），不是本地座標
                     if (copyLayer8)
                     {
-                        // Layer8 的 X, Y 可能是像素座標，需要轉換為格子座標
                         foreach (var item in s32Data.Layer8)
                         {
-                            // 假設 Layer8 的 X, Y 也是 64x64 座標系（如果是像素座標則需要除以 tile 大小）
-                            // 根據實際檔案格式，Layer8 座標可能需要調整
-                            int cellX = item.X;
-                            int cellY = item.Y;
-                            // 如果座標超過 64，可能是像素座標，需要除以某個係數（假設是 24）
-                            if (cellX >= 64 || cellY >= 64)
+                            // Layer8 X,Y 是全域遊戲座標，先轉為本地座標來判斷是否在選取範圍內
+                            int localL3X = item.X - segStartX;
+                            int localL3Y = item.Y - segStartY;
+
+                            // 檢查是否在有效範圍內
+                            if (localL3X < 0 || localL3X >= 64 || localL3Y < 0 || localL3Y >= 64)
+                                continue;
+
+                            if (l3Cells.Contains((localL3X, localL3Y)))
                             {
-                                cellX = item.X / 24;  // 假設 tile 寬度
-                                cellY = item.Y / 24;  // 假設 tile 高度
-                            }
-                            if (l3Cells.Contains((cellX, cellY)))
-                            {
-                                // 計算相對於複製原點的座標
-                                int globalL3X = segStartX + cellX;
-                                int globalY = segStartY + cellY;
+                                // 計算相對於複製原點的座標（使用全域座標）
+                                int globalL3X = item.X;  // 已經是全域座標
+                                int globalY = item.Y;
                                 int relL3X = globalL3X - (minGlobalX / 2);
                                 int relY = globalY - minGlobalY;
 
@@ -1630,21 +1628,25 @@ namespace L1FlyMapViewer
             }
 
             // Layer8 - 特效（需要計算正確的目標座標）- 根據設定
+            // 注意：Layer8 的 X, Y 是全域遊戲座標（絕對座標），不是本地座標
             if (copySettingLayer8 && _editState.Layer8Clipboard.Count > 0)
             {
                 foreach (var item in _editState.Layer8Clipboard)
                 {
-                    // item.X, item.Y 可能是像素座標或格子座標，這裡假設是格子座標
+                    // item.X, item.Y 是相對座標（相對於複製原點的 Layer3 座標）
+                    // 先轉為 Layer1 座標系，再計算目標全域遊戲座標
                     int targetGlobalL1X = pasteOriginX + item.X * 2;
                     int targetGlobalY = pasteOriginY + item.Y;
 
-                    // 找到目標 S32
+                    // 計算目標全域遊戲座標
                     int targetGameX = targetGlobalL1X / 2;
                     int targetGameY = targetGlobalY;
+
+                    // 找到目標 S32
                     S32Data l8TargetS32 = GetS32DataByGameCoords(targetGameX, targetGameY);
                     if (l8TargetS32 == null) continue;
 
-                    // 計算目標 S32 內的局部座標
+                    // 計算本地座標用於驗證範圍
                     int localL3X = targetGameX - l8TargetS32.SegInfo.nLinBeginX;
                     int localY = targetGlobalY - l8TargetS32.SegInfo.nLinBeginY;
 
@@ -1652,14 +1654,15 @@ namespace L1FlyMapViewer
                     if (localL3X < 0 || localL3X >= 64 || localY < 0 || localY >= 64)
                         continue;
 
-                    // 檢查是否已存在
-                    if (!l8TargetS32.Layer8.Any(l => l.SprId == item.SprId && l.X == localL3X && l.Y == localY))
+                    // 檢查是否已存在（使用全域座標比較）
+                    if (!l8TargetS32.Layer8.Any(l => l.SprId == item.SprId && l.X == targetGameX && l.Y == targetGameY))
                     {
+                        // Layer8 存儲全域遊戲座標
                         l8TargetS32.Layer8.Add(new Layer8Item
                         {
                             SprId = item.SprId,
-                            X = (ushort)localL3X,
-                            Y = (ushort)localY,
+                            X = (ushort)targetGameX,
+                            Y = (ushort)targetGameY,
                             ExtendedData = item.ExtendedData
                         });
                         l8TargetS32.IsModified = true;
@@ -2250,8 +2253,21 @@ namespace L1FlyMapViewer
                 return;
             }
 
-            // 清除快取
+            // 記住當前滾動位置
+            int scrollX = _viewState.ScrollX;
+            int scrollY = _viewState.ScrollY;
+
+            // 重新整理 Share.MapDataList 中的地圖資料（更新檔案清單）
+            L1MapHelper.RefreshMap(_document.MapId);
+
+            // 清除 Tile 相關快取
+            TileHashManager.ClearCache();
+            _renderCache.TilFileCache.Clear();
+            _renderCache.TilRemasterCache.Clear();
             _renderCache.TileDataCache.Clear();
+            cachedAggregatedTiles.Clear();
+
+            // 清除編輯狀態
             _editState.HighlightedS32Data = null;
             _editState.HighlightedCellX = -1;
             _editState.HighlightedCellY = -1;
@@ -2259,6 +2275,14 @@ namespace L1FlyMapViewer
             // 重新載入 S32 檔案
             this.toolStripStatusLabel1.Text = "正在重新載入...";
             LoadS32FileList(_document.MapId);
+
+            // 恢復滾動位置
+            _viewState.SetScrollSilent(scrollX, scrollY);
+            if (scrollX <= hScrollBar1.Maximum) hScrollBar1.Value = scrollX;
+            if (scrollY <= vScrollBar1.Maximum) vScrollBar1.Value = scrollY;
+
+            CheckAndRerenderIfNeeded();
+            UpdateMiniMap();
         }
 
         private void MapForm_Load(object sender, EventArgs e)
@@ -4675,38 +4699,8 @@ namespace L1FlyMapViewer
 
                     MessageBox.Show(resultMessage, "匯入完成", MessageBoxButtons.OK, MessageBoxIcon.Information);
 
-                    // 7. 重新載入 S32 檔案清單
-                    toolStripStatusLabel1.Text = "正在重新載入地圖...";
-                    Application.DoEvents();
-
-                    // 記住當前滾動位置
-                    int scrollX = _viewState.ScrollX;
-                    int scrollY = _viewState.ScrollY;
-
-                    // 先重新整理 Share.MapDataList 中的地圖資料（更新檔案清單）
-                    Console.WriteLine($"[ImportFs32] Refreshing map data for: {_document.MapId}");
-                    L1MapHelper.RefreshMap(_document.MapId);
-
-                    // 清除 Tile 相關快取（匯入新 Tile 後需要重新讀取）
-                    Console.WriteLine($"[ImportFs32] Clearing tile caches");
-                    TileHashManager.ClearCache();
-                    _renderCache.TilFileCache.Clear();
-                    _renderCache.TilRemasterCache.Clear();
-                    _renderCache.TileDataCache.Clear();
-                    cachedAggregatedTiles.Clear();
-
-                    // 重新載入 S32 檔案清單
-                    Console.WriteLine($"[ImportFs32] Reloading S32 file list for map: {_document.MapId}");
-                    LoadS32FileList(_document.MapId);
-
-                    // 恢復滾動位置
-                    _viewState.SetScrollSilent(scrollX, scrollY);
-                    if (scrollX <= hScrollBar1.Maximum) hScrollBar1.Value = scrollX;
-                    if (scrollY <= vScrollBar1.Maximum) vScrollBar1.Value = scrollY;
-
-                    CheckAndRerenderIfNeeded();
-                    UpdateMiniMap();
-
+                    // 7. 重新載入地圖
+                    ReloadCurrentMap();
                     toolStripStatusLabel1.Text = $"已匯入 {importedCount} 個區塊";
                 }
                 catch (Exception ex)
@@ -20578,9 +20572,12 @@ namespace L1FlyMapViewer
                     }
 
                     // 清除第8層 - 只在偶數 X 時處理
+                    // 注意：Layer8 的 X, Y 是全域遊戲座標
                     if (chkL8.Checked && layer1X % 2 == 0)
                     {
-                        totalL8 += s32Data.Layer8.RemoveAll(item => item.X == layer3X && item.Y == localY);
+                        int globalL3X = s32Data.SegInfo.nLinBeginX + layer3X;
+                        int globalY = s32Data.SegInfo.nLinBeginY + localY;
+                        totalL8 += s32Data.Layer8.RemoveAll(item => item.X == globalL3X && item.Y == globalY);
                         modifiedS32s.Add(s32Data);
                     }
                 }
@@ -20836,10 +20833,11 @@ namespace L1FlyMapViewer
                 }
 
                 // 清除第8層
+                // 注意：Layer8 的 X, Y 是全域遊戲座標
                 if (chkL8.Checked)
                 {
                     int removedCount = targetS32.Layer8.RemoveAll(item =>
-                        item.X == layer3X && item.Y == localY);
+                        item.X == gameX && item.Y == gameY);
                     if (removedCount > 0) clearedLayers.Add($"L8({removedCount})");
                 }
 
