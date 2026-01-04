@@ -18,6 +18,7 @@ using L1MapViewer.Models;
 using L1MapViewer.Other;
 using L1MapViewer.Reader;
 using Lin.Helper.Core.Sprite;
+using Lin.Helper.Core.Pak;
 
 namespace L1FlyMapViewer
 {
@@ -3082,6 +3083,9 @@ namespace L1FlyMapViewer
                     if (!CheckLayer5IssuesAndConfirm(tempDocument.S32Files, "匯出", checkTileLimit: false, checkLayer8Extended: !dialog.StripLayer8Ext))
                         return;
 
+                    // 預先準備 Layer8 SPR 打包（在 SaveFileDialog 之前）
+                    var (sprListPath, sprIds) = PrepareLayer8SprPackaging(tempDocument.S32Files.Values, dialog.LayerFlags);
+
                     // 選擇儲存位置
                     using (var saveDialog = new SaveFileDialog())
                     {
@@ -3097,40 +3101,12 @@ namespace L1FlyMapViewer
                         // 建立 fs32
                         var fs32 = Fs32Writer.CreateFromMap(tempDocument, dialog.LayerFlags, dialog.IncludeTiles, dialog.StripLayer8Ext);
 
-                        // 檢查並處理 R版 tiles
-                        if (dialog.IncludeTiles && fs32.Tiles.Count > 0)
-                        {
-                            int remasterCount = fs32.Tiles.Values.Count(t => L1MapViewer.Converter.L1Til.IsRemaster(t.TilData));
-                            if (remasterCount > 0)
-                            {
-                                var result = MessageBox.Show(
-                                    $"地圖包中有 {remasterCount} 個 R版 (48x48) 圖塊。\n\n" +
-                                    "是否要轉換為天1格式 (24x24)？\n\n" +
-                                    "• 是 - 轉換為天1格式 (檔案較小，相容舊版)\n" +
-                                    "• 否 - 保留 R版格式",
-                                    "R版圖塊偵測",
-                                    MessageBoxButtons.YesNo,
-                                    MessageBoxIcon.Question,
-                                    MessageBoxDefaultButton.Button1);
-
-                                if (result == DialogResult.Yes)
-                                {
-                                    foreach (var tileId in fs32.Tiles.Keys.ToList())
-                                    {
-                                        var tile = fs32.Tiles[tileId];
-                                        if (L1MapViewer.Converter.L1Til.IsRemaster(tile.TilData))
-                                        {
-                                            tile.TilData = L1MapViewer.Converter.L1Til.DownscaleTil(tile.TilData);
-                                            tile.Md5Hash = TileHashManager.CalculateMd5(tile.TilData);
-                                        }
-                                    }
-                                }
-                            }
-                        }
+                        // 共用處理（R版 tile 轉換 + Layer8 SPR 打包）
+                        ProcessFs32BeforeSave(fs32, dialog.IncludeTiles, sprListPath, sprIds);
 
                         Fs32Writer.Write(fs32, saveDialog.FileName);
 
-                        string resultMsg = $"已匯出至 {saveDialog.FileName}\n({fs32.Blocks.Count} 區塊, {fs32.Tiles.Count} 圖塊)";
+                        string resultMsg = $"已匯出至 {saveDialog.FileName}\n({fs32.Blocks.Count} 區塊, {fs32.Tiles.Count} 圖塊, {fs32.Sprs.Count} SPR)";
                         toolStripStatusLabel1.Text = resultMsg.Replace("\n", " ");
                         ShowAutoCloseMessage(resultMsg, "匯出完成");
                     }
@@ -4254,6 +4230,9 @@ namespace L1FlyMapViewer
                 if (!CheckLayer5IssuesAndConfirm(_document.S32Files, "匯出", checkTileLimit: false, checkLayer8Extended: !dialog.StripLayer8Ext))
                     return;
 
+                // 預先準備 Layer8 SPR 打包（在 SaveFileDialog 之前）
+                var (sprListPath, sprIds) = PrepareLayer8SprPackaging(_document.S32Files.Values, dialog.LayerFlags);
+
                 using (var saveDialog = new SaveFileDialog())
                 {
                     saveDialog.Filter = "FS32 地圖包|*.fs32";
@@ -4269,40 +4248,12 @@ namespace L1FlyMapViewer
 
                         var fs32 = Fs32Writer.CreateFromMap(_document, dialog.LayerFlags, dialog.IncludeTiles, dialog.StripLayer8Ext);
 
-                        // 檢查並處理 R版 tiles
-                        if (dialog.IncludeTiles && fs32.Tiles.Count > 0)
-                        {
-                            int remasterCount = fs32.Tiles.Values.Count(t => L1MapViewer.Converter.L1Til.IsRemaster(t.TilData));
-                            if (remasterCount > 0)
-                            {
-                                var result = MessageBox.Show(
-                                    $"地圖包中有 {remasterCount} 個 R版 (48x48) 圖塊。\n\n" +
-                                    "是否要轉換為天1格式 (24x24)？\n\n" +
-                                    "• 是 - 轉換為天1格式 (檔案較小，相容舊版)\n" +
-                                    "• 否 - 保留 R版格式",
-                                    "R版圖塊偵測",
-                                    MessageBoxButtons.YesNo,
-                                    MessageBoxIcon.Question,
-                                    MessageBoxDefaultButton.Button1);
-
-                                if (result == DialogResult.Yes)
-                                {
-                                    foreach (var tileId in fs32.Tiles.Keys.ToList())
-                                    {
-                                        var tile = fs32.Tiles[tileId];
-                                        if (L1MapViewer.Converter.L1Til.IsRemaster(tile.TilData))
-                                        {
-                                            tile.TilData = L1MapViewer.Converter.L1Til.DownscaleTil(tile.TilData);
-                                            tile.Md5Hash = TileHashManager.CalculateMd5(tile.TilData);
-                                        }
-                                    }
-                                }
-                            }
-                        }
+                        // 共用處理（R版 tile 轉換 + Layer8 SPR 打包）
+                        ProcessFs32BeforeSave(fs32, dialog.IncludeTiles, sprListPath, sprIds);
 
                         Fs32Writer.Write(fs32, saveDialog.FileName);
 
-                        string resultMsg = $"已匯出至 {saveDialog.FileName}\n({fs32.Blocks.Count} 區塊, {fs32.Tiles.Count} 圖塊)";
+                        string resultMsg = $"已匯出至 {saveDialog.FileName}\n({fs32.Blocks.Count} 區塊, {fs32.Tiles.Count} 圖塊, {fs32.Sprs.Count} SPR)";
                         toolStripStatusLabel1.Text = resultMsg.Replace("\n", " ");
                         ShowAutoCloseMessage(resultMsg, "匯出完成");
                     }
@@ -4345,6 +4296,9 @@ namespace L1FlyMapViewer
                 if (!CheckLayer5IssuesAndConfirm(checkedS32s, "匯出", checkTileLimit: false, checkLayer8Extended: !dialog.StripLayer8Ext))
                     return;
 
+                // 預先準備 Layer8 SPR 打包（在 SaveFileDialog 之前）
+                var (sprListPath, sprIds) = PrepareLayer8SprPackaging(checkedS32s.Values, dialog.LayerFlags);
+
                 using (var saveDialog = new SaveFileDialog())
                 {
                     saveDialog.Filter = "FS32 地圖包|*.fs32";
@@ -4360,40 +4314,12 @@ namespace L1FlyMapViewer
 
                         var fs32 = Fs32Writer.CreateFromS32List(checkedS32s.Values.ToList(), _document.MapId, dialog.LayerFlags, dialog.IncludeTiles, dialog.StripLayer8Ext);
 
-                        // 檢查並處理 R版 tiles
-                        if (dialog.IncludeTiles && fs32.Tiles.Count > 0)
-                        {
-                            int remasterCount = fs32.Tiles.Values.Count(t => L1MapViewer.Converter.L1Til.IsRemaster(t.TilData));
-                            if (remasterCount > 0)
-                            {
-                                var result = MessageBox.Show(
-                                    $"地圖包中有 {remasterCount} 個 R版 (48x48) 圖塊。\n\n" +
-                                    "是否要轉換為天1格式 (24x24)？\n\n" +
-                                    "• 是 - 轉換為天1格式 (檔案較小，相容舊版)\n" +
-                                    "• 否 - 保留 R版格式",
-                                    "R版圖塊偵測",
-                                    MessageBoxButtons.YesNo,
-                                    MessageBoxIcon.Question,
-                                    MessageBoxDefaultButton.Button1);
-
-                                if (result == DialogResult.Yes)
-                                {
-                                    foreach (var tileId in fs32.Tiles.Keys.ToList())
-                                    {
-                                        var tile = fs32.Tiles[tileId];
-                                        if (L1MapViewer.Converter.L1Til.IsRemaster(tile.TilData))
-                                        {
-                                            tile.TilData = L1MapViewer.Converter.L1Til.DownscaleTil(tile.TilData);
-                                            tile.Md5Hash = TileHashManager.CalculateMd5(tile.TilData);
-                                        }
-                                    }
-                                }
-                            }
-                        }
+                        // 共用處理（R版 tile 轉換 + Layer8 SPR 打包）
+                        ProcessFs32BeforeSave(fs32, dialog.IncludeTiles, sprListPath, sprIds);
 
                         Fs32Writer.Write(fs32, saveDialog.FileName);
 
-                        string resultMsg = $"已匯出至 {saveDialog.FileName}\n({fs32.Blocks.Count} 區塊, {fs32.Tiles.Count} 圖塊)";
+                        string resultMsg = $"已匯出至 {saveDialog.FileName}\n({fs32.Blocks.Count} 區塊, {fs32.Tiles.Count} 圖塊, {fs32.Sprs.Count} SPR)";
                         toolStripStatusLabel1.Text = resultMsg.Replace("\n", " ");
                         ShowAutoCloseMessage(resultMsg, "匯出完成");
                     }
@@ -4421,6 +4347,9 @@ namespace L1FlyMapViewer
                 if (!CheckLayer5IssuesAndConfirm(singleDict, "匯出", checkTileLimit: false, checkLayer8Extended: !dialog.StripLayer8Ext))
                     return;
 
+                // 預先準備 Layer8 SPR 打包（在 SaveFileDialog 之前）
+                var (sprListPath, sprIds) = PrepareLayer8SprPackaging(new[] { s32Data }, dialog.LayerFlags);
+
                 using (var saveDialog = new SaveFileDialog())
                 {
                     saveDialog.Filter = "FS32 地圖包|*.fs32";
@@ -4437,40 +4366,12 @@ namespace L1FlyMapViewer
 
                         var fs32 = Fs32Writer.CreateFromS32(s32Data, _document.MapId, dialog.LayerFlags, dialog.IncludeTiles, dialog.StripLayer8Ext);
 
-                        // 檢查並處理 R版 tiles
-                        if (dialog.IncludeTiles && fs32.Tiles.Count > 0)
-                        {
-                            int remasterCount = fs32.Tiles.Values.Count(t => L1MapViewer.Converter.L1Til.IsRemaster(t.TilData));
-                            if (remasterCount > 0)
-                            {
-                                var result = MessageBox.Show(
-                                    $"地圖包中有 {remasterCount} 個 R版 (48x48) 圖塊。\n\n" +
-                                    "是否要轉換為天1格式 (24x24)？\n\n" +
-                                    "• 是 - 轉換為天1格式 (檔案較小，相容舊版)\n" +
-                                    "• 否 - 保留 R版格式",
-                                    "R版圖塊偵測",
-                                    MessageBoxButtons.YesNo,
-                                    MessageBoxIcon.Question,
-                                    MessageBoxDefaultButton.Button1);
-
-                                if (result == DialogResult.Yes)
-                                {
-                                    foreach (var tileId in fs32.Tiles.Keys.ToList())
-                                    {
-                                        var tile = fs32.Tiles[tileId];
-                                        if (L1MapViewer.Converter.L1Til.IsRemaster(tile.TilData))
-                                        {
-                                            tile.TilData = L1MapViewer.Converter.L1Til.DownscaleTil(tile.TilData);
-                                            tile.Md5Hash = TileHashManager.CalculateMd5(tile.TilData);
-                                        }
-                                    }
-                                }
-                            }
-                        }
+                        // 使用共用方法處理 R版 tiles 和 Layer8 SPR
+                        ProcessFs32BeforeSave(fs32, dialog.IncludeTiles, sprListPath, sprIds);
 
                         Fs32Writer.Write(fs32, saveDialog.FileName);
 
-                        string resultMsg = $"已匯出至 {saveDialog.FileName}\n({fs32.Blocks.Count} 區塊, {fs32.Tiles.Count} 圖塊)";
+                        string resultMsg = $"已匯出至 {saveDialog.FileName}\n({fs32.Blocks.Count} 區塊, {fs32.Tiles.Count} 圖塊, {fs32.Sprs.Count} SPR)";
                         toolStripStatusLabel1.Text = resultMsg.Replace("\n", " ");
                         ShowAutoCloseMessage(resultMsg, "匯出完成");
                     }
@@ -10796,6 +10697,14 @@ namespace L1FlyMapViewer
                 if (!CheckLayer5IssuesAndConfirm(involvedS32s, "匯出", checkTileLimit: false, checkLayer8Extended: !dialog.StripLayer8Ext))
                     return;
 
+                // 根據模式決定要使用的 S32 清單
+                IEnumerable<S32Data> s32ListForSpr = dialog.SelectedMode == L1MapViewer.Forms.ExportOptionsDialog.ExportMode.WholeMap
+                    ? _document.S32Files.Values
+                    : involvedS32s.Values;
+
+                // 預先準備 Layer8 SPR 打包（在 SaveFileDialog 之前）
+                var (sprListPath, sprIds) = PrepareLayer8SprPackaging(s32ListForSpr, dialog.LayerFlags);
+
                 using (var saveDialog = new SaveFileDialog())
                 {
                     saveDialog.Filter = "FS32 地圖包|*.fs32";
@@ -10816,40 +10725,12 @@ namespace L1FlyMapViewer
                             fs32 = Fs32Writer.CreateFromS32List(involvedS32s.Values.ToList(), _document.MapId, dialog.LayerFlags, dialog.IncludeTiles, dialog.StripLayer8Ext);
                         }
 
-                        // 檢查並處理 R版 tiles
-                        if (dialog.IncludeTiles && fs32.Tiles.Count > 0)
-                        {
-                            int remasterCount = fs32.Tiles.Values.Count(t => L1MapViewer.Converter.L1Til.IsRemaster(t.TilData));
-                            if (remasterCount > 0)
-                            {
-                                var result = MessageBox.Show(
-                                    $"地圖包中有 {remasterCount} 個 R版 (48x48) 圖塊。\n\n" +
-                                    "是否要轉換為天1格式 (24x24)？\n\n" +
-                                    "• 是 - 轉換為天1格式 (檔案較小，相容舊版)\n" +
-                                    "• 否 - 保留 R版格式",
-                                    "R版圖塊偵測",
-                                    MessageBoxButtons.YesNo,
-                                    MessageBoxIcon.Question,
-                                    MessageBoxDefaultButton.Button1);
-
-                                if (result == DialogResult.Yes)
-                                {
-                                    foreach (var tileId in fs32.Tiles.Keys.ToList())
-                                    {
-                                        var tile = fs32.Tiles[tileId];
-                                        if (L1MapViewer.Converter.L1Til.IsRemaster(tile.TilData))
-                                        {
-                                            tile.TilData = L1MapViewer.Converter.L1Til.DownscaleTil(tile.TilData);
-                                            tile.Md5Hash = TileHashManager.CalculateMd5(tile.TilData);
-                                        }
-                                    }
-                                }
-                            }
-                        }
+                        // 使用共用方法處理 R版 tiles 和 Layer8 SPR
+                        ProcessFs32BeforeSave(fs32, dialog.IncludeTiles, sprListPath, sprIds);
 
                         Fs32Writer.Write(fs32, saveDialog.FileName);
 
-                        string resultMsg = $"已匯出至 {saveDialog.FileName}\n({fs32.Blocks.Count} 區塊, {fs32.Tiles.Count} 圖塊)";
+                        string resultMsg = $"已匯出至 {saveDialog.FileName}\n({fs32.Blocks.Count} 區塊, {fs32.Tiles.Count} 圖塊, {fs32.Sprs.Count} SPR)";
                         toolStripStatusLabel1.Text = resultMsg.Replace("\n", " ");
                         ShowAutoCloseMessage(resultMsg, "匯出完成");
                     }
@@ -10860,6 +10741,301 @@ namespace L1FlyMapViewer
                     }
                 }
             }
+        }
+
+        /// <summary>
+        /// 預先準備 Layer8 SPR 打包（在 SaveFileDialog 之前呼叫）
+        /// </summary>
+        /// <returns>list.spr 路徑，若使用者取消或無 SPR 則返回 null</returns>
+        private (string sprListPath, HashSet<int> sprIds) PrepareLayer8SprPackaging(IEnumerable<S32Data> s32List, ushort layerFlags)
+        {
+            if ((layerFlags & 0x80) == 0)  // Layer8 未勾選
+                return (null, null);
+
+            var sprIds = new HashSet<int>();
+            foreach (var s32 in s32List)
+            {
+                foreach (var l8 in s32.Layer8)
+                {
+                    if (l8.SprId > 0)
+                        sprIds.Add(l8.SprId);
+                }
+            }
+
+            if (sprIds.Count == 0)
+                return (null, null);
+
+            var sprResult = MessageBox.Show(
+                $"Layer8 包含 {sprIds.Count} 個 SPR 項目。\n\n" +
+                "是否要將 SPR 檔案一起打包？\n" +
+                "（需要提供 list.spr 編碼檔）",
+                "Layer8 SPR 打包",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Question);
+
+            if (sprResult != DialogResult.Yes)
+                return (null, null);
+
+            // 選擇 list.spr 檔案
+            using (var openDialog = new OpenFileDialog())
+            {
+                openDialog.Title = "選擇 list.spr 編碼檔";
+                openDialog.Filter = "list.spr 編碼檔|list.spr;*.txt|所有檔案|*.*";
+                openDialog.FileName = "list.spr";
+
+                if (openDialog.ShowDialog() != DialogResult.OK)
+                    return (null, null);
+
+                return (openDialog.FileName, sprIds);
+            }
+        }
+
+        /// <summary>
+        /// fs32 儲存前的共用處理（R版 tile 轉換 + Layer8 SPR 打包）
+        /// </summary>
+        /// <param name="sprListPath">預先選擇的 list.spr 路徑，null 表示不打包 SPR</param>
+        /// <param name="sprIds">要打包的 SPR ID 集合</param>
+        private void ProcessFs32BeforeSave(Fs32Data fs32, bool includeTiles, string sprListPath = null, HashSet<int> sprIds = null)
+        {
+            // 1. 處理 R版 tiles 轉換
+            if (includeTiles && fs32.Tiles.Count > 0)
+            {
+                int remasterCount = fs32.Tiles.Values.Count(t => L1MapViewer.Converter.L1Til.IsRemaster(t.TilData));
+                if (remasterCount > 0)
+                {
+                    var result = MessageBox.Show(
+                        $"地圖包中有 {remasterCount} 個 R版 (48x48) 圖塊。\n\n" +
+                        "是否要轉換為天1格式 (24x24)？\n\n" +
+                        "• 是 - 轉換為天1格式 (檔案較小，相容舊版)\n" +
+                        "• 否 - 保留 R版格式",
+                        "R版圖塊偵測",
+                        MessageBoxButtons.YesNo,
+                        MessageBoxIcon.Question,
+                        MessageBoxDefaultButton.Button1);
+
+                    if (result == DialogResult.Yes)
+                    {
+                        foreach (var tileId in fs32.Tiles.Keys.ToList())
+                        {
+                            var tile = fs32.Tiles[tileId];
+                            if (L1MapViewer.Converter.L1Til.IsRemaster(tile.TilData))
+                            {
+                                tile.TilData = L1MapViewer.Converter.L1Til.DownscaleTil(tile.TilData);
+                                tile.Md5Hash = TileHashManager.CalculateMd5(tile.TilData);
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 2. 處理 Layer8 SPR 打包（使用預先選擇的 list.spr）
+            if (!string.IsNullOrEmpty(sprListPath) && sprIds != null && sprIds.Count > 0)
+            {
+                CollectLayer8Sprs(fs32, sprIds, sprListPath);
+            }
+        }
+
+        /// <summary>
+        /// 收集 Layer8 使用的 SPR 檔案
+        /// </summary>
+        /// <param name="sprListPath">list.spr 檔案路徑</param>
+        private void CollectLayer8Sprs(Fs32Data fs32, HashSet<int> sprIds, string sprListPath)
+        {
+            try
+            {
+                // 解析 list.spr
+                var sprList = SprListParser.Parse(sprListPath);
+                if (sprList == null || sprList.Entries == null)
+                {
+                    MessageBox.Show("無法解析 list.spr 檔案", "錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+
+                // 使用 Share.LineagePath（地圖資料夾）作為 sprite idx 資料夾
+                string spriteFolder = Share.LineagePath;
+                if (string.IsNullOrEmpty(spriteFolder) || !Directory.Exists(spriteFolder))
+                {
+                    MessageBox.Show("無法取得地圖資料夾路徑", "錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+
+                // 找到所有 sprite idx 檔案
+                var spriteIdxFiles = FindSpriteIdxFiles(spriteFolder);
+                if (spriteIdxFiles.Count == 0)
+                {
+                    MessageBox.Show($"在 {spriteFolder} 找不到 sprite.idx 檔案", "錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+
+                int successCount = 0;
+                int failCount = 0;
+                var failedIds = new List<int>();
+
+                // 預先開啟所有 sprite idx 檔案
+                var pakFiles = new List<PakFile>();
+                try
+                {
+                    foreach (string idxPath in spriteIdxFiles)
+                    {
+                        try
+                        {
+                            pakFiles.Add(new PakFile(idxPath));
+                        }
+                        catch
+                        {
+                            // 忽略無法開啟的 idx 檔案
+                        }
+                    }
+
+                    if (pakFiles.Count == 0)
+                    {
+                        MessageBox.Show("無法開啟任何 sprite.idx 檔案", "錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        return;
+                    }
+
+                    // 收集 SPR 檔案
+                    foreach (int sprId in sprIds)
+                    {
+                        // 嘗試從各個 sprite idx 讀取 SPR 資料
+                        var (sprData, originalFileName) = FindSprFromPakFiles(pakFiles, sprId);
+                        if (sprData == null)
+                        {
+                            failCount++;
+                            failedIds.Add(sprId);
+                            continue;
+                        }
+
+                        // 取得對應的 CodeText
+                        string codeText = "";
+                        try
+                        {
+                            var entry = sprList.Entries.FirstOrDefault(e => e.Id == sprId);
+                            // 檢查是否找到 entry (Id > 0 表示有效，因為 SprListEntry 是 struct)
+                            if (entry.Id > 0)
+                            {
+                                // 使用暫存檔取得 sprtxt 格式
+                                string tempFile = Path.GetTempFileName();
+                                try
+                                {
+                                    Lin.Helper.Core.Sprite.SprListWriter.SaveEntry(entry, tempFile);
+                                    codeText = File.ReadAllText(tempFile);
+                                }
+                                finally
+                                {
+                                    if (File.Exists(tempFile))
+                                        File.Delete(tempFile);
+                                }
+                            }
+                        }
+                        catch
+                        {
+                            // 無法取得 CodeText，繼續但不含 code
+                        }
+
+                        fs32.Sprs[sprId] = new SprPackageData
+                        {
+                            SprId = sprId,
+                            OriginalFileName = originalFileName,
+                            SprData = sprData,
+                            CodeText = codeText
+                        };
+                        successCount++;
+                    }
+                }
+                finally
+                {
+                    // 確保釋放所有 PakFile
+                    foreach (var pak in pakFiles)
+                    {
+                        pak.Dispose();
+                    }
+                }
+
+                // 顯示結果
+                string resultMsg = $"SPR 收集完成\n\n成功: {successCount}\n失敗: {failCount}";
+                if (failCount > 0)
+                {
+                    string failedList = failedIds.Count <= 10
+                        ? string.Join(", ", failedIds)
+                        : string.Join(", ", failedIds.Take(10)) + $" ... 等 {failedIds.Count} 個";
+                    resultMsg += $"\n\n找不到的 SPR: {failedList}";
+                    MessageBox.Show(resultMsg, "SPR 打包結果", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                }
+                else
+                {
+                    MessageBox.Show(resultMsg, "SPR 打包結果", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"處理 SPR 失敗: {ex.Message}\n\n{ex.StackTrace}", "錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        /// <summary>
+        /// 找到資料夾內所有的 sprite idx 檔案
+        /// </summary>
+        private List<string> FindSpriteIdxFiles(string folder)
+        {
+            var result = new List<string>();
+
+            if (!Directory.Exists(folder))
+                return result;
+
+            // 取得資料夾內所有檔案，用 case-insensitive 比對
+            var allFiles = Directory.GetFiles(folder, "*.idx");
+
+            // 建立要找的檔名集合 (小寫)
+            var targetNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                "sprite.idx"
+            };
+            for (int i = 0; i <= 15; i++)
+            {
+                targetNames.Add($"sprite{i:D2}.idx");
+            }
+
+            // 比對檔案
+            foreach (var file in allFiles)
+            {
+                string fileName = Path.GetFileName(file);
+                if (targetNames.Contains(fileName))
+                {
+                    result.Add(file);
+                }
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        /// 從已開啟的 PakFile 列表中尋找 SPR
+        /// </summary>
+        /// <returns>Tuple of (sprData, originalFileName), or (null, null) if not found</returns>
+        private (byte[] data, string fileName) FindSprFromPakFiles(List<PakFile> pakFiles, int sprId)
+        {
+            // 嘗試的檔名格式（按優先順序）
+            string[] fileNameFormats = {
+                $"{sprId}.spr",      // 標準格式
+                $"{sprId}-0.spr",    // 帶動作索引格式
+            };
+
+            foreach (var pak in pakFiles)
+            {
+                foreach (string fileName in fileNameFormats)
+                {
+                    // 在 pak 中尋找檔案（不區分大小寫）
+                    var entry = pak.Files.FirstOrDefault(f =>
+                        f.FileName.Equals(fileName, StringComparison.OrdinalIgnoreCase));
+
+                    if (!string.IsNullOrEmpty(entry.FileName))
+                    {
+                        return (pak.Extract(entry.FileName), entry.FileName);
+                    }
+                }
+            }
+
+            return (null, null);
         }
 
         // 儲存選取區域為素材 (fs3p)

@@ -44,6 +44,11 @@ namespace L1MapViewer.Models
         /// </summary>
         public Dictionary<int, TilePackageData> Tiles { get; set; } = new Dictionary<int, TilePackageData>();
 
+        /// <summary>
+        /// SPR 資料 (SprId -> SprPackageData)
+        /// </summary>
+        public Dictionary<int, SprPackageData> Sprs { get; set; } = new Dictionary<int, SprPackageData>();
+
         // Layer Flag 常數
         public const ushort FLAG_LAYER1 = 0x01;
         public const ushort FLAG_LAYER2 = 0x02;
@@ -134,5 +139,23 @@ namespace L1MapViewer.Models
     {
         /// <summary>TileId -> MD5 Hex</summary>
         public Dictionary<string, string> Tiles { get; set; } = new Dictionary<string, string>();
+    }
+
+    /// <summary>
+    /// 打包的 SPR 資料
+    /// </summary>
+    public class SprPackageData
+    {
+        /// <summary>原始 SPR ID</summary>
+        public int SprId { get; set; }
+
+        /// <summary>原始檔名 (如 2197-0.spr)</summary>
+        public string OriginalFileName { get; set; } = string.Empty;
+
+        /// <summary>.spr 檔案原始資料</summary>
+        public byte[] SprData { get; set; } = Array.Empty<byte>();
+
+        /// <summary>list.spr 對應的編碼文字 (Entry 格式)</summary>
+        public string CodeText { get; set; } = string.Empty;
     }
 }

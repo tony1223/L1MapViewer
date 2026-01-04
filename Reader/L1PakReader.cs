@@ -131,32 +131,134 @@ namespace L1MapViewer.Reader {
         }
 
         /// <summary>
-        /// 從指定路徑載入 idx 資料
+        /// 從指定路徑載入 idx 資料（支援多種格式）
         /// </summary>
         private static Dictionary<string, L1Idx>? LoadIdxFromPath(string idxPath, string pakPath) {
             var result = new Dictionary<string, L1Idx>();
 
             try {
-                using (FileStream fs = File.Open(idxPath, FileMode.Open, FileAccess.Read, FileShare.Read))
-                using (BinaryReader br = new BinaryReader(fs)) {
-                    int cnt = br.ReadInt32();
+                byte[] data = File.ReadAllBytes(idxPath);
+                if (data.Length < 6) return null;
 
-                    for (int i = 0; i < cnt; i++) {
-                        L1Idx idx = new L1Idx(IdxType.OLD);
-                        idx.szPakFullName = pakPath;
-                        idx.szFileName = new string(br.ReadChars(260)).Trim('\0').ToLower();
-                        idx.nPosition = br.ReadInt32();
-                        idx.nSize = br.ReadInt32();
-                        idx.nCompressType = br.ReadInt32();
-                        idx.nCompressSize = br.ReadInt32();
-                        int nIsDesEncode = br.ReadInt32();
-                        idx.isDesEncode = nIsDesEncode == 1;
+                // 判斷 idx 格式
+                IdxType structType = IdxType.OLD;
+                if (data[0] == '_' && data[1] == 'E' && data[2] == 'X' &&
+                    data[3] == 'T' && data[4] == 'B' && data[5] == '$') {
+                    structType = IdxType.EXTB;
+                } else if (data.Length >= 4) {
+                    string head = System.Text.Encoding.Default.GetString(data, 0, 4).ToLower();
+                    if (head == "_ext") structType = IdxType.EXT;
+                    else if (head == "_rms") structType = IdxType.RMS;
+                }
 
-                        result[idx.szFileName] = idx;
+                // EXTB 格式
+                if (structType == IdxType.EXTB) {
+                    return LoadExtBFromPath(data, pakPath);
+                }
+
+                // 其他格式
+                int nBaseOffset = (structType == IdxType.OLD) ? 4 : 8;
+
+                using (BinaryReader br = new BinaryReader(new MemoryStream(data))) {
+                    br.BaseStream.Seek(nBaseOffset, SeekOrigin.Begin);
+
+                    while (br.BaseStream.Position < data.Length) {
+                        L1Idx pIdx = new L1Idx(structType);
+                        pIdx.szPakFullName = pakPath;
+
+                        pIdx.nPosition = br.ReadInt32();
+
+                        if (structType == IdxType.EXT) {
+                            pIdx.nSize = br.ReadInt32();
+                            pIdx.nCompressSize = br.ReadInt32();
+                            pIdx.nCompressType = br.ReadInt32();
+                            pIdx.szFileName = System.Text.Encoding.Default.GetString(br.ReadBytes(112)).Replace('\0', ' ').Trim();
+                        } else if (structType == IdxType.RMS) {
+                            pIdx.nSize = br.ReadInt32();
+                            pIdx.nCompressSize = br.ReadInt32();
+                            pIdx.nCompressType = br.ReadInt32();
+                            pIdx.szFileName = System.Text.Encoding.Default.GetString(br.ReadBytes(260)).Replace('\0', ' ').Trim();
+                        } else {
+                            pIdx.szFileName = System.Text.Encoding.Default.GetString(br.ReadBytes(20)).Replace('\0', ' ').Trim();
+                            pIdx.nSize = br.ReadInt32();
+                        }
+
+                        if (pIdx.szFileName.Contains(" ")) {
+                            pIdx.szFileName = pIdx.szFileName.Substring(0, pIdx.szFileName.IndexOf(" "));
+                        }
+
+                        if (!string.IsNullOrEmpty(pIdx.szFileName) && !result.ContainsKey(pIdx.szFileName.ToLower())) {
+                            result[pIdx.szFileName.ToLower()] = pIdx;
+                        }
                     }
                 }
             } catch {
                 return null;
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        /// 載入 EXTB 格式的 idx
+        /// </summary>
+        private static Dictionary<string, L1Idx> LoadExtBFromPath(byte[] data, string pakPath) {
+            var result = new Dictionary<string, L1Idx>();
+
+            const int headerSize = 0x10;
+            const int entrySize = 0x80;
+
+            int entryCount = (data.Length - headerSize) / entrySize;
+
+            var offsets = new List<int>();
+            for (int i = 0; i < entryCount; i++) {
+                int entryOffset = headerSize + i * entrySize;
+                int pakOffset = BitConverter.ToInt32(data, entryOffset + 120);
+                offsets.Add(pakOffset);
+            }
+            offsets.Sort();
+            offsets.Add(int.MaxValue);
+
+            for (int i = 0; i < entryCount; i++) {
+                int entryOffset = headerSize + i * entrySize;
+
+                int pakOffset = BitConverter.ToInt32(data, entryOffset + 120);
+                int compression = BitConverter.ToInt32(data, entryOffset + 4);
+                int uncompressedSize = BitConverter.ToInt32(data, entryOffset + 124);
+
+                int nameStart = entryOffset + 8;
+                int nameEnd = nameStart;
+                while (nameEnd < entryOffset + 120 && data[nameEnd] != 0) {
+                    nameEnd++;
+                }
+
+                if (nameEnd <= nameStart) continue;
+
+                string fileName = System.Text.Encoding.Default.GetString(data, nameStart, nameEnd - nameStart);
+                if (string.IsNullOrEmpty(fileName)) continue;
+
+                int compressedSize = 0;
+                int idx = offsets.IndexOf(pakOffset);
+                if (idx >= 0 && idx < offsets.Count - 1) {
+                    compressedSize = offsets[idx + 1] - pakOffset;
+                    if (compressedSize == int.MaxValue - pakOffset) {
+                        compressedSize = uncompressedSize;
+                    }
+                }
+
+                var pIdx = new L1Idx(IdxType.EXTB) {
+                    szPakFullName = pakPath,
+                    szFileName = fileName,
+                    nPosition = pakOffset,
+                    nSize = uncompressedSize,
+                    nCompressType = compression,
+                    nCompressSize = compression > 0 ? compressedSize : 0,
+                    isDesEncode = false
+                };
+
+                if (!result.ContainsKey(fileName.ToLower())) {
+                    result[fileName.ToLower()] = pIdx;
+                }
             }
 
             return result;

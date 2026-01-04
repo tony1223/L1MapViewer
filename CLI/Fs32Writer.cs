@@ -103,6 +103,36 @@ namespace L1MapViewer.CLI
                         writer.Write(json);
                     }
                 }
+
+                // 4. 寫入 SPR 檔案
+                if (fs32.Sprs.Count > 0)
+                {
+                    foreach (var spr in fs32.Sprs.Values)
+                    {
+                        // 使用原始檔名 (如 2197-0.spr)，如果沒有則使用 {sprId}.spr
+                        string sprFileName = !string.IsNullOrEmpty(spr.OriginalFileName)
+                            ? spr.OriginalFileName
+                            : $"{spr.SprId}.spr";
+
+                        // 寫入 spr/file/{originalFileName}
+                        var sprEntry = zipArchive.CreateEntry($"spr/file/{sprFileName}", CompressionLevel.Optimal);
+                        using (var stream = sprEntry.Open())
+                        {
+                            stream.Write(spr.SprData, 0, spr.SprData.Length);
+                        }
+
+                        // 寫入 spr/code/{sprId}.sprtxt (使用 sprId 作為 key)
+                        if (!string.IsNullOrEmpty(spr.CodeText))
+                        {
+                            var codeEntry = zipArchive.CreateEntry($"spr/code/{spr.SprId}.sprtxt", CompressionLevel.Optimal);
+                            using (var stream = codeEntry.Open())
+                            using (var writer = new StreamWriter(stream, Encoding.UTF8))
+                            {
+                                writer.Write(spr.CodeText);
+                            }
+                        }
+                    }
+                }
             }
         }
 
