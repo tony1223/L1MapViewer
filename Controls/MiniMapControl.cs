@@ -118,6 +118,9 @@ namespace L1MapViewer.Controls
         {
             _renderingCore = new MapRenderingCore();
             InitializeComponents();
+
+            // 訂閱 TileProvider 變更事件
+            TileProvider.Instance.TileChanged += TileProvider_TileChanged;
         }
 
         public MiniMapControl(MapViewerControl mapViewer) : this()
@@ -436,12 +439,44 @@ namespace L1MapViewer.Controls
 
         #endregion
 
+        #region Tile Override 事件處理
+
+        /// <summary>
+        /// TileProvider 變更事件處理
+        /// </summary>
+        private void TileProvider_TileChanged(object sender, TileChangedEventArgs e)
+        {
+            // 清除相關快取
+            _renderingCore.InvalidateTileCache(e.TileIds);
+
+            // 如果有 document，重新渲染小地圖
+            if (_document != null)
+            {
+                // 使用 BeginInvoke 確保在 UI 執行緒上執行
+                if (this.InvokeRequired)
+                {
+                    this.BeginInvoke((MethodInvoker)delegate
+                    {
+                        UpdateMiniMap(_document);
+                    });
+                }
+                else
+                {
+                    UpdateMiniMap(_document);
+                }
+            }
+        }
+
+        #endregion
+
         #region Dispose
 
         protected override void Dispose(bool disposing)
         {
             if (disposing)
             {
+                // 取消訂閱事件
+                TileProvider.Instance.TileChanged -= TileProvider_TileChanged;
                 _miniMapBitmap?.Dispose();
             }
             base.Dispose(disposing);

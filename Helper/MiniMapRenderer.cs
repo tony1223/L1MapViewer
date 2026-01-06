@@ -80,9 +80,6 @@ namespace L1MapViewer.Helper
         // 取樣版 S32 區塊快取
         private ConcurrentDictionary<string, Bitmap> _s32BlockCacheSampled = new ConcurrentDictionary<string, Bitmap>();
 
-        // Tile 檔案快取
-        private ConcurrentDictionary<int, List<byte[]>> _tilFileCache = new ConcurrentDictionary<int, List<byte[]>>();
-
         // 常數
         public const int BlockWidth = 64 * 24 * 2;  // 3072
         public const int BlockHeight = 64 * 12 * 2; // 1536
@@ -473,43 +470,9 @@ namespace L1MapViewer.Helper
         {
             try
             {
-                List<byte[]> tilArray = _tilFileCache.GetOrAdd(tileId, _ =>
-                {
-                    string key = $"{tileId}.til";
-                    byte[] data = L1PakReader.UnPack("Tile", key);
-                    if (data == null) return null;
-                    return L1Til.Parse(data);
-                });
-
-                // 備援機制：當 tilArray 為 null 或 indexId 越界時
-                if (tilArray == null || indexId >= tilArray.Count)
-                {
-                    if (tileId != 0)
-                    {
-                        // 載入 0.til 作為預設填補
-                        tilArray = _tilFileCache.GetOrAdd(0, _ =>
-                        {
-                            string key = "0.til";
-                            byte[] data = L1PakReader.UnPack("Tile", key);
-                            if (data == null) return null;
-                            return L1Til.Parse(data);
-                        });
-                        if (tilArray == null || tilArray.Count == 0) return 0;
-                        // 使用 187 或 188 作為預設 indexId
-                        indexId = 187;
-                        if (indexId >= tilArray.Count)
-                            indexId = indexId % tilArray.Count;
-                    }
-                    else
-                    {
-                        // TileId=0 時，對 tilArray.Count 取模
-                        if (tilArray != null && tilArray.Count > 0)
-                            indexId = indexId % tilArray.Count;
-                        else
-                            return 0;
-                    }
-                }
-                if (tilArray == null || indexId >= tilArray.Count) return 0;
+                // 使用 TileProvider 取得 til 資料（自動處理 override 和備援）
+                var tilArray = TileProvider.Instance.GetTilArrayWithFallback(tileId, indexId, 0, out indexId);
+                if (tilArray == null || indexId < 0 || indexId >= tilArray.Count) return 0;
                 byte[] tilData = tilArray[indexId];
                 if (tilData == null || tilData.Length < 10) return 0;
 
@@ -758,43 +721,9 @@ namespace L1MapViewer.Helper
         {
             try
             {
-                List<byte[]> tilArray = _tilFileCache.GetOrAdd(tileId, _ =>
-                {
-                    string key = $"{tileId}.til";
-                    byte[] data = L1PakReader.UnPack("Tile", key);
-                    if (data == null) return null;
-                    return L1Til.Parse(data);
-                });
-
-                // 備援機制：當 tilArray 為 null 或 indexId 越界時
-                if (tilArray == null || indexId >= tilArray.Count)
-                {
-                    if (tileId != 0)
-                    {
-                        // 載入 0.til 作為預設填補
-                        tilArray = _tilFileCache.GetOrAdd(0, _ =>
-                        {
-                            string key = "0.til";
-                            byte[] data = L1PakReader.UnPack("Tile", key);
-                            if (data == null) return null;
-                            return L1Til.Parse(data);
-                        });
-                        if (tilArray == null || tilArray.Count == 0) return;
-                        // 使用 187 或 188 作為預設 indexId (0x8CBB/0x8CBC 計算結果)
-                        indexId = 187 + ((pixelX / 24) & 1);
-                        if (indexId >= tilArray.Count)
-                            indexId = indexId % tilArray.Count;
-                    }
-                    else
-                    {
-                        // TileId=0 時，對 tilArray.Count 取模
-                        if (tilArray != null && tilArray.Count > 0)
-                            indexId = indexId % tilArray.Count;
-                        else
-                            return;
-                    }
-                }
-                if (tilArray == null || indexId >= tilArray.Count) return;
+                // 使用 TileProvider 取得 til 資料（自動處理 override 和備援）
+                var tilArray = TileProvider.Instance.GetTilArrayWithFallback(tileId, indexId, pixelX, out indexId);
+                if (tilArray == null || indexId < 0 || indexId >= tilArray.Count) return;
                 byte[] tilData = tilArray[indexId];
                 if (tilData == null) return;
 
@@ -886,6 +815,48 @@ namespace L1MapViewer.Helper
         }
 
         /// <summary>
+        /// 清除指定 tileId 的顏色快取
+        /// </summary>
+        public void ClearTileColorCache(List<int> tileIds)
+        {
+            if (tileIds == null || tileIds.Count == 0)
+            {
+                // 清除全部
+                _tileColorCache.Clear();
+                return;
+            }
+
+            // 清除指定 tileIds 的快取
+            var keysToRemove = _tileColorCache.Keys
+                .Where(k => tileIds.Contains(k.tileId))
+                .ToList();
+
+            foreach (var key in keysToRemove)
+            {
+                _tileColorCache.TryRemove(key, out _);
+            }
+        }
+
+        /// <summary>
+        /// 清除指定 tileId 的 S32 區塊快取
+        /// </summary>
+        public void InvalidateS32BlockCache()
+        {
+            // 清除所有 S32 區塊快取（因為任何區塊都可能包含該 tile）
+            foreach (var bmp in _s32BlockCache.Values)
+            {
+                bmp?.Dispose();
+            }
+            _s32BlockCache.Clear();
+
+            foreach (var bmp in _s32BlockCacheSampled.Values)
+            {
+                bmp?.Dispose();
+            }
+            _s32BlockCacheSampled.Clear();
+        }
+
+        /// <summary>
         /// 清除快取
         /// </summary>
         public void ClearCache()
@@ -902,7 +873,7 @@ namespace L1MapViewer.Helper
             }
             _s32BlockCacheSampled.Clear();
 
-            _tilFileCache.Clear();
+            TileProvider.Instance.ClearCache();
             _tileColorCache.Clear();
         }
     }

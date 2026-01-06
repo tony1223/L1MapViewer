@@ -90,6 +90,8 @@ namespace L1FlyMapViewer
         private Button btnToolCheckL8;
         private Button btnEnableVisibleL8;
         private Button btnViewClipboard;
+        private Button btnToolTestTil;
+        private Button btnToolClearTestTil;
         private ToolTip toolTip1;
 
         // 中間 TabControl
@@ -241,6 +243,8 @@ namespace L1FlyMapViewer
             this.btnToolCheckL8 = new Button();
             this.btnEnableVisibleL8 = new Button();
             this.btnViewClipboard = new Button();
+            this.btnToolTestTil = new Button();
+            this.btnToolClearTestTil = new Button();
             this.toolTip1 = new ToolTip();
 
             // 中間 TabControl
@@ -1430,6 +1434,8 @@ namespace L1FlyMapViewer
             this.toolbarPanel2.Controls.Add(this.btnToolCheckL8);
             this.toolbarPanel2.Controls.Add(this.btnEnableVisibleL8);
             this.toolbarPanel2.Controls.Add(this.btnViewClipboard);
+            this.toolbarPanel2.Controls.Add(this.btnToolTestTil);
+            this.toolbarPanel2.Controls.Add(this.btnToolClearTestTil);
             this.toolbarPanel2.Dock = DockStyle.Left;
             this.toolbarPanel2.Location = new Point(40, 0);
             this.toolbarPanel2.Name = "toolbarPanel2";
@@ -1712,6 +1718,30 @@ namespace L1FlyMapViewer
             this.btnViewClipboard.UseVisualStyleBackColor = true;
             this.toolTip1.SetToolTip(this.btnViewClipboard, "查看剪貼簿內容 (Ctrl+Shift+C)");
             this.btnViewClipboard.Click += new System.EventHandler(this.btnViewClipboard_Click);
+
+            //
+            // btnToolTestTil
+            //
+            this.btnToolTestTil.Location = new Point(2, 378);
+            this.btnToolTestTil.Name = "btnToolTestTil";
+            this.btnToolTestTil.Size = new Size(34, 34);
+            this.btnToolTestTil.TabIndex = 17;
+            this.btnToolTestTil.Text = "測til";
+            this.btnToolTestTil.UseVisualStyleBackColor = true;
+            this.toolTip1.SetToolTip(this.btnToolTestTil, "測試外部 til 檔案（暫時替換顯示）");
+            this.btnToolTestTil.Click += new System.EventHandler(this.btnToolTestTil_Click);
+
+            //
+            // btnToolClearTestTil
+            //
+            this.btnToolClearTestTil.Location = new Point(2, 416);
+            this.btnToolClearTestTil.Name = "btnToolClearTestTil";
+            this.btnToolClearTestTil.Size = new Size(34, 34);
+            this.btnToolClearTestTil.TabIndex = 18;
+            this.btnToolClearTestTil.Text = "清til";
+            this.btnToolClearTestTil.UseVisualStyleBackColor = true;
+            this.toolTip1.SetToolTip(this.btnToolClearTestTil, "清除測 til（恢復正常顯示）");
+            this.btnToolClearTestTil.Click += new System.EventHandler(this.btnToolClearTestTil_Click);
 
             //
             // MapForm

@@ -53,6 +53,38 @@ namespace L1MapViewer.Models
         public ConcurrentDictionary<int, bool> TilRemasterCache { get; } = new ConcurrentDictionary<int, bool>();
 
         /// <summary>
+        /// Tile Override 快取 - 暫時替換 til 顯示（不存檔）
+        /// key: tileId, value: parsed tile array
+        /// </summary>
+        public Dictionary<int, List<byte[]>> TileOverrideCache { get; } = new Dictionary<int, List<byte[]>>();
+
+        /// <summary>
+        /// 檢查是否有 Tile Override
+        /// </summary>
+        public bool HasTileOverride(int tileId) => TileOverrideCache.ContainsKey(tileId);
+
+        /// <summary>
+        /// 取得 til 資料（優先使用 Override）
+        /// </summary>
+        public List<byte[]> GetTilArray(int tileId, Func<int, List<byte[]>> loadFromPak)
+        {
+            // 優先檢查 Override
+            if (TileOverrideCache.TryGetValue(tileId, out var overrideArray))
+                return overrideArray;
+
+            // 否則從快取/PAK載入
+            return TilFileCache.GetOrAdd(tileId, loadFromPak);
+        }
+
+        /// <summary>
+        /// 清除 Tile Override 快取
+        /// </summary>
+        public void ClearTileOverride()
+        {
+            TileOverrideCache.Clear();
+        }
+
+        /// <summary>
         /// 快取命中次數
         /// </summary>
         public int CacheHits { get; set; }

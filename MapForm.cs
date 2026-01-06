@@ -178,13 +178,7 @@ namespace L1FlyMapViewer
                 int loadedCount = 0;
                 System.Threading.Tasks.Parallel.ForEach(tileIds, tileId =>
                 {
-                    _renderCache.TilFileCache.GetOrAdd(tileId, _ =>
-                    {
-                        string key = $"{tileId}.til";
-                        byte[] data = L1PakReader.UnPack("Tile", key);
-                        if (data == null) return null;
-                        return L1Til.Parse(data);
-                    });
+                    TileProvider.Instance.Preload(tileId);
                     System.Threading.Interlocked.Increment(ref loadedCount);
                 });
 
@@ -2267,6 +2261,7 @@ namespace L1FlyMapViewer
             _renderCache.TilRemasterCache.Clear();
             _renderCache.TileDataCache.Clear();
             cachedAggregatedTiles.Clear();
+            TileProvider.Instance.ClearCache();  // 清除 TileProvider 快取
 
             // 清除編輯狀態
             _editState.HighlightedS32Data = null;
@@ -2666,6 +2661,8 @@ namespace L1FlyMapViewer
             Share.MapDataList.Clear();  // 清除地圖快取，強制重新讀取新資料夾的地圖
             TileHashManager.ClearCache();  // 清除 Tile MD5 快取
             _listTilMaxId = null;       // 清除 list.til 快取
+            TileProvider.Instance.ClearAllOverrides();  // 清除測 til override
+            TileProvider.Instance.ClearCache();         // 清除 TileProvider 快取
 
             // 清除當前地圖狀態
             _document.S32Files.Clear();
@@ -8245,44 +8242,9 @@ namespace L1FlyMapViewer
         {
             try
             {
-                // 先從 til 檔案快取取得整個 til array
-                List<byte[]> tilArray = _renderCache.TilFileCache.GetOrAdd(tileId, _ =>
-                {
-                    string key = $"{tileId}.til";
-                    byte[] data = L1PakReader.UnPack("Tile", key);
-                    if (data == null) return null;
-                    return L1Til.Parse(data);
-                });
-
-                // 備援機制：當 tilArray 為 null 或 indexId 越界時
-                if (tilArray == null || indexId >= tilArray.Count)
-                {
-                    if (tileId != 0)
-                    {
-                        // 載入 0.til 作為預設填補
-                        tilArray = _renderCache.TilFileCache.GetOrAdd(0, _ =>
-                        {
-                            string key = "0.til";
-                            byte[] data = L1PakReader.UnPack("Tile", key);
-                            if (data == null) return null;
-                            return L1Til.Parse(data);
-                        });
-                        if (tilArray == null || tilArray.Count == 0) return;
-                        // 使用 187 或 188 作為預設 indexId (0x8CBB/0x8CBC 計算結果)
-                        indexId = 187 + ((pixelX / 24) & 1);
-                        if (indexId >= tilArray.Count)
-                            indexId = indexId % tilArray.Count;
-                    }
-                    else
-                    {
-                        // TileId=0 時，對 tilArray.Count 取模
-                        if (tilArray != null && tilArray.Count > 0)
-                            indexId = indexId % tilArray.Count;
-                        else
-                            return;
-                    }
-                }
-                if (tilArray == null || indexId >= tilArray.Count) return;
+                // 使用 TileProvider 取得 til 資料（自動處理 override 和備援）
+                var tilArray = TileProvider.Instance.GetTilArrayWithFallback(tileId, indexId, pixelX, out indexId);
+                if (tilArray == null || indexId < 0 || indexId >= tilArray.Count) return;
                 byte[] tilData = tilArray[indexId];
                 if (tilData == null) return;
 
@@ -8894,28 +8856,107 @@ namespace L1FlyMapViewer
             }
         }
 
+        /// <summary>
+        /// 測 til 按鈕點擊事件 - 選擇外部 til 檔案暫時替換顯示
+        /// </summary>
+        private void btnToolTestTil_Click(object sender, EventArgs e)
+        {
+            try
+            {
+                using (var openDialog = new OpenFileDialog())
+                {
+                    openDialog.Filter = "Tile 檔案|*.til|所有檔案|*.*";
+                    openDialog.Title = "選擇要測試的 til 檔案";
+
+                    if (openDialog.ShowDialog() != DialogResult.OK)
+                        return;
+
+                    string filePath = openDialog.FileName;
+                    string fileName = Path.GetFileNameWithoutExtension(filePath);
+
+                    // 嘗試從檔名解析 tileId
+                    int tileId = 0;
+                    bool autoDetected = int.TryParse(fileName, out tileId);
+
+                    // 讓用戶確認或修改 tileId
+                    string input = ShowInputDialog(
+                        "測 til",
+                        $"請輸入要替換的 TileId：\n（檔名偵測：{(autoDetected ? tileId.ToString() : "無法偵測")}）",
+                        autoDetected ? tileId.ToString() : "0");
+
+                    if (!int.TryParse(input, out tileId))
+                    {
+                        MessageBox.Show("無效的 TileId", "錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        return;
+                    }
+
+                    // 載入 til 檔案
+                    byte[] tilData = File.ReadAllBytes(filePath);
+                    List<byte[]> tilArray = L1Til.Parse(tilData);
+
+                    if (tilArray == null || tilArray.Count == 0)
+                    {
+                        MessageBox.Show("無法解析 til 檔案", "錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        return;
+                    }
+
+                    // 設定 Override（TileProvider 會自動觸發事件，MiniMapControl 會自動重繪）
+                    TileProvider.Instance.SetOverride(tileId, tilArray);
+
+                    // 重新渲染 Viewport
+                    RenderS32Map();
+
+                    MessageBox.Show(
+                        $"已暫時替換 TileId {tileId}\n（{tilArray.Count} 個 blocks）\n\n使用「清til」按鈕可恢復",
+                        "測 til",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Information);
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"測 til 失敗：{ex.Message}", "錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        /// <summary>
+        /// 清除測 til 按鈕點擊事件 - 清除所有暫時替換
+        /// </summary>
+        private void btnToolClearTestTil_Click(object sender, EventArgs e)
+        {
+            try
+            {
+                if (TileProvider.Instance.OverrideCount == 0)
+                {
+                    MessageBox.Show("目前沒有任何測 til 設定", "清除測 til", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    return;
+                }
+
+                // 清除所有 override（TileProvider 會自動觸發事件，MiniMapControl 會自動重繪）
+                var clearedIds = TileProvider.Instance.ClearAllOverrides();
+
+                // 重新渲染 Viewport
+                RenderS32Map();
+
+                MessageBox.Show(
+                    $"已清除 {clearedIds.Count} 個測 til 設定\n（TileId: {string.Join(", ", clearedIds)}）",
+                    "清除測 til",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"清除測 til 失敗：{ex.Message}", "錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
         // 載入 Tile 縮圖（使用快取）
         private Bitmap LoadTileThumbnail(int tileId, int indexId)
         {
             try
             {
-                // 檢查是否已有快取的版本資訊
-                bool isRemaster = _renderCache.TilRemasterCache.GetOrAdd(tileId, _ =>
-                {
-                    string key = $"{tileId}.til";
-                    byte[] rawData = L1PakReader.UnPack("Tile", key);
-                    return rawData != null && L1Til.IsRemaster(rawData);
-                });
-
-                // 使用已存在的 til 檔案快取
-                List<byte[]> tilArray = _renderCache.TilFileCache.GetOrAdd(tileId, _ =>
-                {
-                    string key = $"{tileId}.til";
-                    byte[] data = L1PakReader.UnPack("Tile", key);
-                    if (data == null) return null;
-                    return L1Til.Parse(data);
-                });
-
+                // 使用 TileProvider 取得 til 資料
+                var tilArray = TileProvider.Instance.GetTilArray(tileId);
                 if (tilArray == null || indexId >= tilArray.Count)
                     return CreatePlaceholderThumbnail(tileId);
 

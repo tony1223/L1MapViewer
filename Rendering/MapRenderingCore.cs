@@ -261,6 +261,20 @@ namespace L1MapViewer.Rendering
         }
 
         /// <summary>
+        /// 處理 Tile Override 變更（清除相關快取）
+        /// </summary>
+        /// <param name="tileIds">變更的 TileId 列表</param>
+        public void InvalidateTileCache(List<int> tileIds)
+        {
+            // 清除 MiniMapRenderer 的 tile 顏色快取
+            _miniMapRenderer.ClearTileColorCache(tileIds);
+            // 清除 MiniMapRenderer 的 S32 區塊快取（因為這些區塊可能包含變更的 tile）
+            _miniMapRenderer.InvalidateS32BlockCache();
+            // 清除 ViewportRenderer 的快取
+            _viewportRenderer.ClearCache();
+        }
+
+        /// <summary>
         /// 取得 ViewportRenderer 的渲染統計資訊
         /// </summary>
         public ViewportRenderer.RenderStats GetLastViewportStats()
