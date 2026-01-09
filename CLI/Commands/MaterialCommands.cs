@@ -610,7 +610,7 @@ namespace L1MapViewer.CLI.Commands
                 }
             }
 
-            // 套用 Layer4
+            // 套用 Layer4 (Layer4 的 RelativeX 使用 Layer1 座標系統，和 Layer1 一樣)
             if (material.HasLayer4)
             {
                 int minGameX = int.MaxValue, maxGameX = int.MinValue;
@@ -618,6 +618,7 @@ namespace L1MapViewer.CLI.Commands
 
                 foreach (var item in material.Layer4Items)
                 {
+                    // Layer4 使用 Layer1 座標系統
                     int targetGlobalX = pasteOriginX + item.RelativeX - offsetFixX;
                     int targetGlobalY = pasteOriginY + item.RelativeY - offsetFixY;
                     int targetGameX = targetGlobalX / 2;
@@ -631,16 +632,16 @@ namespace L1MapViewer.CLI.Commands
                     var targetS32 = FindS32ByGameCoords(s32Files, targetGameX, targetGameY);
                     if (targetS32 == null) continue;
 
-                    int objLocalX = targetGlobalX - targetS32.SegInfo.nLinBeginX * 2;
-                    int objLocalY = targetGlobalY - targetS32.SegInfo.nLinBeginY;
+                    int objLocalX = targetGameX - targetS32.SegInfo.nLinBeginX;
+                    int objLocalY = targetGameY - targetS32.SegInfo.nLinBeginY;
 
-                    if (objLocalY < 0 || objLocalY >= 64)
+                    if (objLocalX < 0 || objLocalX >= 64 || objLocalY < 0 || objLocalY >= 64)
                         continue;
 
                     var newObj = new ObjectTile
                     {
                         GroupId = baseGroupId + item.GroupId,
-                        X = objLocalX,
+                        X = objLocalX,  // 遊戲座標 (0-63)
                         Y = objLocalY,
                         Layer = item.Layer,
                         IndexId = item.IndexId,

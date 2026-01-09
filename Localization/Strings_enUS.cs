@@ -511,6 +511,28 @@ namespace L1MapViewer.Localization
             // Common Titles
             { "Title_Done", "Done" },
             { "Common_OK", "OK" },
+
+            // Batch Delete Tile
+            { "Form_BatchDeleteTile_Title", "Batch Delete Tiles" },
+            { "Menu_BatchDeleteTile", "Batch Delete Tiles..." },
+            { "BatchDeleteTile_TileIdRange", "TileId Range" },
+            { "BatchDeleteTile_IndexIdRange", "IndexId Range" },
+            { "BatchDeleteTile_Start", "Start" },
+            { "BatchDeleteTile_End", "End" },
+            { "BatchDeleteTile_Scope", "Scope" },
+            { "BatchDeleteTile_CurrentMap", "Current Map" },
+            { "BatchDeleteTile_AllMaps", "All Maps (maps folder)" },
+            { "BatchDeleteTile_Warning", "This will modify S32 files directly. Please backup first!" },
+            { "BatchDeleteTile_InvalidTileIdRange", "TileId start cannot be greater than end" },
+            { "BatchDeleteTile_InvalidIndexIdRange", "IndexId start cannot be greater than end" },
+            { "BatchDeleteTile_ConfirmMessage", "Delete tiles matching the following criteria?\n\nTileId: {0} ~ {1}\nIndexId: {2} ~ {3}\nScope: {4}\n\nThis cannot be undone!" },
+            { "BatchDeleteTile_Confirm", "Confirm Delete" },
+            { "BatchDeleteTile_NoClient", "Please open Lineage client first!" },
+            { "BatchDeleteTile_NoMapLoaded", "Please load a map first!" },
+            { "BatchDeleteTile_NoS32Files", "No S32 files found to process" },
+            { "BatchDeleteTile_Processing", "Processing {0} ({1}/{2})..." },
+            { "BatchDeleteTile_Result", "Delete complete!\n\nDeleted: {0}\nModified files: {1}\nFailed files: {2}" },
+            { "BatchDeleteTile_Complete", "Batch Delete Complete" },
         };
     }
 }

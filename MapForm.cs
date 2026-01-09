@@ -2274,8 +2274,8 @@ namespace L1FlyMapViewer
 
             // 恢復滾動位置
             _viewState.SetScrollSilent(scrollX, scrollY);
-            if (scrollX <= hScrollBar1.Maximum) hScrollBar1.Value = scrollX;
-            if (scrollY <= vScrollBar1.Maximum) vScrollBar1.Value = scrollY;
+            hScrollBar1.Value = Math.Clamp(scrollX, hScrollBar1.Minimum, hScrollBar1.Maximum);
+            vScrollBar1.Value = Math.Clamp(scrollY, vScrollBar1.Minimum, vScrollBar1.Maximum);
 
             CheckAndRerenderIfNeeded();
             UpdateMiniMap();
@@ -17229,6 +17229,45 @@ namespace L1FlyMapViewer
                 if (!material.HasLayer1 && !material.HasLayer2 && !material.HasLayer3 && !material.HasLayer4)
                     sb.AppendLine("(無圖層資料)");
 
+                // Layer1 詳細列表
+                if (material.HasLayer1 && material.Layer1Items.Count > 0)
+                {
+                    sb.AppendLine();
+                    sb.AppendLine("=== Layer1 明細 (地板) ===");
+                    sb.AppendLine("  X\t  Y\tIndexId\tTileId");
+                    sb.AppendLine("────────────────────────────────");
+                    foreach (var item in material.Layer1Items.OrderBy(i => i.RelativeY).ThenBy(i => i.RelativeX))
+                    {
+                        sb.AppendLine($"{item.RelativeX,4}\t{item.RelativeY,4}\t{item.IndexId,4}\t{item.TileId,6}");
+                    }
+                }
+
+                // Layer2 詳細列表
+                if (material.HasLayer2 && material.Layer2Items.Count > 0)
+                {
+                    sb.AppendLine();
+                    sb.AppendLine("=== Layer2 明細 (裝飾) ===");
+                    sb.AppendLine("  X\t  Y\tIndexId\tTileId\tUK");
+                    sb.AppendLine("────────────────────────────────────────");
+                    foreach (var item in material.Layer2Items.OrderBy(i => i.RelativeY).ThenBy(i => i.RelativeX))
+                    {
+                        sb.AppendLine($"{item.RelativeX,4}\t{item.RelativeY,4}\t{item.IndexId,4}\t{item.TileId,6}\t{item.UK,3}");
+                    }
+                }
+
+                // Layer4 詳細列表
+                if (material.HasLayer4 && material.Layer4Items.Count > 0)
+                {
+                    sb.AppendLine();
+                    sb.AppendLine("=== Layer4 明細 (物件) ===");
+                    sb.AppendLine("  X\t  Y\tGroupId\tLayer\tIndexId\tTileId");
+                    sb.AppendLine("──────────────────────────────────────────────────");
+                    foreach (var item in material.Layer4Items.OrderBy(i => i.GroupId).ThenBy(i => i.Layer))
+                    {
+                        sb.AppendLine($"{item.RelativeX,4}\t{item.RelativeY,4}\t{item.GroupId,5}\t{item.Layer,3}\t{item.IndexId,4}\t{item.TileId,6}");
+                    }
+                }
+
                 sb.AppendLine();
 
                 // Tile 資訊
@@ -17290,10 +17329,10 @@ namespace L1FlyMapViewer
                 using (var detailForm = new Form())
                 {
                     detailForm.Text = $"素材詳情 - {material.Name}";
-                    detailForm.Size = new Size(500, 450);
+                    detailForm.Size = new Size(700, 600);
                     detailForm.StartPosition = FormStartPosition.CenterParent;
                     detailForm.FormBorderStyle = FormBorderStyle.Sizable;
-                    detailForm.MinimumSize = new Size(400, 300);
+                    detailForm.MinimumSize = new Size(500, 400);
 
                     var textBox = new TextBox
                     {
@@ -26567,6 +26606,187 @@ namespace L1FlyMapViewer
                 UseShellExecute = true
             });
         }
+
+        #region 批次刪除 Tile
+
+        private void batchDeleteTileToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            // 檢查是否已載入客戶端
+            if (Share.MapDataList == null || Share.MapDataList.Count == 0)
+            {
+                MessageBox.Show(
+                    LocalizationManager.L("BatchDeleteTile_NoClient"),
+                    LocalizationManager.L("Warning"),
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+                return;
+            }
+
+            bool hasCurrentMap = _document != null && !string.IsNullOrEmpty(_document.MapId);
+
+            using (var dialog = new L1MapViewer.Forms.BatchDeleteTileDialog(hasCurrentMap))
+            {
+                if (dialog.ShowDialog(this) != DialogResult.OK)
+                    return;
+
+                BatchDeleteTiles(
+                    dialog.TileIdStart,
+                    dialog.TileIdEnd,
+                    dialog.IndexIdStart,
+                    dialog.IndexIdEnd,
+                    dialog.ProcessAllMaps);
+            }
+        }
+
+        private void BatchDeleteTiles(int tileIdStart, int tileIdEnd, int indexIdStart, int indexIdEnd, bool processAllMaps)
+        {
+            var s32FilesToProcess = new List<string>();
+
+            if (processAllMaps)
+            {
+                // 收集所有地圖的 S32 檔案
+                foreach (var mapEntry in Share.MapDataList)
+                {
+                    foreach (var fileEntry in mapEntry.Value.FullFileNameList)
+                    {
+                        if (fileEntry.Value.isS32 && File.Exists(fileEntry.Key))
+                        {
+                            s32FilesToProcess.Add(fileEntry.Key);
+                        }
+                    }
+                }
+            }
+            else
+            {
+                // 只處理當前地圖的 S32 檔案
+                if (_document == null || string.IsNullOrEmpty(_document.MapId))
+                {
+                    MessageBox.Show(
+                        LocalizationManager.L("BatchDeleteTile_NoMapLoaded"),
+                        LocalizationManager.L("Warning"),
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Warning);
+                    return;
+                }
+
+                foreach (var s32Data in _document.S32Files.Values)
+                {
+                    if (!string.IsNullOrEmpty(s32Data.FilePath) && File.Exists(s32Data.FilePath))
+                    {
+                        s32FilesToProcess.Add(s32Data.FilePath);
+                    }
+                }
+            }
+
+            if (s32FilesToProcess.Count == 0)
+            {
+                MessageBox.Show(
+                    LocalizationManager.L("BatchDeleteTile_NoS32Files"),
+                    LocalizationManager.L("Warning"),
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+                return;
+            }
+
+            // 開始處理
+            Utils.ShowProgressBar(true, this);
+            int totalDeleted = 0;
+            int filesModified = 0;
+            int filesFailed = 0;
+
+            for (int i = 0; i < s32FilesToProcess.Count; i++)
+            {
+                string filePath = s32FilesToProcess[i];
+                string fileName = Path.GetFileName(filePath);
+
+                this.toolStripStatusLabel1.Text = string.Format(
+                    LocalizationManager.L("BatchDeleteTile_Processing"),
+                    fileName, i + 1, s32FilesToProcess.Count);
+                toolStripProgressBar1.Value = (int)((i + 1) * 100.0 / s32FilesToProcess.Count);
+                Application.DoEvents();
+
+                try
+                {
+                    var s32Data = S32Parser.ParseFile(filePath);
+                    if (s32Data == null) continue;
+
+                    int deletedInFile = DeleteTilesFromS32(s32Data, tileIdStart, tileIdEnd, indexIdStart, indexIdEnd);
+
+                    if (deletedInFile > 0)
+                    {
+                        // 寫回檔案
+                        byte[] newData = S32Writer.ToBytes(s32Data);
+                        File.WriteAllBytes(filePath, newData);
+                        totalDeleted += deletedInFile;
+                        filesModified++;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[BatchDeleteTiles] 處理 {fileName} 失敗: {ex.Message}");
+                    filesFailed++;
+                }
+            }
+
+            Utils.ShowProgressBar(false, this);
+
+            // 顯示結果
+            string resultMessage = string.Format(
+                LocalizationManager.L("BatchDeleteTile_Result"),
+                totalDeleted, filesModified, filesFailed);
+
+            this.toolStripStatusLabel1.Text = resultMessage;
+
+            MessageBox.Show(
+                resultMessage,
+                LocalizationManager.L("BatchDeleteTile_Complete"),
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
+
+            // 如果修改了當前地圖，重新載入
+            if (!processAllMaps && filesModified > 0 && _document != null)
+            {
+                ReloadCurrentMap();
+            }
+        }
+
+        private int DeleteTilesFromS32(S32Data s32Data, int tileIdStart, int tileIdEnd, int indexIdStart, int indexIdEnd)
+        {
+            int deletedCount = 0;
+
+            // 刪除 Layer1 中符合條件的 Tile
+            for (int y = 0; y < 64; y++)
+            {
+                for (int x = 0; x < 128; x++)
+                {
+                    var cell = s32Data.Layer1[y, x];
+                    if (cell != null &&
+                        cell.TileId >= tileIdStart && cell.TileId <= tileIdEnd &&
+                        cell.IndexId >= indexIdStart && cell.IndexId <= indexIdEnd)
+                    {
+                        cell.TileId = 0;
+                        cell.IndexId = 0;
+                        deletedCount++;
+                    }
+                }
+            }
+
+            // 刪除 Layer2 中符合條件的項目
+            int layer2Removed = s32Data.Layer2.RemoveAll(item =>
+                item.TileId >= tileIdStart && item.TileId <= tileIdEnd &&
+                item.IndexId >= indexIdStart && item.IndexId <= indexIdEnd);
+            deletedCount += layer2Removed;
+
+            // 刪除 Layer4 中符合條件的物件
+            int layer4Removed = s32Data.Layer4.RemoveAll(obj =>
+                obj.TileId >= tileIdStart && obj.TileId <= tileIdEnd &&
+                obj.IndexId >= indexIdStart && obj.IndexId <= indexIdEnd);
+            deletedCount += layer4Removed;
+
+            return deletedCount;
+        }
+
+        #endregion
     }
 
     /// <summary>

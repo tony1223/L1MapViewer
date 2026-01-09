@@ -244,7 +244,7 @@ namespace L1MapViewer.CLI
 
             fs3p.OriginOffsetX = minX;
             fs3p.OriginOffsetY = minY;
-            fs3p.Width = maxX - minX + 1;
+            fs3p.Width = maxX - minX + 2;  // +2 因為每個格子包含偶數和奇數 X
             fs3p.Height = maxY - minY + 1;
 
             // 收集使用的 TileIds
@@ -264,38 +264,50 @@ namespace L1MapViewer.CLI
                 int relX = GetWorldX(cell) - minX;
                 int relY = GetWorldY(cell) - minY;
 
-                // Layer1
-                if (fs3p.HasLayer1 && cell.LocalX < 128 && cell.LocalY < 64)
+                // Layer1 - 每個遊戲格子對應兩個 Layer1 tile (偶數X 和 奇數X)
+                if (fs3p.HasLayer1 && cell.LocalY < 64)
                 {
-                    var tileCell = s32Data.Layer1[cell.LocalY, cell.LocalX];
-                    if (tileCell != null && tileCell.TileId > 0)
+                    // 處理偶數 X (cell.LocalX) 和奇數 X (cell.LocalX + 1)
+                    for (int dx = 0; dx <= 1; dx++)
                     {
-                        fs3p.Layer1Items.Add(new Fs3pLayer1Item
+                        int l1x = cell.LocalX + dx;
+                        if (l1x < 128)
                         {
-                            RelativeX = relX,
-                            RelativeY = relY,
-                            IndexId = (byte)tileCell.IndexId,
-                            TileId = (ushort)tileCell.TileId
-                        });
-                        usedTileIds.Add(tileCell.TileId);
+                            var tileCell = s32Data.Layer1[cell.LocalY, l1x];
+                            if (tileCell != null && tileCell.TileId > 0)
+                            {
+                                fs3p.Layer1Items.Add(new Fs3pLayer1Item
+                                {
+                                    RelativeX = relX + dx,  // 奇數 X 偏移 +1
+                                    RelativeY = relY,
+                                    IndexId = (byte)tileCell.IndexId,
+                                    TileId = (ushort)tileCell.TileId
+                                });
+                                usedTileIds.Add(tileCell.TileId);
+                            }
+                        }
                     }
                 }
 
-                // Layer2
+                // Layer2 - 同樣處理偶數和奇數 X
                 if (fs3p.HasLayer2)
                 {
-                    foreach (var item in s32Data.Layer2.Where(i => i.X == cell.LocalX && i.Y == cell.LocalY))
+                    for (int dx = 0; dx <= 1; dx++)
                     {
-                        fs3p.Layer2Items.Add(new Fs3pLayer2Item
+                        int l2x = cell.LocalX + dx;
+                        foreach (var item in s32Data.Layer2.Where(i => i.X == l2x && i.Y == cell.LocalY))
                         {
-                            RelativeX = relX,
-                            RelativeY = relY,
-                            IndexId = item.IndexId,
-                            TileId = item.TileId,
-                            UK = item.UK
-                        });
-                        if (item.TileId > 0)
-                            usedTileIds.Add(item.TileId);
+                            fs3p.Layer2Items.Add(new Fs3pLayer2Item
+                            {
+                                RelativeX = relX + dx,  // 奇數 X 偏移 +1
+                                RelativeY = relY,
+                                IndexId = item.IndexId,
+                                TileId = item.TileId,
+                                UK = item.UK
+                            });
+                            if (item.TileId > 0)
+                                usedTileIds.Add(item.TileId);
+                        }
                     }
                 }
 
@@ -320,10 +332,13 @@ namespace L1MapViewer.CLI
                     }
                 }
 
-                // Layer4
-                if (fs3p.HasLayer4)
+                // Layer4 - 使用與 Layer1 相同的座標系統
+                // 只在偶數 LocalX 時處理，避免重複添加
+                if (fs3p.HasLayer4 && cell.LocalX % 2 == 0)
                 {
-                    foreach (var obj in s32Data.Layer4.Where(o => o.X == cell.LocalX && o.Y == cell.LocalY))
+                    int localGameX = cell.LocalX / 2;  // S32 內的本地遊戲座標 (0-63)
+
+                    foreach (var obj in s32Data.Layer4.Where(o => (o.X/2) == localGameX && o.Y == cell.LocalY))
                     {
                         // 重新編號 GroupId
                         if (!groupIdMapping.TryGetValue(obj.GroupId, out int newGroupId))
@@ -332,9 +347,10 @@ namespace L1MapViewer.CLI
                             groupIdMapping[obj.GroupId] = newGroupId;
                         }
 
+                        // 和 Layer1 一樣的邏輯：RelativeX = relX (偶數位置)
                         fs3p.Layer4Items.Add(new Fs3pLayer4Item
                         {
-                            RelativeX = relX,
+                            RelativeX = relX + (obj.X%2),  // 和 Layer1 偶數格子一樣
                             RelativeY = relY,
                             GroupId = newGroupId,
                             Layer = (byte)obj.Layer,

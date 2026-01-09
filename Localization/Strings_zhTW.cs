@@ -511,6 +511,28 @@ namespace L1MapViewer.Localization
             // 共用標題
             { "Title_Done", "完成" },
             { "Common_OK", "確定" },
+
+            // 批次刪除 Tile
+            { "Form_BatchDeleteTile_Title", "批次刪除 Tile" },
+            { "Menu_BatchDeleteTile", "批次刪除 Tile..." },
+            { "BatchDeleteTile_TileIdRange", "TileId 範圍" },
+            { "BatchDeleteTile_IndexIdRange", "IndexId 範圍" },
+            { "BatchDeleteTile_Start", "起始" },
+            { "BatchDeleteTile_End", "結束" },
+            { "BatchDeleteTile_Scope", "處理範圍" },
+            { "BatchDeleteTile_CurrentMap", "當前地圖" },
+            { "BatchDeleteTile_AllMaps", "所有地圖 (maps 資料夾)" },
+            { "BatchDeleteTile_Warning", "此操作會直接修改 S32 檔案，請先備份！" },
+            { "BatchDeleteTile_InvalidTileIdRange", "TileId 起始值不能大於結束值" },
+            { "BatchDeleteTile_InvalidIndexIdRange", "IndexId 起始值不能大於結束值" },
+            { "BatchDeleteTile_ConfirmMessage", "確定要刪除符合以下條件的 Tile 嗎？\n\nTileId: {0} ~ {1}\nIndexId: {2} ~ {3}\n範圍: {4}\n\n此操作無法復原！" },
+            { "BatchDeleteTile_Confirm", "確認刪除" },
+            { "BatchDeleteTile_NoClient", "請先開啟天堂客戶端！" },
+            { "BatchDeleteTile_NoMapLoaded", "請先載入地圖！" },
+            { "BatchDeleteTile_NoS32Files", "找不到可處理的 S32 檔案" },
+            { "BatchDeleteTile_Processing", "正在處理 {0} ({1}/{2})..." },
+            { "BatchDeleteTile_Result", "刪除完成！\n\n刪除數量: {0}\n修改檔案: {1}\n失敗檔案: {2}" },
+            { "BatchDeleteTile_Complete", "批次刪除完成" },
         };
     }
 }

@@ -511,6 +511,28 @@ namespace L1MapViewer.Localization
             // 共通タイトル
             { "Title_Done", "完了" },
             { "Common_OK", "OK" },
+
+            // 一括タイル削除
+            { "Form_BatchDeleteTile_Title", "一括タイル削除" },
+            { "Menu_BatchDeleteTile", "一括タイル削除..." },
+            { "BatchDeleteTile_TileIdRange", "TileId 範囲" },
+            { "BatchDeleteTile_IndexIdRange", "IndexId 範囲" },
+            { "BatchDeleteTile_Start", "開始" },
+            { "BatchDeleteTile_End", "終了" },
+            { "BatchDeleteTile_Scope", "処理範囲" },
+            { "BatchDeleteTile_CurrentMap", "現在のマップ" },
+            { "BatchDeleteTile_AllMaps", "全マップ (maps フォルダ)" },
+            { "BatchDeleteTile_Warning", "S32 ファイルを直接変更します。先にバックアップしてください！" },
+            { "BatchDeleteTile_InvalidTileIdRange", "TileId の開始値は終了値より大きくできません" },
+            { "BatchDeleteTile_InvalidIndexIdRange", "IndexId の開始値は終了値より大きくできません" },
+            { "BatchDeleteTile_ConfirmMessage", "以下の条件に一致するタイルを削除しますか？\n\nTileId: {0} ~ {1}\nIndexId: {2} ~ {3}\n範囲: {4}\n\nこの操作は元に戻せません！" },
+            { "BatchDeleteTile_Confirm", "削除の確認" },
+            { "BatchDeleteTile_NoClient", "先にリネージュクライアントを開いてください！" },
+            { "BatchDeleteTile_NoMapLoaded", "先にマップを読み込んでください！" },
+            { "BatchDeleteTile_NoS32Files", "処理できる S32 ファイルが見つかりません" },
+            { "BatchDeleteTile_Processing", "{0} を処理中 ({1}/{2})..." },
+            { "BatchDeleteTile_Result", "削除完了！\n\n削除数: {0}\n変更ファイル: {1}\n失敗ファイル: {2}" },
+            { "BatchDeleteTile_Complete", "一括削除完了" },
         };
     }
 }

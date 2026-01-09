@@ -20,6 +20,7 @@ namespace L1FlyMapViewer
         private ToolStripMenuItem importMaterialToolStripMenuItem;
         private ToolStripMenuItem importFs32ToNewMapToolStripMenuItem;
         private ToolStripMenuItem discordToolStripMenuItem;
+        private ToolStripMenuItem batchDeleteTileToolStripMenuItem;
         private ToolStripMenuItem languageToolStripMenuItem;
         private ToolStripMenuItem langZhTWToolStripMenuItem;
         private ToolStripMenuItem langJaJPToolStripMenuItem;
@@ -173,6 +174,7 @@ namespace L1FlyMapViewer
             this.importMaterialToolStripMenuItem = new ToolStripMenuItem();
             this.importFs32ToNewMapToolStripMenuItem = new ToolStripMenuItem();
             this.discordToolStripMenuItem = new ToolStripMenuItem();
+            this.batchDeleteTileToolStripMenuItem = new ToolStripMenuItem();
             this.languageToolStripMenuItem = new ToolStripMenuItem();
             this.langZhTWToolStripMenuItem = new ToolStripMenuItem();
             this.langJaJPToolStripMenuItem = new ToolStripMenuItem();
@@ -332,6 +334,7 @@ namespace L1FlyMapViewer
                 this.importMaterialToolStripMenuItem,
                 this.importFs32ToNewMapToolStripMenuItem,
                 this.exportToolStripMenuItem,
+                this.batchDeleteTileToolStripMenuItem,
                 this.discordToolStripMenuItem,
                 this.languageToolStripMenuItem
             });
@@ -417,6 +420,14 @@ namespace L1FlyMapViewer
             this.discordToolStripMenuItem.Size = new Size(100, 20);
             this.discordToolStripMenuItem.Text = "到 Discord 討論";
             this.discordToolStripMenuItem.Click += new System.EventHandler(this.discordToolStripMenuItem_Click);
+
+            //
+            // batchDeleteTileToolStripMenuItem
+            //
+            this.batchDeleteTileToolStripMenuItem.Name = "batchDeleteTileToolStripMenuItem";
+            this.batchDeleteTileToolStripMenuItem.Size = new Size(110, 20);
+            this.batchDeleteTileToolStripMenuItem.Text = "批次刪除 Tile...";
+            this.batchDeleteTileToolStripMenuItem.Click += new System.EventHandler(this.batchDeleteTileToolStripMenuItem_Click);
 
             //
             // languageToolStripMenuItem

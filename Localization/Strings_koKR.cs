@@ -511,6 +511,28 @@ namespace L1MapViewer.Localization
             // 공통 제목
             { "Title_Done", "완료" },
             { "Common_OK", "확인" },
+
+            // 일괄 타일 삭제
+            { "Form_BatchDeleteTile_Title", "일괄 타일 삭제" },
+            { "Menu_BatchDeleteTile", "일괄 타일 삭제..." },
+            { "BatchDeleteTile_TileIdRange", "TileId 범위" },
+            { "BatchDeleteTile_IndexIdRange", "IndexId 범위" },
+            { "BatchDeleteTile_Start", "시작" },
+            { "BatchDeleteTile_End", "끝" },
+            { "BatchDeleteTile_Scope", "처리 범위" },
+            { "BatchDeleteTile_CurrentMap", "현재 맵" },
+            { "BatchDeleteTile_AllMaps", "모든 맵 (maps 폴더)" },
+            { "BatchDeleteTile_Warning", "S32 파일을 직접 수정합니다. 먼저 백업하세요!" },
+            { "BatchDeleteTile_InvalidTileIdRange", "TileId 시작 값이 끝 값보다 클 수 없습니다" },
+            { "BatchDeleteTile_InvalidIndexIdRange", "IndexId 시작 값이 끝 값보다 클 수 없습니다" },
+            { "BatchDeleteTile_ConfirmMessage", "다음 조건과 일치하는 타일을 삭제하시겠습니까?\n\nTileId: {0} ~ {1}\nIndexId: {2} ~ {3}\n범위: {4}\n\n이 작업은 취소할 수 없습니다!" },
+            { "BatchDeleteTile_Confirm", "삭제 확인" },
+            { "BatchDeleteTile_NoClient", "먼저 리니지 클라이언트를 여세요!" },
+            { "BatchDeleteTile_NoMapLoaded", "먼저 맵을 로드하세요!" },
+            { "BatchDeleteTile_NoS32Files", "처리할 S32 파일을 찾을 수 없습니다" },
+            { "BatchDeleteTile_Processing", "{0} 처리 중 ({1}/{2})..." },
+            { "BatchDeleteTile_Result", "삭제 완료!\n\n삭제됨: {0}\n수정된 파일: {1}\n실패한 파일: {2}" },
+            { "BatchDeleteTile_Complete", "일괄 삭제 완료" },
         };
     }
 }
