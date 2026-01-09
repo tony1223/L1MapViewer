@@ -12,6 +12,13 @@
         <!-- 抑制部分 nullable 和過時 API 警告 -->
         <NoWarn>CS8600;CS8601;CS8602;CS8603;CS8604;CS8605;CS8618;CS8619;CS8622;CS8625;CS0162;CS0168;CS0169;CS0219;CS0414;CA2022;SYSLIB0021</NoWarn>
 
+        <!-- 公司與產品資訊 -->
+        <Company>flyworld</Company>
+        <Product>L1MapViewer</Product>
+        <Copyright>Copyright © 2026 flyworld</Copyright>
+        <Authors>flyworld</Authors>
+        <Description>Lineage 1 Map Viewer and Editor</Description>
+
         <!-- 版本號設定 (可透過 /p:Version=1.yy.MMddHHmm 覆蓋) -->
         <Version>1.0.0</Version>
         <!-- 避免與 AssemblyInfo.cs 衝突，只生成版本相關屬性 -->
