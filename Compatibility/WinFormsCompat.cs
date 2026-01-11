@@ -1622,6 +1622,10 @@ public class WinFormsControlCollection : System.Collections.ObjectModel.Collecti
             {
                 tabPage.Content = contentToSet;
             }
+            else if (_container is Eto.Forms.Window window)
+            {
+                window.Content = contentToSet;
+            }
         }
     }
 }
@@ -2913,28 +2917,38 @@ public class ControlCollection : System.Collections.ObjectModel.Collection<Eto.F
 
     private void UpdateContainer()
     {
+        // 根據控件數量建立適當的內容
+        Eto.Forms.Control contentToSet = null;
+
+        if (Count == 1)
+        {
+            contentToSet = this[0];
+        }
+        else if (Count > 1)
+        {
+            // 使用 PixelLayout 以支援絕對定位 (Location 屬性)
+            var layout = new Eto.Forms.PixelLayout();
+            foreach (var control in this)
+            {
+                // 取得控件的 Location (如果有設定)
+                var loc = control.GetLocation();
+                layout.Add(control, loc);
+            }
+            contentToSet = layout;
+        }
+
+        // 設定到適當的容器類型
         if (_container is Eto.Forms.Panel panel)
         {
-            if (Count == 1)
-            {
-                panel.Content = this[0];
-            }
-            else if (Count > 1)
-            {
-                // 使用 PixelLayout 以支援絕對定位 (Location 屬性)
-                var layout = new Eto.Forms.PixelLayout();
-                foreach (var control in this)
-                {
-                    // 取得控件的 Location (如果有設定)
-                    var loc = control.GetLocation();
-                    layout.Add(control, loc);
-                }
-                panel.Content = layout;
-            }
-            else
-            {
-                panel.Content = null;
-            }
+            panel.Content = contentToSet;
+        }
+        else if (_container is Eto.Forms.TabPage tabPage)
+        {
+            tabPage.Content = contentToSet;
+        }
+        else if (_container is Eto.Forms.Window window)
+        {
+            window.Content = contentToSet;
         }
     }
 }
