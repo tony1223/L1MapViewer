@@ -1,4 +1,5 @@
 using System.Text;
+using System.IO;
 using L1FlyMapViewer;
 using L1MapViewer;
 using L1MapViewer.CLI;
@@ -6,6 +7,8 @@ using L1MapViewer.Localization;
 using System.Diagnostics;
 using Eto;
 using Eto.Forms;
+using Path = System.IO.Path;
+using File = System.IO.File;
 
 namespace L1MapViewerCore;
 

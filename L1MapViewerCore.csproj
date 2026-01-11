@@ -2,7 +2,10 @@
 
     <PropertyGroup>
         <OutputType>WinExe</OutputType>
-        <TargetFramework>net8.0</TargetFramework>
+        <!-- Use Windows TFM on Windows for WPF support, plain net8.0 on other platforms -->
+        <TargetFramework Condition="$([MSBuild]::IsOSPlatform('Windows'))">net8.0-windows</TargetFramework>
+        <TargetFramework Condition="!$([MSBuild]::IsOSPlatform('Windows'))">net8.0</TargetFramework>
+        <UseWPF Condition="$([MSBuild]::IsOSPlatform('Windows'))">true</UseWPF>
         <!-- Allow running on newer .NET versions if net8.0 runtime isn't available -->
         <RollForward>Major</RollForward>
         <!-- Use workloads when available, otherwise fall back to manual reference -->

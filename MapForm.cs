@@ -416,10 +416,17 @@ namespace L1FlyMapViewer
             this.s32MapPanel.SetTabStop(true);
             this.s32MapPanel.MouseEnter += (s, e) => this.s32MapPanel.Focus();
 
-            // 啟用雙緩衝以減少閃爍
-            typeof(Panel).InvokeMember("DoubleBuffered",
-                System.Reflection.BindingFlags.SetProperty | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic,
-                null, this.s32MapPanel, new object[] { true });
+            // 啟用雙緩衝以減少閃爍 (Eto.Forms 自動處理，只有 WinForms 需要)
+            try
+            {
+                var doubleBufferedProp = this.s32MapPanel.GetType().GetProperty("DoubleBuffered",
+                    System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic);
+                if (doubleBufferedProp != null && doubleBufferedProp.CanWrite)
+                {
+                    doubleBufferedProp.SetValue(this.s32MapPanel, true);
+                }
+            }
+            catch { /* Eto.Forms handles double buffering automatically */ }
             // MapViewerControl 已內建雙緩衝，不需要額外設定
 
             // 設定共享的 ViewState

@@ -340,6 +340,7 @@ public class WinFormsPanel : Eto.Forms.Panel
     public BorderStyle BorderStyle { get; set; }
     public bool AutoScroll { get; set; }
     public Point AutoScrollPosition { get; set; }
+    public bool DoubleBuffered { get; set; } = true; // Eto.Forms handles this automatically
     public Eto.Forms.ContextMenu ContextMenuStrip { get => ContextMenu; set => ContextMenu = value; }
 
     // Position properties
@@ -1012,8 +1013,10 @@ public class WinFormsSplitContainer : Eto.Forms.Splitter
 /// <summary>
 /// WinForms-compatible PictureBox wrapper (ImageView)
 /// </summary>
-public class WinFormsPictureBox : Eto.Forms.Drawable
+public class WinFormsPictureBox : Eto.Forms.Drawable, System.ComponentModel.ISupportInitialize
 {
+    public void BeginInit() { }
+    public void EndInit() { }
     public Point Location { get; set; }
     public DockStyle Dock { get; set; }
     public AnchorStyles Anchor { get; set; }
@@ -3135,7 +3138,7 @@ public static class ContainerExtensions
 
     public static ControlCollection GetControls(this Eto.Forms.Container container)
     {
-        return _collections.GetOrCreateValue(container);
+        return _collections.GetValue(container, c => new ControlCollection(c));
     }
 
     public static ControlCollection GetControls(this Eto.Forms.Panel panel)
