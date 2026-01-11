@@ -24016,7 +24016,8 @@ namespace L1FlyMapViewer
             resultForm.GetControls().Add(lblSummary);
 
             // S32 檔案選擇清單
-            Label lblS32 = new Label { Text = "S32 檔案:", Location = new Point(10, 40), Size = new Size(70, 20) };
+            Label lblS32 = new Label { Text = "S32 檔案:", Size = new Size(70, 20) };
+            lblS32.SetLocation(new Point(10, 40));
             resultForm.GetControls().Add(lblS32);
 
             ComboBox cmbS32Files = new ComboBox();
@@ -24032,11 +24033,18 @@ namespace L1FlyMapViewer
             resultForm.GetControls().Add(cmbS32Files);
 
             // 座標輸入
-            Label lblLocX = new Label { Text = "X:", Location = new Point(300, 40), Size = new Size(20, 20) };
-            TextBox txtLocX = new TextBox { Location = new Point(325, 37), Size = new Size(50, 23), Text = "0" };
-            Label lblLocY = new Label { Text = "Y:", Location = new Point(385, 40), Size = new Size(20, 20) };
-            TextBox txtLocY = new TextBox { Location = new Point(410, 37), Size = new Size(50, 23), Text = "0" };
-            resultForm.Controls.AddRange(new Control[] { lblLocX, txtLocX, lblLocY, txtLocY });
+            Label lblLocX = new Label { Text = "X:", Size = new Size(20, 20) };
+            lblLocX.SetLocation(new Point(300, 40));
+            TextBox txtLocX = new TextBox { Size = new Size(50, 23), Text = "0" };
+            txtLocX.SetLocation(new Point(325, 37));
+            Label lblLocY = new Label { Text = "Y:", Size = new Size(20, 20) };
+            lblLocY.SetLocation(new Point(385, 40));
+            TextBox txtLocY = new TextBox { Size = new Size(50, 23), Text = "0" };
+            txtLocY.SetLocation(new Point(410, 37));
+            resultForm.GetControls().Add(lblLocX);
+            resultForm.GetControls().Add(txtLocX);
+            resultForm.GetControls().Add(lblLocY);
+            resultForm.GetControls().Add(txtLocY);
 
             Button btnQuery = new Button();
             btnQuery.Text = "查詢";
@@ -24050,14 +24058,22 @@ namespace L1FlyMapViewer
             gbResult.SetLocation(new Point(10, 75));
             gbResult.Size = new Size(710, 120);
 
-            Label lblResultInfo = new Label { Text = "請選擇 S32 檔案並輸入座標後點擊「查詢」", Location = new Point(10, 25), Size = new Size(400, 20) };
+            Label lblResultInfo = new Label { Text = "請選擇 S32 檔案並輸入座標後點擊「查詢」", Size = new Size(400, 20) };
+            lblResultInfo.SetLocation(new Point(10, 25));
             gbResult.GetControls().Add(lblResultInfo);
 
-            Label lblTileId = new Label { Text = "TileId:", Location = new Point(10, 55), Size = new Size(50, 20) };
-            TextBox txtTileId = new TextBox { Location = new Point(65, 52), Size = new Size(80, 23), Enabled = false };
-            Label lblIndexId = new Label { Text = "IndexId:", Location = new Point(160, 55), Size = new Size(55, 20) };
-            TextBox txtIndexId = new TextBox { Location = new Point(220, 52), Size = new Size(80, 23), Enabled = false };
-            gbResult.Controls.AddRange(new Control[] { lblTileId, txtTileId, lblIndexId, txtIndexId });
+            Label lblTileId = new Label { Text = "TileId:", Size = new Size(50, 20) };
+            lblTileId.SetLocation(new Point(10, 55));
+            TextBox txtTileId = new TextBox { Size = new Size(80, 23), Enabled = false };
+            txtTileId.SetLocation(new Point(65, 52));
+            Label lblIndexId = new Label { Text = "IndexId:", Size = new Size(55, 20) };
+            lblIndexId.SetLocation(new Point(160, 55));
+            TextBox txtIndexId = new TextBox { Size = new Size(80, 23), Enabled = false };
+            txtIndexId.SetLocation(new Point(220, 52));
+            gbResult.GetControls().Add(lblTileId);
+            gbResult.GetControls().Add(txtTileId);
+            gbResult.GetControls().Add(lblIndexId);
+            gbResult.GetControls().Add(txtIndexId);
 
             Button btnApplyEdit = new Button();
             btnApplyEdit.Text = "套用修改";
@@ -24074,12 +24090,18 @@ namespace L1FlyMapViewer
             gbBatch.SetLocation(new Point(10, 205));
             gbBatch.Size = new Size(710, 80);
 
-            Label lblOldTileId = new Label { Text = "原 TileId:", Location = new Point(10, 30), Size = new Size(60, 20) };
-            TextBox txtOldTileId = new TextBox { Location = new Point(75, 27), Size = new Size(80, 23) };
-            Label lblNewTileId = new Label { Text = "新 TileId:", Location = new Point(170, 30), Size = new Size(60, 20) };
-            TextBox txtNewTileId = new TextBox { Location = new Point(235, 27), Size = new Size(80, 23) };
-            Label lblBatchScope = new Label { Text = "範圍:", Location = new Point(330, 30), Size = new Size(40, 20) };
-            ComboBox cmbBatchScope = new ComboBox { Location = new Point(375, 27), Size = new Size(150, 23), DropDownStyle = ComboBoxStyle.DropDownList };
+            Label lblOldTileId = new Label { Text = "原 TileId:", Size = new Size(60, 20) };
+            lblOldTileId.SetLocation(new Point(10, 30));
+            TextBox txtOldTileId = new TextBox { Size = new Size(80, 23) };
+            txtOldTileId.SetLocation(new Point(75, 27));
+            Label lblNewTileId = new Label { Text = "新 TileId:", Size = new Size(60, 20) };
+            lblNewTileId.SetLocation(new Point(170, 30));
+            TextBox txtNewTileId = new TextBox { Size = new Size(80, 23) };
+            txtNewTileId.SetLocation(new Point(235, 27));
+            Label lblBatchScope = new Label { Text = "範圍:", Size = new Size(40, 20) };
+            lblBatchScope.SetLocation(new Point(330, 30));
+            ComboBox cmbBatchScope = new ComboBox { Size = new Size(150, 23), DropDownStyle = ComboBoxStyle.DropDownList };
+            cmbBatchScope.SetLocation(new Point(375, 27));
             cmbBatchScope.Items.Add("當前選擇的 S32");
             cmbBatchScope.Items.Add("所有 S32 檔案");
             cmbBatchScope.SelectedIndex = 0;
@@ -24090,7 +24112,13 @@ namespace L1FlyMapViewer
             btnBatchReplace.Size = new Size(80, 28);
             btnBatchReplace.BackgroundColor = Colors.LightYellow;
 
-            gbBatch.Controls.AddRange(new Control[] { lblOldTileId, txtOldTileId, lblNewTileId, txtNewTileId, lblBatchScope, cmbBatchScope, btnBatchReplace });
+            gbBatch.GetControls().Add(lblOldTileId);
+            gbBatch.GetControls().Add(txtOldTileId);
+            gbBatch.GetControls().Add(lblNewTileId);
+            gbBatch.GetControls().Add(txtNewTileId);
+            gbBatch.GetControls().Add(lblBatchScope);
+            gbBatch.GetControls().Add(cmbBatchScope);
+            gbBatch.GetControls().Add(btnBatchReplace);
             resultForm.GetControls().Add(gbBatch);
 
             // 批量刪除區域
@@ -24099,10 +24127,14 @@ namespace L1FlyMapViewer
             gbDelete.SetLocation(new Point(10, 290));
             gbDelete.Size = new Size(710, 80);
 
-            Label lblDelTileId = new Label { Text = "TileId:", Location = new Point(10, 30), Size = new Size(50, 20) };
-            TextBox txtDelTileId = new TextBox { Location = new Point(65, 27), Size = new Size(80, 23) };
-            Label lblDelScope = new Label { Text = "範圍:", Location = new Point(160, 30), Size = new Size(40, 20) };
-            ComboBox cmbDelScope = new ComboBox { Location = new Point(205, 27), Size = new Size(150, 23), DropDownStyle = ComboBoxStyle.DropDownList };
+            Label lblDelTileId = new Label { Text = "TileId:", Size = new Size(50, 20) };
+            lblDelTileId.SetLocation(new Point(10, 30));
+            TextBox txtDelTileId = new TextBox { Size = new Size(80, 23) };
+            txtDelTileId.SetLocation(new Point(65, 27));
+            Label lblDelScope = new Label { Text = "範圍:", Size = new Size(40, 20) };
+            lblDelScope.SetLocation(new Point(160, 30));
+            ComboBox cmbDelScope = new ComboBox { Size = new Size(150, 23), DropDownStyle = ComboBoxStyle.DropDownList };
+            cmbDelScope.SetLocation(new Point(205, 27));
             cmbDelScope.Items.Add("當前選擇的 S32");
             cmbDelScope.Items.Add("所有 S32 檔案");
             cmbDelScope.SelectedIndex = 0;
@@ -24120,7 +24152,12 @@ namespace L1FlyMapViewer
             btnDeleteFromStats.BackgroundColor = WinFormsColors.LightCoral;
             this.toolTip1.SetToolTip(btnDeleteFromStats, "在下方統計清單中選擇項目後，點擊此按鈕刪除");
 
-            gbDelete.Controls.AddRange(new Control[] { lblDelTileId, txtDelTileId, lblDelScope, cmbDelScope, btnBatchDelete, btnDeleteFromStats });
+            gbDelete.GetControls().Add(lblDelTileId);
+            gbDelete.GetControls().Add(txtDelTileId);
+            gbDelete.GetControls().Add(lblDelScope);
+            gbDelete.GetControls().Add(cmbDelScope);
+            gbDelete.GetControls().Add(btnBatchDelete);
+            gbDelete.GetControls().Add(btnDeleteFromStats);
             resultForm.GetControls().Add(gbDelete);
 
             // 統計資訊
