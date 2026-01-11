@@ -3,6 +3,7 @@ using System.IO;
 using L1FlyMapViewer;
 using L1MapViewer;
 using L1MapViewer.CLI;
+using L1MapViewer.Helper;
 using L1MapViewer.Localization;
 using System.Diagnostics;
 using Eto;
@@ -24,6 +25,10 @@ static class Program
     static int Main(string[] args)
     {
         Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+
+        // 初始化閃退報告機制（最優先）
+        CrashReporter.Initialize();
+        CrashReporter.ClearOldLogs();
 
         // 初始化 Debug Log（每次啟動清除舊 log）
         DebugLog.Clear();
@@ -133,13 +138,29 @@ static class Program
         using var app = new Application(platform);
         LogPerf("[PROGRAM] Eto Application created");
 
-        LogPerf("[PROGRAM] Creating MapForm...");
-        var form = new MapForm();
-        LogPerf("[PROGRAM] MapForm created");
+        // 捕捉 Eto.Forms 的未處理例外
+        app.UnhandledException += (sender, e) =>
+        {
+            CrashReporter.ReportException(e.ExceptionObject as Exception, "Eto.UnhandledException");
+            DebugLog.Log($"[PROGRAM] Eto UnhandledException: {e.ExceptionObject}");
+        };
 
-        LogPerf("[PROGRAM] Application.Run() starting...");
-        app.Run(form);
-        return 0;
+        try
+        {
+            LogPerf("[PROGRAM] Creating MapForm...");
+            var form = new MapForm();
+            LogPerf("[PROGRAM] MapForm created");
+
+            LogPerf("[PROGRAM] Application.Run() starting...");
+            app.Run(form);
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            CrashReporter.ReportException(ex, "Application.Run");
+            DebugLog.Log($"[PROGRAM] Fatal exception in Application.Run: {ex}");
+            throw;
+        }
     }
 
     public static void LogPerf(string message)

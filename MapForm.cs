@@ -22930,13 +22930,15 @@ namespace L1FlyMapViewer
 
             resultForm.Resize += (s, args) =>
             {
-                clbItems.Size = new Size(resultForm.ClientSize.Width - 20, resultForm.ClientSize.Height - 130);
-                btnSelectAll.SetLocation(new Point(10, resultForm.ClientSize.Height - 85));
-                btnDeselectAll.SetLocation(new Point(100, resultForm.ClientSize.Height - 85));
-                btnCheckMissing.SetLocation(new Point(200, resultForm.ClientSize.Height - 85));
-                btnClearSelected.SetLocation(new Point(10, resultForm.ClientSize.Height - 45));
-                btnClearAll.SetLocation(new Point(140, resultForm.ClientSize.Height - 45));
-                btnClose.SetLocation(new Point(resultForm.ClientSize.Width - 100, resultForm.ClientSize.Height - 45));
+                int clientWidth = Math.Max(100, resultForm.ClientSize.Width);
+                int clientHeight = Math.Max(200, resultForm.ClientSize.Height);
+                clbItems.Size = new Size(Math.Max(10, clientWidth - 20), Math.Max(10, clientHeight - 130));
+                btnSelectAll.SetLocation(new Point(10, Math.Max(10, clientHeight - 85)));
+                btnDeselectAll.SetLocation(new Point(100, Math.Max(10, clientHeight - 85)));
+                btnCheckMissing.SetLocation(new Point(200, Math.Max(10, clientHeight - 85)));
+                btnClearSelected.SetLocation(new Point(10, Math.Max(10, clientHeight - 45)));
+                btnClearAll.SetLocation(new Point(140, Math.Max(10, clientHeight - 45)));
+                btnClose.SetLocation(new Point(Math.Max(10, clientWidth - 100), Math.Max(10, clientHeight - 45)));
             };
 
             resultForm.ShowDialog(this);
@@ -24663,15 +24665,19 @@ namespace L1FlyMapViewer
 
             resultForm.Resize += (s, args) =>
             {
-                gbResult.Size = new Size(resultForm.ClientSize.Width - 20, 120);
-                gbBatch.Size = new Size(resultForm.ClientSize.Width - 20, 80);
+                // 確保 Size 不會是負數
+                int clientWidth = Math.Max(100, resultForm.ClientSize.Width);
+                int clientHeight = Math.Max(500, resultForm.ClientSize.Height);
+
+                gbResult.Size = new Size(Math.Max(10, clientWidth - 20), 120);
+                gbBatch.Size = new Size(Math.Max(10, clientWidth - 20), 80);
                 gbBatch.SetLocation(new Point(10, 205));
-                gbDelete.Size = new Size(resultForm.ClientSize.Width - 20, 80);
+                gbDelete.Size = new Size(Math.Max(10, clientWidth - 20), 80);
                 gbDelete.SetLocation(new Point(10, 290));
-                gbStats.Size = new Size(resultForm.ClientSize.Width - 20, resultForm.ClientSize.Height - 430);
+                gbStats.Size = new Size(Math.Max(10, clientWidth - 20), Math.Max(10, clientHeight - 430));
                 gbStats.SetLocation(new Point(10, 375));
-                lvStats.Size = new Size(gbStats.Width - 20, gbStats.Height - 30);
-                btnClose.SetLocation(new Point(resultForm.ClientSize.Width - 100, resultForm.ClientSize.Height - 45));
+                lvStats.Size = new Size(Math.Max(10, gbStats.Width - 20), Math.Max(10, gbStats.Height - 30));
+                btnClose.SetLocation(new Point(Math.Max(10, clientWidth - 100), Math.Max(10, clientHeight - 45)));
             };
 
             resultForm.ShowDialog(this);
@@ -25496,14 +25502,16 @@ namespace L1FlyMapViewer
 
             resultForm.Resize += (s, args) =>
             {
-                lvItems.Size = new Size(resultForm.ClientSize.Width - 20, resultForm.ClientSize.Height - 230);
-                gbEdit.SetLocation(new Point(10, resultForm.ClientSize.Height - 185));
-                gbEdit.Size = new Size(resultForm.ClientSize.Width - 20, 80);
-                btnSelectAll.SetLocation(new Point(10, resultForm.ClientSize.Height - 95));
-                btnDeselectAll.SetLocation(new Point(100, resultForm.ClientSize.Height - 95));
-                btnClearSelected.SetLocation(new Point(10, resultForm.ClientSize.Height - 55));
-                btnClearAll.SetLocation(new Point(140, resultForm.ClientSize.Height - 55));
-                btnClose.SetLocation(new Point(resultForm.ClientSize.Width - 100, resultForm.ClientSize.Height - 55));
+                int clientWidth = Math.Max(100, resultForm.ClientSize.Width);
+                int clientHeight = Math.Max(300, resultForm.ClientSize.Height);
+                lvItems.Size = new Size(Math.Max(10, clientWidth - 20), Math.Max(10, clientHeight - 230));
+                gbEdit.SetLocation(new Point(10, Math.Max(10, clientHeight - 185)));
+                gbEdit.Size = new Size(Math.Max(10, clientWidth - 20), 80);
+                btnSelectAll.SetLocation(new Point(10, Math.Max(10, clientHeight - 95)));
+                btnDeselectAll.SetLocation(new Point(100, Math.Max(10, clientHeight - 95)));
+                btnClearSelected.SetLocation(new Point(10, Math.Max(10, clientHeight - 55)));
+                btnClearAll.SetLocation(new Point(140, Math.Max(10, clientHeight - 55)));
+                btnClose.SetLocation(new Point(Math.Max(10, clientWidth - 100), Math.Max(10, clientHeight - 55)));
             };
 
             resultForm.ShowDialog(this);
@@ -25836,12 +25844,14 @@ namespace L1FlyMapViewer
 
             resultForm.Resize += (s, args) =>
             {
-                clbItems.Size = new Size(resultForm.ClientSize.Width - 20, resultForm.ClientSize.Height - 130);
-                btnSelectAll.SetLocation(new Point(10, resultForm.ClientSize.Height - 85));
-                btnDeselectAll.SetLocation(new Point(100, resultForm.ClientSize.Height - 85));
-                btnClearSelected.SetLocation(new Point(10, resultForm.ClientSize.Height - 45));
-                btnClearAll.SetLocation(new Point(140, resultForm.ClientSize.Height - 45));
-                btnClose.SetLocation(new Point(resultForm.ClientSize.Width - 100, resultForm.ClientSize.Height - 45));
+                int clientWidth = Math.Max(100, resultForm.ClientSize.Width);
+                int clientHeight = Math.Max(200, resultForm.ClientSize.Height);
+                clbItems.Size = new Size(Math.Max(10, clientWidth - 20), Math.Max(10, clientHeight - 130));
+                btnSelectAll.SetLocation(new Point(10, Math.Max(10, clientHeight - 85)));
+                btnDeselectAll.SetLocation(new Point(100, Math.Max(10, clientHeight - 85)));
+                btnClearSelected.SetLocation(new Point(10, Math.Max(10, clientHeight - 45)));
+                btnClearAll.SetLocation(new Point(140, Math.Max(10, clientHeight - 45)));
+                btnClose.SetLocation(new Point(Math.Max(10, clientWidth - 100), Math.Max(10, clientHeight - 45)));
             };
 
             resultForm.Show();
@@ -27377,14 +27387,16 @@ namespace L1FlyMapViewer
 
             resultForm.Resize += (s, args) =>
             {
-                lvItems.Size = new Size(resultForm.ClientSize.Width - 20, resultForm.ClientSize.Height - 210);
-                gbEdit.SetLocation(new Point(10, resultForm.ClientSize.Height - 165));
-                gbEdit.Size = new Size(resultForm.ClientSize.Width - 20, 80);
-                btnSelectAll.SetLocation(new Point(10, resultForm.ClientSize.Height - 75));
-                btnDeselectAll.SetLocation(new Point(100, resultForm.ClientSize.Height - 75));
-                btnClearSelected.SetLocation(new Point(10, resultForm.ClientSize.Height - 35));
-                btnClearAll.SetLocation(new Point(140, resultForm.ClientSize.Height - 35));
-                btnClose.SetLocation(new Point(resultForm.ClientSize.Width - 100, resultForm.ClientSize.Height - 35));
+                int clientWidth = Math.Max(100, resultForm.ClientSize.Width);
+                int clientHeight = Math.Max(300, resultForm.ClientSize.Height);
+                lvItems.Size = new Size(Math.Max(10, clientWidth - 20), Math.Max(10, clientHeight - 210));
+                gbEdit.SetLocation(new Point(10, Math.Max(10, clientHeight - 165)));
+                gbEdit.Size = new Size(Math.Max(10, clientWidth - 20), 80);
+                btnSelectAll.SetLocation(new Point(10, Math.Max(10, clientHeight - 75)));
+                btnDeselectAll.SetLocation(new Point(100, Math.Max(10, clientHeight - 75)));
+                btnClearSelected.SetLocation(new Point(10, Math.Max(10, clientHeight - 35)));
+                btnClearAll.SetLocation(new Point(140, Math.Max(10, clientHeight - 35)));
+                btnClose.SetLocation(new Point(Math.Max(10, clientWidth - 100), Math.Max(10, clientHeight - 35)));
             };
 
             resultForm.ShowDialog(this);
