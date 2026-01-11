@@ -571,10 +571,11 @@ namespace L1FlyMapViewer
             };
 
             // 小地圖 (固定大小 268x268)
-            miniMapPictureBox.Size = new Eto.Drawing.Size(268, 268);
+            // 使用 _miniMapControl 而不是 miniMapPictureBox (由 SetupMiniMapControl 建立)
+            _miniMapControl.Size = new Eto.Drawing.Size(268, 268);
             var miniMapContainer = new Eto.Forms.Panel
             {
-                Content = miniMapPictureBox,
+                Content = _miniMapControl,
                 Size = new Eto.Drawing.Size(268, 268),
                 BackgroundColor = Eto.Drawing.Colors.Black
             };
@@ -652,11 +653,55 @@ namespace L1FlyMapViewer
             toolbarLayout.Items.Add(toolRow1);
             toolbarLayout.Items.Add(toolRow2);
 
-            // 地圖顯示區域 (包含 MapViewerControl)
+            // 地圖顯示區域 (包含 MapViewerControl 和浮動圖層面板)
+            // 使用原生 Eto.Forms 重建圖層面板
+            var etoLayerPanel = new Eto.Forms.StackLayout
+            {
+                Orientation = Eto.Forms.Orientation.Vertical,
+                Spacing = 2,
+                Padding = new Eto.Drawing.Padding(5),
+                BackgroundColor = Eto.Drawing.Color.FromArgb(200, 40, 40, 40)
+            };
+
+            // 圖層標題
+            var layerHeader = new Eto.Forms.Label
+            {
+                Text = "圖層",
+                TextColor = Eto.Drawing.Colors.Yellow,
+                Font = new Eto.Drawing.Font(Eto.Drawing.SystemFont.Bold, 10)
+            };
+            etoLayerPanel.Items.Add(layerHeader);
+
+            // 添加圖層 CheckBox（使用原有的 chkFloatLayer 控件，它們已經有事件綁定）
+            etoLayerPanel.Items.Add(chkFloatLayer1);
+            etoLayerPanel.Items.Add(chkFloatLayer2);
+            etoLayerPanel.Items.Add(chkFloatLayer4);
+            etoLayerPanel.Items.Add(chkFloatLayer5);
+            etoLayerPanel.Items.Add(chkFloatPassable);
+            etoLayerPanel.Items.Add(chkFloatGrid);
+            etoLayerPanel.Items.Add(chkFloatS32Boundary);
+            etoLayerPanel.Items.Add(chkFloatSafeZones);
+            etoLayerPanel.Items.Add(chkFloatCombatZones);
+            etoLayerPanel.Items.Add(chkFloatLayer8);
+
+            // 使用 PixelLayout 來支援圖層面板的絕對定位
+            var mapPixelLayout = new Eto.Forms.PixelLayout();
+            mapPixelLayout.Add(_mapViewerControl, 0, 0);
+            mapPixelLayout.Add(etoLayerPanel, 10, 10);
+
             var mapContainer = new Eto.Forms.Panel
             {
-                Content = _mapViewerControl,
+                Content = mapPixelLayout,
                 BackgroundColor = Eto.Drawing.Colors.Black
+            };
+
+            // 監聽 mapContainer 大小變更以調整子控件大小和圖層面板位置
+            mapContainer.SizeChanged += (s, e) =>
+            {
+                _mapViewerControl.Size = mapContainer.Size;
+                // 調整圖層面板位置（右上角）
+                int x = Math.Max(10, mapContainer.Width - 120);
+                mapPixelLayout.Move(etoLayerPanel, x, 10);
             };
 
             // 中間面板布局

@@ -157,7 +157,16 @@ namespace L1MapViewer.Controls
             _pictureBox.MouseUp += PictureBox_MouseUp;
             _pictureBox.Paint += PictureBox_Paint;
 
+            // Eto.Forms doesn't support DockStyle.Fill, so we need to manually resize the PictureBox
+            this.Resize += (s, e) =>
+            {
+                _pictureBox.Size = new Size(this.Width, this.Height);
+            };
+
             this.GetControls().Add(_pictureBox);
+
+            // Set initial size
+            _pictureBox.Size = new Size(MiniMapSize, MiniMapSize);
         }
 
         #endregion

@@ -26,10 +26,9 @@ namespace L1FlyMapViewer
                 ViewState = _viewState
             };
 
-            // 隱藏原本的 PictureBox，加入新控制項
+            // 隱藏原本的 PictureBox（新的 _miniMapControl 會在 BuildEtoLayout 中添加到佈局）
             miniMapPictureBox.Visible = false;
-            miniMapPictureBox.Parent.GetControls().Add(_miniMapControl);
-            _miniMapControl.BringToFront();
+            // 註：不再需要手動添加到 parent，BuildEtoLayout 會直接使用 _miniMapControl
 
             // 訂閱導航事件
             _miniMapControl.NavigateRequested += MiniMapControl_NavigateRequested;

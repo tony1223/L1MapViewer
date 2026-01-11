@@ -1121,7 +1121,7 @@ namespace L1FlyMapViewer
             this.layerFloatPanel.GetControls().Add(this.layerPopupPanel);
             this.layerFloatPanel.SetLocation(new Point(10, 10));
             this.layerFloatPanel.SetName("layerFloatPanel");
-            this.layerFloatPanel.Size = new Size(90, 295);
+            this.layerFloatPanel.Size = new Size(110, 295);
             this.layerFloatPanel.TabIndex = 10;
             this.layerFloatPanel.SetAnchor(AnchorStyles.Top | AnchorStyles.Right);
 
@@ -1155,7 +1155,7 @@ namespace L1FlyMapViewer
             this.layerPopupPanel.SetLocation(new Point(0, 24));
             this.layerPopupPanel.SetName("layerPopupPanel");
             this.layerPopupPanel.Padding = new Padding(5);
-            this.layerPopupPanel.Size = new Size(90, 270);
+            this.layerPopupPanel.Size = new Size(110, 270);
             this.layerPopupPanel.TabIndex = 1;
             this.layerPopupPanel.Visible = true;
 

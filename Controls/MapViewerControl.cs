@@ -628,6 +628,9 @@ namespace L1MapViewer.Controls
 
         private void MapPanel_Resize(object sender, EventArgs e)
         {
+            // Eto.Forms doesn't support DockStyle.Fill, so we need to manually resize the PictureBox
+            _mapPictureBox.Size = new Eto.Drawing.Size(_mapPanel.Width, _mapPanel.Height);
+
             if (_document != null)
             {
                 _viewState.ViewportWidth = _mapPanel.Width;
