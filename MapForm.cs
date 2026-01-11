@@ -22717,7 +22717,7 @@ namespace L1FlyMapViewer
 
             int totalItems = s32WithL6.Sum(x => x.items.Count);
             Label lblSummary = new Label();
-            lblSummary.Text = $"共 {s32WithL6.Count} 個 S32 檔案有 Layer6（使用的TileId）資料，總計 {totalItems} 項。勾選要刪除的項目：";
+            lblSummary.Text = $"共 {s32WithL6.Count} 個 S32 檔案有 Layer6（使用的TileId）資料，總計 {totalItems} 項：";
             lblSummary.SetLocation(new Point(10, 10));
             lblSummary.Size = new Size(710, 20);
             resultForm.GetControls().Add(lblSummary);
@@ -22751,8 +22751,8 @@ namespace L1FlyMapViewer
 
             Button btnSelectAll = new Button();
             btnSelectAll.Text = "全選";
-            btnSelectAll.SetLocation(new Point(10, 425));
-            btnSelectAll.Size = new Size(80, 30);
+            btnSelectAll.SetLocation(new Point(10, 465));
+            btnSelectAll.Size = new Size(80, 35);
             btnSelectAll.Click += (s, args) =>
             {
                 for (int i = 0; i < clbItems.Items.Count; i++)
@@ -22762,8 +22762,8 @@ namespace L1FlyMapViewer
 
             Button btnDeselectAll = new Button();
             btnDeselectAll.Text = "取消全選";
-            btnDeselectAll.SetLocation(new Point(100, 425));
-            btnDeselectAll.Size = new Size(80, 30);
+            btnDeselectAll.SetLocation(new Point(100, 465));
+            btnDeselectAll.Size = new Size(80, 35);
             btnDeselectAll.Click += (s, args) =>
             {
                 for (int i = 0; i < clbItems.Items.Count; i++)
@@ -22774,8 +22774,8 @@ namespace L1FlyMapViewer
             // 檢查與自動修復缺失的 TileId
             Button btnCheckMissing = new Button();
             btnCheckMissing.Text = "檢查缺失並自動修復";
-            btnCheckMissing.SetLocation(new Point(200, 425));
-            btnCheckMissing.Size = new Size(150, 30);
+            btnCheckMissing.SetLocation(new Point(200, 465));
+            btnCheckMissing.Size = new Size(150, 35);
             btnCheckMissing.Click += (s, args) =>
             {
                 int totalFixed = 0;
@@ -22833,93 +22833,7 @@ namespace L1FlyMapViewer
             };
             resultForm.GetControls().Add(btnCheckMissing);
 
-            Button btnClearSelected = new Button();
-            btnClearSelected.Text = "刪除勾選項目";
-            btnClearSelected.SetLocation(new Point(10, 465));
-            btnClearSelected.Size = new Size(120, 35);
-            btnClearSelected.BackgroundColor = WinFormsColors.LightCoral;
-            btnClearSelected.Enabled = s32WithL6.Count > 0;
-            btnClearSelected.Click += (s, args) =>
-            {
-                if (clbItems.CheckedIndices.Count == 0)
-                {
-                    WinFormsMessageBox.Show("請先勾選要刪除的項目", "提示", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                    return;
-                }
-
-                var confirmResult = WinFormsMessageBox.Show(
-                    $"確定要刪除勾選的 {clbItems.CheckedIndices.Count} 個 Layer6 項目嗎？\n\n注意：刪除 L6 中的 TileId 可能會影響遊戲顯示。",
-                    "確認刪除",
-                    MessageBoxButtons.YesNo,
-                    MessageBoxIcon.Warning);
-
-                if (confirmResult != DialogResult.Yes) return;
-
-                Dictionary<string, List<int>> toRemove = new Dictionary<string, List<int>>();
-                foreach (int idx in clbItems.CheckedIndices)
-                {
-                    var info = itemInfoList[idx];
-                    if (!toRemove.ContainsKey(info.filePath))
-                        toRemove[info.filePath] = new List<int>();
-                    toRemove[info.filePath].Add(info.tileId);
-                }
-
-                int removedCount = 0;
-                foreach (var kvp in toRemove)
-                {
-                    if (_document.S32Files.TryGetValue(kvp.Key, out S32Data s32Data))
-                    {
-                        foreach (var tileId in kvp.Value)
-                        {
-                            if (s32Data.Layer6.Remove(tileId))
-                                removedCount++;
-                        }
-                        s32Data.IsModified = true;
-                    }
-                }
-
-                WinFormsMessageBox.Show($"已刪除 {removedCount} 個 Layer6 項目。\n\n請記得儲存 S32 檔案。", "完成",
-                    MessageBoxButtons.OK, MessageBoxIcon.Information);
-
-                resultForm.Close();
-                RenderS32Map();
-            };
-            resultForm.GetControls().Add(btnClearSelected);
-
-            Button btnClearAll = new Button();
-            btnClearAll.Text = "清除全部 L6";
-            btnClearAll.SetLocation(new Point(140, 465));
-            btnClearAll.Size = new Size(120, 35);
-            btnClearAll.BackgroundColor = WinFormsColors.Salmon;
-            btnClearAll.Enabled = s32WithL6.Count > 0;
-            btnClearAll.Click += (s, args) =>
-            {
-                var confirmResult = WinFormsMessageBox.Show(
-                    $"確定要清除所有 {totalItems} 個 Layer6 項目嗎？\n\n警告：這可能會嚴重影響遊戲顯示！",
-                    "確認清除全部",
-                    MessageBoxButtons.YesNo,
-                    MessageBoxIcon.Warning);
-
-                if (confirmResult != DialogResult.Yes) return;
-
-                int removedCount = 0;
-                foreach (var (filePath, fileName, items) in s32WithL6)
-                {
-                    if (_document.S32Files.TryGetValue(filePath, out S32Data s32Data))
-                    {
-                        removedCount += s32Data.Layer6.Count;
-                        s32Data.Layer6.Clear();
-                        s32Data.IsModified = true;
-                    }
-                }
-
-                WinFormsMessageBox.Show($"已清除 {removedCount} 個 Layer6 項目。\n\n請記得儲存 S32 檔案。", "完成",
-                    MessageBoxButtons.OK, MessageBoxIcon.Information);
-
-                resultForm.Close();
-                RenderS32Map();
-            };
-            resultForm.GetControls().Add(btnClearAll);
+            // 註：L6 刪除/清除功能已移除，因為遊戲邏輯不需要此功能
 
             Button btnClose = new Button();
             btnClose.Text = "關閉";
@@ -22932,12 +22846,10 @@ namespace L1FlyMapViewer
             {
                 int clientWidth = Math.Max(100, resultForm.ClientSize.Width);
                 int clientHeight = Math.Max(200, resultForm.ClientSize.Height);
-                clbItems.Size = new Size(Math.Max(10, clientWidth - 20), Math.Max(10, clientHeight - 130));
-                btnSelectAll.SetLocation(new Point(10, Math.Max(10, clientHeight - 85)));
-                btnDeselectAll.SetLocation(new Point(100, Math.Max(10, clientHeight - 85)));
-                btnCheckMissing.SetLocation(new Point(200, Math.Max(10, clientHeight - 85)));
-                btnClearSelected.SetLocation(new Point(10, Math.Max(10, clientHeight - 45)));
-                btnClearAll.SetLocation(new Point(140, Math.Max(10, clientHeight - 45)));
+                clbItems.Size = new Size(Math.Max(10, clientWidth - 20), Math.Max(10, clientHeight - 90));
+                btnSelectAll.SetLocation(new Point(10, Math.Max(10, clientHeight - 45)));
+                btnDeselectAll.SetLocation(new Point(100, Math.Max(10, clientHeight - 45)));
+                btnCheckMissing.SetLocation(new Point(200, Math.Max(10, clientHeight - 45)));
                 btnClose.SetLocation(new Point(Math.Max(10, clientWidth - 100), Math.Max(10, clientHeight - 45)));
             };
 
@@ -24731,7 +24643,8 @@ namespace L1FlyMapViewer
             // 使用 CheckedListBox 顯示所有 Layer2 項目
             CheckedListBox clbItems = new CheckedListBox();
             clbItems.SetLocation(new Point(10, 35));
-            clbItems.Size = new Size(810, resultForm.ClientSize.Height - 130);
+            // 使用固定初始高度，Anchor 會在 Form 顯示後自動調整
+            clbItems.Size = new Size(810, 370);
             clbItems.Font = new Font("Consolas", 9);
             clbItems.CheckOnClick = true;
             clbItems.SetAnchor(AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right);
@@ -24752,7 +24665,8 @@ namespace L1FlyMapViewer
 
             // 按鈕面板
             Panel pnlButtons = new Panel();
-            pnlButtons.SetLocation(new Point(10, resultForm.ClientSize.Height - 90));
+            // 使用固定初始位置，Anchor 會在 Form 顯示後自動調整
+            pnlButtons.SetLocation(new Point(10, 410));
             pnlButtons.Size = new Size(810, 80);
             pnlButtons.SetAnchor(AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right);
             resultForm.GetControls().Add(pnlButtons);
@@ -26461,7 +26375,8 @@ namespace L1FlyMapViewer
             // 使用 TabControl 分頁顯示
             TabControl tabControl = new TabControl();
             tabControl.SetLocation(new Point(10, 10));
-            tabControl.Size = new Size(resultForm.ClientSize.Width - 20, resultForm.ClientSize.Height - 60);
+            // 使用固定初始大小，Anchor 會在 Form 顯示後自動調整
+            tabControl.Size = new Size(820, 530);
             tabControl.SetAnchor(AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right);
             resultForm.GetControls().Add(tabControl);
 
@@ -26993,7 +26908,8 @@ namespace L1FlyMapViewer
             // 關閉按鈕
             Button btnClose = new Button();
             btnClose.Text = "關閉";
-            btnClose.SetLocation(new Point(resultForm.ClientSize.Width - 90, resultForm.ClientSize.Height - 40));
+            // 使用固定初始位置，Anchor 會在 Form 顯示後自動調整
+            btnClose.SetLocation(new Point(760, 555));
             btnClose.Size = new Size(80, 30);
             btnClose.SetAnchor(AnchorStyles.Bottom | AnchorStyles.Right);
             btnClose.Click += (s, args) => resultForm.Close();
