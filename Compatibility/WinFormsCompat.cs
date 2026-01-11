@@ -1596,20 +1596,31 @@ public class WinFormsControlCollection : System.Collections.ObjectModel.Collecti
 
     private void UpdateContainer()
     {
-        if (_container is Eto.Forms.Panel panel)
+        Eto.Forms.Control contentToSet = null;
+
+        if (Count == 1)
         {
-            if (Count == 1)
+            contentToSet = this[0];
+        }
+        else if (Count > 1)
+        {
+            var layout = new Eto.Forms.StackLayout();
+            foreach (var control in this)
             {
-                panel.Content = this[0];
+                layout.Items.Add(control);
             }
-            else if (Count > 1)
+            contentToSet = layout;
+        }
+
+        if (contentToSet != null)
+        {
+            if (_container is Eto.Forms.Panel panel)
             {
-                var layout = new Eto.Forms.StackLayout();
-                foreach (var control in this)
-                {
-                    layout.Items.Add(control);
-                }
-                panel.Content = layout;
+                panel.Content = contentToSet;
+            }
+            else if (_container is Eto.Forms.TabPage tabPage)
+            {
+                tabPage.Content = contentToSet;
             }
         }
     }
