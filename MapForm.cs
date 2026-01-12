@@ -24966,8 +24966,8 @@ namespace L1FlyMapViewer
                 return;
             }
 
-            // 收集所有 Layer3 資料項目 (使用全域遊戲座標)
-            var allItems = new List<(string filePath, string fileName, int globalX, int globalY, short attr1, short attr2, string region1, string pass1, string region2, string pass2)>();
+            // 收集所有 Layer3 資料項目 (同時保留本地座標和全域遊戲座標)
+            var allItems = new List<(string filePath, string fileName, int localX, int localY, int globalX, int globalY, short attr1, short attr2, string region1, string pass1, string region2, string pass2)>();
             var s32Stats = new List<(string filePath, string fileName, int safeCount, int combatCount, int impassableCount, int totalNonZero)>();
 
             foreach (var kvp in _document.S32Files)
@@ -25009,7 +25009,7 @@ namespace L1FlyMapViewer
                         // 計算全域遊戲座標
                         int globalX = baseGameX + x;
                         int globalY = baseGameY + y;
-                        allItems.Add((filePath, fileName, globalX, globalY, attr.Attribute1, attr.Attribute2,
+                        allItems.Add((filePath, fileName, x, y, globalX, globalY, attr.Attribute1, attr.Attribute2,
                             region1, pass1 ? "可通行" : "不可通行",
                             region2, pass2 ? "可通行" : "不可通行"));
                     }
@@ -25048,10 +25048,12 @@ namespace L1FlyMapViewer
             lvItems.GridLines = true;
             lvItems.Font = new Font("Consolas", 9);
 
-            lvItems.Columns.Add("S32", 120);
-            lvItems.Columns.Add("X", 50);
-            lvItems.Columns.Add("Y", 50);
-            lvItems.Columns.Add("Attr1(左上)", 95);
+            lvItems.Columns.Add("S32", 100);
+            lvItems.Columns.Add("本地X", 55);
+            lvItems.Columns.Add("本地Y", 55);
+            lvItems.Columns.Add("遊戲X", 60);
+            lvItems.Columns.Add("遊戲Y", 60);
+            lvItems.Columns.Add("Attr1(左上)", 90);
             lvItems.Columns.Add("區域1", 60);
             lvItems.Columns.Add("通行1", 70);
             lvItems.Columns.Add("Attr2(右上)", 95);
@@ -25065,6 +25067,8 @@ namespace L1FlyMapViewer
             {
                 var item = allItems[args.ItemIndex];
                 var lvi = new ListViewItem(item.fileName);
+                lvi.SubItems.Add(item.localX.ToString());
+                lvi.SubItems.Add(item.localY.ToString());
                 lvi.SubItems.Add(item.globalX.ToString());
                 lvi.SubItems.Add(item.globalY.ToString());
                 lvi.SubItems.Add($"0x{item.attr1:X4}");
@@ -25096,14 +25100,16 @@ namespace L1FlyMapViewer
                     switch (sortColumn)
                     {
                         case 0: cmp = string.Compare(a.fileName, b.fileName); break;
-                        case 1: cmp = a.globalX.CompareTo(b.globalX); break;
-                        case 2: cmp = a.globalY.CompareTo(b.globalY); break;
-                        case 3: cmp = a.attr1.CompareTo(b.attr1); break;
-                        case 4: cmp = string.Compare(a.region1, b.region1); break;
-                        case 5: cmp = string.Compare(a.pass1, b.pass1); break;
-                        case 6: cmp = a.attr2.CompareTo(b.attr2); break;
-                        case 7: cmp = string.Compare(a.region2, b.region2); break;
-                        case 8: cmp = string.Compare(a.pass2, b.pass2); break;
+                        case 1: cmp = a.localX.CompareTo(b.localX); break;
+                        case 2: cmp = a.localY.CompareTo(b.localY); break;
+                        case 3: cmp = a.globalX.CompareTo(b.globalX); break;
+                        case 4: cmp = a.globalY.CompareTo(b.globalY); break;
+                        case 5: cmp = a.attr1.CompareTo(b.attr1); break;
+                        case 6: cmp = string.Compare(a.region1, b.region1); break;
+                        case 7: cmp = string.Compare(a.pass1, b.pass1); break;
+                        case 8: cmp = a.attr2.CompareTo(b.attr2); break;
+                        case 9: cmp = string.Compare(a.region2, b.region2); break;
+                        case 10: cmp = string.Compare(a.pass2, b.pass2); break;
                     }
                     return sortAsc ? cmp : -cmp;
                 });
@@ -25119,7 +25125,7 @@ namespace L1FlyMapViewer
                     var item = allItems[idx];
                     // 使用全域遊戲座標跳轉
                     JumpToGameCoordinate(item.globalX, item.globalY);
-                    this.toolStripStatusLabel1.Text = $"已跳轉到遊戲座標 ({item.globalX},{item.globalY})";
+                    this.toolStripStatusLabel1.Text = $"已跳轉到 本地({item.localX},{item.localY}) 遊戲座標({item.globalX},{item.globalY})";
                 }
             };
 
