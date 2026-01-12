@@ -24966,8 +24966,8 @@ namespace L1FlyMapViewer
                 return;
             }
 
-            // 收集所有 Layer3 資料項目
-            var allItems = new List<(string filePath, string fileName, int x, int y, short attr1, short attr2, string region1, string pass1, string region2, string pass2)>();
+            // 收集所有 Layer3 資料項目 (使用全域遊戲座標)
+            var allItems = new List<(string filePath, string fileName, int globalX, int globalY, short attr1, short attr2, string region1, string pass1, string region2, string pass2)>();
             var s32Stats = new List<(string filePath, string fileName, int safeCount, int combatCount, int impassableCount, int totalNonZero)>();
 
             foreach (var kvp in _document.S32Files)
@@ -24975,6 +24975,10 @@ namespace L1FlyMapViewer
                 string filePath = kvp.Key;
                 string fileName = Path.GetFileName(kvp.Key);
                 S32Data s32Data = kvp.Value;
+
+                // S32 的起始遊戲座標
+                int baseGameX = s32Data.SegInfo.nLinBeginX;
+                int baseGameY = s32Data.SegInfo.nLinBeginY;
 
                 int safeCount = 0, combatCount = 0, impassableCount = 0, totalNonZero = 0;
 
@@ -25002,7 +25006,10 @@ namespace L1FlyMapViewer
                         if (!pass2) impassableCount++;
 
                         totalNonZero++;
-                        allItems.Add((filePath, fileName, x, y, attr.Attribute1, attr.Attribute2,
+                        // 計算全域遊戲座標
+                        int globalX = baseGameX + x;
+                        int globalY = baseGameY + y;
+                        allItems.Add((filePath, fileName, globalX, globalY, attr.Attribute1, attr.Attribute2,
                             region1, pass1 ? "可通行" : "不可通行",
                             region2, pass2 ? "可通行" : "不可通行"));
                     }
@@ -25017,9 +25024,9 @@ namespace L1FlyMapViewer
             {
                 int cmp = string.Compare(a.fileName, b.fileName, StringComparison.Ordinal);
                 if (cmp != 0) return cmp;
-                cmp = a.x.CompareTo(b.x);
+                cmp = a.globalX.CompareTo(b.globalX);
                 if (cmp != 0) return cmp;
-                return a.y.CompareTo(b.y);
+                return a.globalY.CompareTo(b.globalY);
             });
 
             // 顯示結果
@@ -25058,8 +25065,8 @@ namespace L1FlyMapViewer
             {
                 var item = allItems[args.ItemIndex];
                 var lvi = new ListViewItem(item.fileName);
-                lvi.SubItems.Add(item.x.ToString());
-                lvi.SubItems.Add(item.y.ToString());
+                lvi.SubItems.Add(item.globalX.ToString());
+                lvi.SubItems.Add(item.globalY.ToString());
                 lvi.SubItems.Add($"0x{item.attr1:X4}");
                 lvi.SubItems.Add(item.region1);
                 lvi.SubItems.Add(item.pass1);
@@ -25089,8 +25096,8 @@ namespace L1FlyMapViewer
                     switch (sortColumn)
                     {
                         case 0: cmp = string.Compare(a.fileName, b.fileName); break;
-                        case 1: cmp = a.x.CompareTo(b.x); break;
-                        case 2: cmp = a.y.CompareTo(b.y); break;
+                        case 1: cmp = a.globalX.CompareTo(b.globalX); break;
+                        case 2: cmp = a.globalY.CompareTo(b.globalY); break;
                         case 3: cmp = a.attr1.CompareTo(b.attr1); break;
                         case 4: cmp = string.Compare(a.region1, b.region1); break;
                         case 5: cmp = string.Compare(a.pass1, b.pass1); break;
@@ -25110,21 +25117,9 @@ namespace L1FlyMapViewer
                 {
                     int idx = lvItems.SelectedIndices[0];
                     var item = allItems[idx];
-                    if (_document.S32Files.TryGetValue(item.filePath, out S32Data s32Data))
-                    {
-                        // 計算世界座標並跳轉
-                        int[] loc = s32Data.SegInfo.GetLoc(1.0);
-                        int layer1X = item.x * 2;
-                        int baseX = -24 * (layer1X / 2);
-                        int baseY = 63 * 12 - 12 * (layer1X / 2);
-                        int worldX = loc[0] + baseX + layer1X * 24 + item.y * 24;
-                        int worldY = loc[1] + baseY + item.y * 12;
-
-                        _viewState.ScrollX = worldX - _mapViewerControl.Width / 2;
-                        _viewState.ScrollY = worldY - _mapViewerControl.Height / 2;
-                        RenderS32Map();
-                        this.toolStripStatusLabel1.Text = $"已跳轉到 {item.fileName} ({item.x},{item.y})";
-                    }
+                    // 使用全域遊戲座標跳轉
+                    JumpToGameCoordinate(item.globalX, item.globalY);
+                    this.toolStripStatusLabel1.Text = $"已跳轉到遊戲座標 ({item.globalX},{item.globalY})";
                 }
             };
 
