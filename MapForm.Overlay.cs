@@ -157,9 +157,24 @@ namespace L1FlyMapViewer
         }
 
         // 繪製區域覆蓋層 (SkiaSharp 版本)
-        // 參考 DrawRegionsOverlayViewport
+        // 參考 DrawRegionsOverlayViewport - 使用 Attribute1 低4位判斷整個格子
+        // 低4位: 0-3=一般, 4-7/C-F=安全(bit2), 8-B=戰鬥(bit3且非bit2)
         private void DrawRegionsOverlayViewportSK(SKCanvas canvas, Struct.L1Map currentMap, Rectangle worldRect, bool showSafe, bool showCombat)
         {
+            // 安全區：藍色，戰鬥區：紅色（與舊版一致）
+            using var safeBrush = new SKPaint
+            {
+                IsAntialias = false,
+                Style = SKPaintStyle.Fill,
+                Color = new SKColor(0, 150, 255, 80)  // 藍色半透明
+            };
+            using var combatBrush = new SKPaint
+            {
+                IsAntialias = false,
+                Style = SKPaintStyle.Fill,
+                Color = new SKColor(255, 50, 50, 80)  // 紅色半透明
+            };
+
             foreach (var s32Data in _document.S32Files.Values)
             {
                 int[] loc = s32Data.SegInfo.GetLoc(1.0);
@@ -173,14 +188,6 @@ namespace L1FlyMapViewer
                         var attr = s32Data.Layer3[y, x];
                         if (attr == null) continue;
 
-                        // Attribute1 = 2 安全區, 3 戰鬥區 等
-                        bool isSafe1 = showSafe && attr.Attribute1 == 2;
-                        bool isCombat1 = showCombat && attr.Attribute1 == 3;
-                        bool isSafe2 = showSafe && attr.Attribute2 == 2;
-                        bool isCombat2 = showCombat && attr.Attribute2 == 3;
-
-                        if (!isSafe1 && !isCombat1 && !isSafe2 && !isCombat2) continue;
-
                         int x1 = x * 2;
                         int localBaseX = 0 - 24 * (x1 / 2);
                         int localBaseY = 63 * 12 - 12 * (x1 / 2);
@@ -191,38 +198,28 @@ namespace L1FlyMapViewer
                         if (X + 48 < 0 || X > worldRect.Width || Y + 24 < 0 || Y > worldRect.Height)
                             continue;
 
-                        var pTop = new SKPoint(X + 24, Y + 0);
-                        var pRight = new SKPoint(X + 48, Y + 12);
-                        var pBottom = new SKPoint(X + 24, Y + 24);
-                        var pLeft = new SKPoint(X + 0, Y + 12);
-                        var pCenter = new SKPoint(X + 24, Y + 12);
+                        // 檢查區域類型（根據 MapTool 邏輯，客戶端只用 Attribute1 判斷整個格子）
+                        int val = attr.Attribute1 & 0x0F;
+                        bool isSafe = (val & 0x04) != 0;  // bit 2 設定 = 安全區
+                        bool isCombat = (val & 0x0C) == 0x08;  // bit 3 設定但 bit 2 未設定 = 戰鬥區
 
-                        // 左半邊
-                        if (isSafe1 || isCombat1)
-                        {
-                            var color = isSafe1 ? new SKColor(0, 255, 0, 100) : new SKColor(255, 0, 0, 100);
-                            using var brush = new SKPaint { Color = color, Style = SKPaintStyle.Fill };
-                            var path = new SKPath();
-                            path.MoveTo(pLeft);
-                            path.LineTo(pTop);
-                            path.LineTo(pCenter);
-                            path.LineTo(pBottom);
-                            path.Close();
-                            canvas.DrawPath(path, brush);
-                        }
+                        // 決定整個格子的顏色
+                        SKPaint regionBrush = null;
+                        if (isCombat && showCombat)
+                            regionBrush = combatBrush;
+                        else if (isSafe && showSafe)
+                            regionBrush = safeBrush;
 
-                        // 右半邊
-                        if (isSafe2 || isCombat2)
+                        if (regionBrush != null)
                         {
-                            var color = isSafe2 ? new SKColor(0, 255, 0, 100) : new SKColor(255, 0, 0, 100);
-                            using var brush = new SKPaint { Color = color, Style = SKPaintStyle.Fill };
-                            var path = new SKPath();
-                            path.MoveTo(pTop);
-                            path.LineTo(pRight);
-                            path.LineTo(pBottom);
-                            path.LineTo(pCenter);
+                            // 繪製整個菱形
+                            using var path = new SKPath();
+                            path.MoveTo(X + 24, Y + 0);      // 上
+                            path.LineTo(X + 48, Y + 12);     // 右
+                            path.LineTo(X + 24, Y + 24);     // 下
+                            path.LineTo(X + 0, Y + 12);      // 左
                             path.Close();
-                            canvas.DrawPath(path, brush);
+                            canvas.DrawPath(path, regionBrush);
                         }
                     }
                 }
