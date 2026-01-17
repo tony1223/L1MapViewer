@@ -358,28 +358,33 @@ namespace L1FlyMapViewer
             this.DragDrop += lvMaterials_DragDrop;
             LogPerf("[FORM-CTOR] InitializeComponent done");
 
-            // 初始化渲染防抖Timer（300ms延遲）
+            // 初始化渲染防抖Timer（50ms延遲，減少等待時間）
             renderDebounceTimer = new Timer();
-            renderDebounceTimer.Interval = 300;
+            renderDebounceTimer.Interval = 50;
             renderDebounceTimer.Tick += (s, e) =>
             {
+                var sw = Stopwatch.StartNew();
+                _logger.Debug("[RENDER-DEBOUNCE] Timer tick, calling RenderS32Map");
                 renderDebounceTimer.Stop();
                 if (_document.S32Files.Count > 0)
                 {
                     RenderS32Map();
                 }
+                _logger.Debug($"[RENDER-DEBOUNCE] Complete in {sw.ElapsedMilliseconds}ms");
             };
 
-            // 初始化拖曳渲染延遲Timer（150ms延遲）
+            // 初始化拖曳渲染延遲Timer（50ms延遲，減少等待時間）
             dragRenderTimer = new Timer();
-            dragRenderTimer.Interval = 150;
+            dragRenderTimer.Interval = 50;
             dragRenderTimer.Tick += (s, e) =>
             {
                 var timerSw = Stopwatch.StartNew();
+                _logger.Debug("[DRAG-TIMER] Tick - calling CheckAndRerenderIfNeeded");
                 LogPerf($"[DRAG-TIMER] tick start");
                 dragRenderTimer.Stop();
                 CheckAndRerenderIfNeeded();
                 timerSw.Stop();
+                _logger.Debug($"[DRAG-TIMER] Tick complete in {timerSw.ElapsedMilliseconds}ms");
                 LogPerf($"[DRAG-TIMER] tick end, total={timerSw.ElapsedMilliseconds}ms");
             };
 
@@ -388,6 +393,7 @@ namespace L1FlyMapViewer
             _layer8AnimTimer.Interval = 100;
             _layer8AnimTimer.Tick += (s, e) =>
             {
+                var sw = Stopwatch.StartNew();
                 if (_editState.EnabledLayer8Items.Count == 0)
                 {
                     _layer8AnimTimer.Stop();
@@ -403,6 +409,9 @@ namespace L1FlyMapViewer
 
                 // 只重繪 L8 動畫覆蓋層，不影響地圖和其他圖層
                 _mapViewerControl?.InvalidateAnimationOverlay();
+                sw.Stop();
+                if (sw.ElapsedMilliseconds > 10)
+                    _logger.Debug($"[UI-TIMER] L8AnimTimer tick took {sw.ElapsedMilliseconds}ms");
             };
 
             // 註冊滑鼠滾輪事件用於縮放
@@ -6508,6 +6517,10 @@ namespace L1FlyMapViewer
         // 層選擇變更事件
         private void S32Layer_CheckedChanged(object sender, EventArgs e)
         {
+            var sw = Stopwatch.StartNew();
+            var senderName = (sender as CheckBox)?.Text ?? sender?.GetType().Name ?? "unknown";
+            _logger.Debug($"[LAYER] S32Layer_CheckedChanged triggered by: {senderName}");
+
             // 同步 ViewState
             if (sender == chkShowSafeZones)
             {
@@ -6560,11 +6573,14 @@ namespace L1FlyMapViewer
             UpdateLayerIconText();
 
             // 清除快取（因為快取的 bitmap 是用特定圖層設定渲染的）
+            _logger.Debug("[LAYER] Clearing S32 block cache");
             ClearS32BlockCache();
 
             // 使用防抖Timer，避免快速切換時多次渲染
+            _logger.Debug($"[LAYER] Starting debounce timer (interval={renderDebounceTimer.Interval}ms)");
             renderDebounceTimer.Stop();
             renderDebounceTimer.Start();
+            _logger.Debug($"[LAYER] S32Layer_CheckedChanged complete in {sw.ElapsedMilliseconds}ms");
         }
 
 
@@ -7335,17 +7351,21 @@ namespace L1FlyMapViewer
         // 渲染 S32 地圖（Viewport 渲染 - 只渲染可見區域）
         private void RenderS32Map()
         {
+            var totalSw = Stopwatch.StartNew();
+            _logger.Debug("[RENDER] RenderS32Map called");
             try
             {
                 if (_document.S32Files.Count == 0 || string.IsNullOrEmpty(_document.MapId))
                 {
                     lblS32Info.Text = "請選擇一個地圖";
+                    _logger.Debug("[RENDER] No S32 files or MapId");
                     return;
                 }
 
                 if (!Share.MapDataList.ContainsKey(_document.MapId))
                 {
                     lblS32Info.Text = "地圖資料不存在";
+                    _logger.Debug("[RENDER] MapId not found in MapDataList");
                     return;
                 }
 
@@ -7390,9 +7410,11 @@ namespace L1FlyMapViewer
                     .Sum(s => s.Layer4.Count);
 
                 lblS32Info.Text = $"已渲染 {checkedCount}/{_document.S32Files.Count} 個S32檔案 | 地圖: {mapWidth}x{mapHeight} | Viewport: {renderRect.Width}x{renderRect.Height} | 第1層:{(chkLayer1.Checked == true ? "顯示" : "隱藏")} 第3層:{(chkLayer3.Checked == true ? "顯示" : "隱藏")} 第4層:{(chkLayer4.Checked == true ? "顯示" : "隱藏")} ({totalObjects}個物件)";
+                _logger.Debug($"[RENDER] RenderS32Map complete in {totalSw.ElapsedMilliseconds}ms");
             }
             catch (Exception ex)
             {
+                _logger.Error(ex, "[RENDER] RenderS32Map failed");
                 lblS32Info.Text = $"渲染失敗: {ex.Message}";
             }
         }
@@ -7406,6 +7428,7 @@ namespace L1FlyMapViewer
         // 渲染指定範圍的 Viewport（非同步背景渲染）
         private void RenderViewport(Rectangle worldRect, Struct.L1Map currentMap, HashSet<string> checkedFilePaths)
         {
+            _logger.Debug($"[RENDER] RenderViewport called: worldRect={worldRect.Width}x{worldRect.Height}");
             // 取消之前的渲染任務
             int currentRequestId;
             lock (_viewportRenderLock)
@@ -7434,6 +7457,18 @@ namespace L1FlyMapViewer
             int panelWidth = s32MapPanel.Width;
             int panelHeight = s32MapPanel.Height;
 
+            // Capture highlight 狀態（供 background thread 使用）
+            var highlightedS32Data = _editState.HighlightedS32Data;
+            int highlightedCellX = _editState.HighlightedCellX;
+            int highlightedCellY = _editState.HighlightedCellY;
+
+            // Capture 其他需要的狀態
+            bool showSafeZones = _viewState.ShowSafeZones;
+            bool showCombatZones = _viewState.ShowCombatZones;
+            var groupHighlightCells = _editState.GroupHighlightCells.Count > 0
+                ? new List<(int, int)>(_editState.GroupHighlightCells)
+                : null;
+
             // 複製需要的資料（避免跨執行緒存取）
             var s32FilesSnapshot = _document.S32Files.ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
 
@@ -7443,15 +7478,20 @@ namespace L1FlyMapViewer
             // 不使用增量渲染，每次完整重新渲染（避免多執行緒 bitmap 存取問題）
 
             // 背景執行渲染
+            _logger.Debug("[RENDER] Starting background Task.Run");
             Task.Run(() =>
             {
                 // 檢查是否已經被更新的請求取代
                 if (cancellationToken.IsCancellationRequested || currentRequestId != _renderRequestId)
+                {
+                    _logger.Debug("[RENDER] Task cancelled before start");
                     return;
+                }
 
                 // 標記正在渲染
                 _isRendering = true;
                 var renderSw = Stopwatch.StartNew();
+                _logger.Debug($"[RENDER] Background render started: worldRect={worldRect.Width}x{worldRect.Height}");
                 LogPerf($"[RENDER-START] worldRect={worldRect.Width}x{worldRect.Height}");
 
                 int blockWidth = 64 * 24 * 2;  // 3072
@@ -7611,6 +7651,7 @@ namespace L1FlyMapViewer
                 drawSw.Stop();
                 totalDrawImageMs = drawSw.ElapsedMilliseconds;
                 renderSw.Stop();
+                _logger.Debug($"[RENDER] Background render done: total={renderSw.ElapsedMilliseconds}ms, createBmp={createBmpMs}ms, getBlock={totalGetBlockMs}ms, drawImage={totalDrawImageMs}ms, blocks={renderedCount}");
                 LogPerf($"[RENDER] total={renderSw.ElapsedMilliseconds}ms | createBmp={createBmpMs}ms, getBlock={totalGetBlockMs}ms, drawImage={totalDrawImageMs}ms | blocks={renderedCount}, cacheHit={_renderCache.CacheHits}, cacheMiss={_renderCache.CacheMisses}");
                 _renderCache.CacheHits = 0;
                 _renderCache.CacheMisses = 0;
@@ -7630,42 +7671,74 @@ namespace L1FlyMapViewer
                 }
 
                 // 繪製覆蓋層（需要傳入世界座標偏移）
-                if (showLayer3)
+                // 共用 Graphics 物件以避免多次 Dispose 造成的效能問題
+                var overlaySw = Stopwatch.StartNew();
+                using (Graphics sharedGraphics = GraphicsHelper.FromImage(viewportBitmap))
                 {
-                    DrawLayer3AttributesViewport(viewportBitmap, currentMap, worldRect);
-                }
+                    _logger.Debug($"[RENDER-OVERLAY] Shared Graphics created in {overlaySw.ElapsedMilliseconds}ms");
 
-                if (showPassable)
-                {
-                    DrawPassableOverlayViewport(viewportBitmap, currentMap, worldRect);
-                }
+                    if (showLayer3)
+                    {
+                        var sw = Stopwatch.StartNew();
+                        DrawLayer3AttributesViewport(sharedGraphics, currentMap, worldRect);
+                        _logger.Debug($"[RENDER-OVERLAY] Layer3 took {sw.ElapsedMilliseconds}ms");
+                    }
 
-                if (_viewState.ShowSafeZones || _viewState.ShowCombatZones)
-                {
-                    DrawRegionsOverlayViewport(viewportBitmap, currentMap, worldRect);
-                }
+                    if (showPassable)
+                    {
+                        var sw = Stopwatch.StartNew();
+                        DrawPassableOverlayViewport(sharedGraphics, currentMap, worldRect);
+                        _logger.Debug($"[RENDER-OVERLAY] Passable took {sw.ElapsedMilliseconds}ms");
+                    }
 
-                if (showGrid)
-                {
-                    DrawS32GridViewport(viewportBitmap, currentMap, worldRect);
-                    DrawCoordinateLabelsViewport(viewportBitmap, currentMap, worldRect);
-                }
+                    if (showSafeZones || showCombatZones)
+                    {
+                        var sw = Stopwatch.StartNew();
+                        DrawRegionsOverlayViewport(sharedGraphics, currentMap, worldRect, showSafeZones, showCombatZones);
+                        _logger.Debug($"[RENDER-OVERLAY] Regions took {sw.ElapsedMilliseconds}ms");
+                    }
 
-                if (showS32Boundary)
-                {
-                    DrawS32BoundaryOnlyViewport(viewportBitmap, currentMap, worldRect);
-                }
+                    if (showGrid)
+                    {
+                        var sw = Stopwatch.StartNew();
+                        DrawS32GridViewport(sharedGraphics, currentMap, worldRect);
+                        DrawCoordinateLabelsViewport(sharedGraphics, currentMap, worldRect);
+                        _logger.Debug($"[RENDER-OVERLAY] Grid took {sw.ElapsedMilliseconds}ms");
+                    }
 
-                if (showLayer5)
-                {
-                    DrawLayer5OverlayViewport(viewportBitmap, currentMap, worldRect, isLayer5Edit);
-                }
+                    if (showS32Boundary)
+                    {
+                        var sw = Stopwatch.StartNew();
+                        DrawS32BoundaryOnlyViewport(sharedGraphics, currentMap, worldRect);
+                        _logger.Debug($"[RENDER-OVERLAY] S32Boundary took {sw.ElapsedMilliseconds}ms");
+                    }
 
-                // 繪製群組高亮覆蓋層（綠色）
-                if (_editState.GroupHighlightCells.Count > 0)
-                {
-                    DrawGroupHighlightOverlay(viewportBitmap, worldRect);
-                }
+                    if (showLayer5)
+                    {
+                        var sw = Stopwatch.StartNew();
+                        DrawLayer5OverlayViewport(sharedGraphics, currentMap, worldRect, isLayer5Edit);
+                        _logger.Debug($"[RENDER-OVERLAY] Layer5 took {sw.ElapsedMilliseconds}ms");
+                    }
+
+                    // 繪製群組高亮覆蓋層（綠色）
+                    if (groupHighlightCells != null && groupHighlightCells.Count > 0)
+                    {
+                        var sw = Stopwatch.StartNew();
+                        DrawGroupHighlightOverlay(sharedGraphics, worldRect, groupHighlightCells);
+                        _logger.Debug($"[RENDER-OVERLAY] GroupHighlight took {sw.ElapsedMilliseconds}ms");
+                    }
+
+                    // 繪製選中格子的高亮（黃色）
+                    if (hasHighlight && highlightedS32Data != null)
+                    {
+                        var sw = Stopwatch.StartNew();
+                        DrawHighlightedCellViewport(sharedGraphics, worldRect, highlightedS32Data, highlightedCellX, highlightedCellY);
+                        _logger.Debug($"[RENDER-OVERLAY] Highlight took {sw.ElapsedMilliseconds}ms");
+                    }
+
+                    _logger.Debug($"[RENDER-OVERLAY] All overlays done, before Graphics dispose: {overlaySw.ElapsedMilliseconds}ms");
+                } // sharedGraphics dispose here
+                _logger.Debug($"[RENDER-OVERLAY] Total overlay time (after Graphics dispose): {overlaySw.ElapsedMilliseconds}ms");
 
                 if (cancellationToken.IsCancellationRequested)
                 {
@@ -7674,6 +7747,8 @@ namespace L1FlyMapViewer
                 }
 
                 // 回到 UI Thread 更新
+                var queueTime = DateTime.UtcNow;
+                _logger.Debug($"[RENDER] Queuing BeginInvoke at {queueTime:HH:mm:ss.fff}");
                 LogPerf($"[RENDER-INVOKE] queuing BeginInvoke from thread {System.Threading.Thread.CurrentThread.ManagedThreadId}");
                 try
                 {
@@ -7686,7 +7761,10 @@ namespace L1FlyMapViewer
                     }
                     this.BeginInvoke((MethodInvoker)delegate
                     {
+                        var executeTime = DateTime.UtcNow;
+                        var waitMs = (executeTime - queueTime).TotalMilliseconds;
                         var invokeSw = Stopwatch.StartNew();
+                        _logger.Debug($"[RENDER] BeginInvoke callback start - waited {waitMs:F0}ms in queue");
                         LogPerf($"[RENDER-INVOKE] callback start");
                         _isRendering = false;  // 渲染完成
 
@@ -7704,20 +7782,20 @@ namespace L1FlyMapViewer
                             return;
                         }
 
-                        // 如果有高亮，在 UI Thread 繪製（因為需要存取 _editState）
-                        if (hasHighlight && _editState.HighlightedS32Data != null)
-                        {
-                            DrawHighlightedCellViewport(viewportBitmap, currentMap, worldRect);
-                        }
+                        _logger.Debug($"[RENDER] After safety check: {invokeSw.ElapsedMilliseconds}ms");
+
+                        // Highlight 已移到 background thread 的 sharedGraphics 區塊
 
                         // Layer8 標記和 SPR 動畫統一在 overlay 繪製（PaintOverlay 事件）
                         // 這樣 marker 和動畫可以一起更新，不需要等完整重繪
 
                         // 保存渲染結果元數據
                         _viewState.SetRenderResult(worldRect.X, worldRect.Y, worldRect.Width, worldRect.Height, _viewState.ZoomLevel);
-                        Console.WriteLine($"[MapForm.Render] SetRenderResult: origin=({worldRect.X},{worldRect.Y}), size=({worldRect.Width},{worldRect.Height}), zoom={_viewState.ZoomLevel}, ViewState.hashcode={_viewState.GetHashCode()}");
+
+                        _logger.Debug($"[RENDER] After SetRenderResult: {invokeSw.ElapsedMilliseconds}ms");
 
                         invokeSw.Stop();
+                        _logger.Debug($"[RENDER] BeginInvoke callback complete: invokeTime={invokeSw.ElapsedMilliseconds}ms, bmpSize={viewportBitmap.Width}x{viewportBitmap.Height}");
                         LogPerf($"[RENDER-COMPLETE] size={viewportBitmap.Width}x{viewportBitmap.Height}, invokeTime={invokeSw.ElapsedMilliseconds}ms");
 
                         // 傳遞 bitmap 給 MapViewerControl（MapViewerControl 取得所有權並負責 dispose）
@@ -8490,12 +8568,84 @@ namespace L1FlyMapViewer
 
         // 繪製第三層屬性（Viewport 版本）
         // 根據客戶端邏輯，整個格子使用 Attribute1 判斷
-        private void DrawLayer3AttributesViewport(Bitmap bitmap, Struct.L1Map currentMap, Rectangle worldRect)
+        private void DrawLayer3AttributesViewport(Graphics g, Struct.L1Map currentMap, Rectangle worldRect)
         {
-            using (Graphics g = GraphicsHelper.FromImage(bitmap))
-            {
-                g.SetSmoothingMode(SmoothingMode.AntiAlias);
+            g.SetSmoothingMode(SmoothingMode.AntiAlias);
 
+            foreach (var s32Data in _document.S32Files.Values)
+            {
+                int[] loc = s32Data.SegInfo.GetLoc(1.0);
+                int mx = loc[0];
+                int my = loc[1];
+
+                for (int y = 0; y < 64; y++)
+                {
+                    for (int x = 0; x < 64; x++)
+                    {
+                        var attr = s32Data.Layer3[y, x];
+                        if (attr == null) continue;
+                        // 只有當兩個屬性都為0時才跳過
+                        if (attr.Attribute1 == 0 && attr.Attribute2 == 0) continue;
+
+                        int x1 = x * 2;
+                        int localBaseX = 0 - 24 * (x1 / 2);
+                        int localBaseY = 63 * 12 - 12 * (x1 / 2);
+
+                        int X = mx + localBaseX + x1 * 24 + y * 24 - worldRect.X;
+                        int Y = my + localBaseY + y * 12 - worldRect.Y;
+
+                        // 跳過不在 Viewport 內的格子
+                        if (X + 48 < 0 || X > worldRect.Width || Y + 24 < 0 || Y > worldRect.Height)
+                            continue;
+
+                        // 菱形的四個頂點
+                        Point pTop = new Point(X + 24, Y + 0);
+                        Point pRight = new Point(X + 48, Y + 12);
+                        Point pBottom = new Point(X + 24, Y + 24);
+                        Point pLeft = new Point(X + 0, Y + 12);
+                        Point pCenter = new Point(X + 24, Y + 12);
+
+                        // 左半邊 - 使用 Attribute1
+                        if (attr.Attribute1 != 0)
+                        {
+                            Color color1 = GetAttributeColor(attr.Attribute1);
+                            using (Pen pen = new Pen(color1, 3))
+                            {
+                                g.DrawLine(pen, pLeft, pTop);
+                                g.DrawLine(pen, pTop, pCenter);
+                                g.DrawLine(pen, pCenter, pBottom);
+                                g.DrawLine(pen, pBottom, pLeft);
+                            }
+                        }
+
+                        // 右半邊 - 使用 Attribute2
+                        if (attr.Attribute2 != 0)
+                        {
+                            Color color2 = GetAttributeColor(attr.Attribute2);
+                            using (Pen pen = new Pen(color2, 3))
+                            {
+                                g.DrawLine(pen, pTop, pRight);
+                                g.DrawLine(pen, pRight, pBottom);
+                                g.DrawLine(pen, pBottom, pCenter);
+                                g.DrawLine(pen, pCenter, pTop);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 繪製通行性覆蓋層（Viewport 版本）
+        // Attribute1 = 左半邊, Attribute2 = 右半邊
+        private void DrawPassableOverlayViewport(Graphics g, Struct.L1Map currentMap, Rectangle worldRect)
+        {
+            g.SetSmoothingMode(SmoothingMode.AntiAlias);
+
+            // Layer3 每個格子分成兩個三角形：
+            // Attribute1 = 左上三角形, Attribute2 = 右上三角形
+            using (Pen penImpassable = new Pen(Color.FromArgb(255, 128, 0, 128), 3))
+            using (Pen penPassable = new Pen(Color.FromArgb(255, 50, 200, 255), 2))
+            {
                 foreach (var s32Data in _document.S32Files.Values)
                 {
                     int[] loc = s32Data.SegInfo.GetLoc(1.0);
@@ -8508,8 +8658,58 @@ namespace L1FlyMapViewer
                         {
                             var attr = s32Data.Layer3[y, x];
                             if (attr == null) continue;
-                            // 只有當兩個屬性都為0時才跳過
-                            if (attr.Attribute1 == 0 && attr.Attribute2 == 0) continue;
+
+                            int x1 = x * 2;
+                            int localBaseX = 0 - 24 * (x1 / 2);
+                            int localBaseY = 63 * 12 - 12 * (x1 / 2);
+
+                            int X = mx + localBaseX + x1 * 24 + y * 24 - worldRect.X;
+                            int Y = my + localBaseY + y * 12 - worldRect.Y;
+
+                            // 跳過不在 Viewport 內的格子
+                            if (X + 48 < 0 || X > worldRect.Width || Y + 24 < 0 || Y > worldRect.Height)
+                                continue;
+
+                            // 菱形的頂點
+                            Point pTop = new Point(X + 24, Y + 0);
+                            Point pRight = new Point(X + 48, Y + 12);
+                            Point pLeft = new Point(X + 0, Y + 12);
+
+                            // 左上邊線 - 使用 Attribute1 判斷
+                            Pen pen1 = (attr.Attribute1 & 0x01) != 0 ? penImpassable : penPassable;
+                            g.DrawLine(pen1, pLeft, pTop);
+
+                            // 右上邊線 - 使用 Attribute2 判斷
+                            Pen pen2 = (attr.Attribute2 & 0x01) != 0 ? penImpassable : penPassable;
+                            g.DrawLine(pen2, pTop, pRight);
+                        }
+                    }
+                }
+            }
+        }
+
+        // 繪製區域覆蓋層（Viewport 版本）
+        // Attribute1 = 左半邊, Attribute2 = 右半邊（與通行性繪製一致）
+        private void DrawRegionsOverlayViewport(Graphics g, Struct.L1Map currentMap, Rectangle worldRect, bool showSafe, bool showCombat)
+        {
+
+            // 定義區域顏色（半透明）
+            // 安全區：藍色，戰鬥區：紅色
+            using (Brush safeBrush = new SolidBrush(Color.FromArgb(80, 0, 150, 255)))       // 藍色
+            using (Brush combatBrush = new SolidBrush(Color.FromArgb(80, 255, 50, 50)))     // 紅色
+            {
+                foreach (var s32Data in _document.S32Files.Values)
+                {
+                    int[] loc = s32Data.SegInfo.GetLoc(1.0);
+                    int mx = loc[0];
+                    int my = loc[1];
+
+                    for (int y = 0; y < 64; y++)
+                    {
+                        for (int x = 0; x < 64; x++)
+                        {
+                            var attr = s32Data.Layer3[y, x];
+                            if (attr == null) continue;
 
                             int x1 = x * 2;
                             int localBaseX = 0 - 24 * (x1 / 2);
@@ -8527,158 +8727,25 @@ namespace L1FlyMapViewer
                             Point pRight = new Point(X + 48, Y + 12);
                             Point pBottom = new Point(X + 24, Y + 24);
                             Point pLeft = new Point(X + 0, Y + 12);
-                            Point pCenter = new Point(X + 24, Y + 12);
 
-                            // 左半邊 - 使用 Attribute1
-                            if (attr.Attribute1 != 0)
+                            // 檢查區域類型（根據 MapTool 邏輯，客戶端只用 Attribute1 判斷整個格子）
+                            // 低4位: 0-3=一般, 4-7/C-F=安全(bit2), 8-B=戰鬥(bit3且非bit2)
+                            int val = attr.Attribute1 & 0x0F;
+                            bool isSafe = (val & 0x04) != 0;  // bit 2 設定 = 安全區
+                            bool isCombat = (val & 0x0C) == 0x08;  // bit 3 設定但 bit 2 未設定 = 戰鬥區
+
+                            // 決定整個格子的顏色
+                            Brush regionBrush = null;
+                            if (isCombat && showCombat)
+                                regionBrush = combatBrush;
+                            else if (isSafe && showSafe)
+                                regionBrush = safeBrush;
+
+                            if (regionBrush != null)
                             {
-                                Color color1 = GetAttributeColor(attr.Attribute1);
-                                using (Pen pen = new Pen(color1, 3))
-                                {
-                                    g.DrawLine(pen, pLeft, pTop);
-                                    g.DrawLine(pen, pTop, pCenter);
-                                    g.DrawLine(pen, pCenter, pBottom);
-                                    g.DrawLine(pen, pBottom, pLeft);
-                                }
-                            }
-
-                            // 右半邊 - 使用 Attribute2
-                            if (attr.Attribute2 != 0)
-                            {
-                                Color color2 = GetAttributeColor(attr.Attribute2);
-                                using (Pen pen = new Pen(color2, 3))
-                                {
-                                    g.DrawLine(pen, pTop, pRight);
-                                    g.DrawLine(pen, pRight, pBottom);
-                                    g.DrawLine(pen, pBottom, pCenter);
-                                    g.DrawLine(pen, pCenter, pTop);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // 繪製通行性覆蓋層（Viewport 版本）
-        // Attribute1 = 左半邊, Attribute2 = 右半邊
-        private void DrawPassableOverlayViewport(Bitmap bitmap, Struct.L1Map currentMap, Rectangle worldRect)
-        {
-            using (Graphics g = GraphicsHelper.FromImage(bitmap))
-            {
-                g.SetSmoothingMode(SmoothingMode.AntiAlias);
-
-                // Layer3 每個格子分成兩個三角形：
-                // Attribute1 = 左上三角形, Attribute2 = 右上三角形
-                using (Pen penImpassable = new Pen(Color.FromArgb(255, 128, 0, 128), 3))
-                using (Pen penPassable = new Pen(Color.FromArgb(255, 50, 200, 255), 2))
-                {
-                    foreach (var s32Data in _document.S32Files.Values)
-                    {
-                        int[] loc = s32Data.SegInfo.GetLoc(1.0);
-                        int mx = loc[0];
-                        int my = loc[1];
-
-                        for (int y = 0; y < 64; y++)
-                        {
-                            for (int x = 0; x < 64; x++)
-                            {
-                                var attr = s32Data.Layer3[y, x];
-                                if (attr == null) continue;
-
-                                int x1 = x * 2;
-                                int localBaseX = 0 - 24 * (x1 / 2);
-                                int localBaseY = 63 * 12 - 12 * (x1 / 2);
-
-                                int X = mx + localBaseX + x1 * 24 + y * 24 - worldRect.X;
-                                int Y = my + localBaseY + y * 12 - worldRect.Y;
-
-                                // 跳過不在 Viewport 內的格子
-                                if (X + 48 < 0 || X > worldRect.Width || Y + 24 < 0 || Y > worldRect.Height)
-                                    continue;
-
-                                // 菱形的頂點
-                                Point pTop = new Point(X + 24, Y + 0);
-                                Point pRight = new Point(X + 48, Y + 12);
-                                Point pLeft = new Point(X + 0, Y + 12);
-
-                                // 左上邊線 - 使用 Attribute1 判斷
-                                Pen pen1 = (attr.Attribute1 & 0x01) != 0 ? penImpassable : penPassable;
-                                g.DrawLine(pen1, pLeft, pTop);
-
-                                // 右上邊線 - 使用 Attribute2 判斷
-                                Pen pen2 = (attr.Attribute2 & 0x01) != 0 ? penImpassable : penPassable;
-                                g.DrawLine(pen2, pTop, pRight);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // 繪製區域覆蓋層（Viewport 版本）
-        // Attribute1 = 左半邊, Attribute2 = 右半邊（與通行性繪製一致）
-        private void DrawRegionsOverlayViewport(Bitmap bitmap, Struct.L1Map currentMap, Rectangle worldRect)
-        {
-            bool showSafe = _viewState.ShowSafeZones;
-            bool showCombat = _viewState.ShowCombatZones;
-
-            using (Graphics g = GraphicsHelper.FromImage(bitmap))
-            {
-                // 定義區域顏色（半透明）
-                // 安全區：藍色，戰鬥區：紅色
-                using (Brush safeBrush = new SolidBrush(Color.FromArgb(80, 0, 150, 255)))       // 藍色
-                using (Brush combatBrush = new SolidBrush(Color.FromArgb(80, 255, 50, 50)))     // 紅色
-                {
-                    foreach (var s32Data in _document.S32Files.Values)
-                    {
-                        int[] loc = s32Data.SegInfo.GetLoc(1.0);
-                        int mx = loc[0];
-                        int my = loc[1];
-
-                        for (int y = 0; y < 64; y++)
-                        {
-                            for (int x = 0; x < 64; x++)
-                            {
-                                var attr = s32Data.Layer3[y, x];
-                                if (attr == null) continue;
-
-                                int x1 = x * 2;
-                                int localBaseX = 0 - 24 * (x1 / 2);
-                                int localBaseY = 63 * 12 - 12 * (x1 / 2);
-
-                                int X = mx + localBaseX + x1 * 24 + y * 24 - worldRect.X;
-                                int Y = my + localBaseY + y * 12 - worldRect.Y;
-
-                                // 跳過不在 Viewport 內的格子
-                                if (X + 48 < 0 || X > worldRect.Width || Y + 24 < 0 || Y > worldRect.Height)
-                                    continue;
-
-                                // 菱形的四個頂點
-                                Point pTop = new Point(X + 24, Y + 0);
-                                Point pRight = new Point(X + 48, Y + 12);
-                                Point pBottom = new Point(X + 24, Y + 24);
-                                Point pLeft = new Point(X + 0, Y + 12);
-
-                                // 檢查區域類型（根據 MapTool 邏輯，客戶端只用 Attribute1 判斷整個格子）
-                                // 低4位: 0-3=一般, 4-7/C-F=安全(bit2), 8-B=戰鬥(bit3且非bit2)
-                                int val = attr.Attribute1 & 0x0F;
-                                bool isSafe = (val & 0x04) != 0;  // bit 2 設定 = 安全區
-                                bool isCombat = (val & 0x0C) == 0x08;  // bit 3 設定但 bit 2 未設定 = 戰鬥區
-
-                                // 決定整個格子的顏色
-                                Brush regionBrush = null;
-                                if (isCombat && showCombat)
-                                    regionBrush = combatBrush;
-                                else if (isSafe && showSafe)
-                                    regionBrush = safeBrush;
-
-                                if (regionBrush != null)
-                                {
-                                    // 繪製整個菱形
-                                    Point[] diamond = new Point[] { pTop, pRight, pBottom, pLeft };
-                                    g.FillPolygon(regionBrush, diamond);
-                                }
+                                // 繪製整個菱形
+                                Point[] diamond = new Point[] { pTop, pRight, pBottom, pLeft };
+                                g.FillPolygon(regionBrush, diamond);
                             }
                         }
                     }
@@ -8687,159 +8754,153 @@ namespace L1FlyMapViewer
         }
 
         // 繪製 Layer5 覆蓋層（透明圖塊標記）
-        private void DrawLayer5OverlayViewport(Bitmap bitmap, Struct.L1Map currentMap, Rectangle worldRect, bool isLayer5Edit)
+        private void DrawLayer5OverlayViewport(Graphics g, Struct.L1Map currentMap, Rectangle worldRect, bool isLayer5Edit)
         {
-            using (Graphics g = GraphicsHelper.FromImage(bitmap))
+            g.SetSmoothingMode(SmoothingMode.AntiAlias);
+
+            // 收集所有 Layer5 位置（去重）
+            var drawnPositions = new HashSet<(int mx, int my, int x, int y)>();
+
+            // 半透明藍色填充和邊框
+            using (SolidBrush fillBrush = new SolidBrush(Color.FromArgb(80, 60, 140, 255)))
+            using (Pen borderPen = new Pen(Color.FromArgb(180, 80, 160, 255), 1.5f))
+            using (Pen highlightPen = new Pen(Color.FromArgb(200, 150, 200, 255), 1f))
             {
-                g.SetSmoothingMode(SmoothingMode.AntiAlias);
-
-                // 收集所有 Layer5 位置（去重）
-                var drawnPositions = new HashSet<(int mx, int my, int x, int y)>();
-
-                // 半透明藍色填充和邊框
-                using (SolidBrush fillBrush = new SolidBrush(Color.FromArgb(80, 60, 140, 255)))
-                using (Pen borderPen = new Pen(Color.FromArgb(180, 80, 160, 255), 1.5f))
-                using (Pen highlightPen = new Pen(Color.FromArgb(200, 150, 200, 255), 1f))
+                foreach (var s32Data in _document.S32Files.Values)
                 {
-                    foreach (var s32Data in _document.S32Files.Values)
+                    // 只繪製已啟用的 S32
+                    if (!_checkedS32Files.Contains(s32Data.FilePath)) continue;
+                    if (s32Data.Layer5.Count == 0) continue;
+
+                    int[] loc = s32Data.SegInfo.GetLoc(1.0);
+                    int mx = loc[0];
+                    int my = loc[1];
+
+                    foreach (var item in s32Data.Layer5)
                     {
-                        // 只繪製已啟用的 S32
-                        if (!_checkedS32Files.Contains(s32Data.FilePath)) continue;
-                        if (s32Data.Layer5.Count == 0) continue;
+                        // 同位置只畫一次
+                        var posKey = (mx, my, (int)item.X, (int)item.Y);
+                        if (drawnPositions.Contains(posKey)) continue;
+                        drawnPositions.Add(posKey);
+                        // Layer5 的 X 是 0-127（Layer1 座標系），Y 是 0-63
+                        // 繪製半格大小的三角形（X 切半）
+                        int x1 = item.X;  // 0-127
+                        int y = item.Y;   // 0-63
 
-                        int[] loc = s32Data.SegInfo.GetLoc(1.0);
-                        int mx = loc[0];
-                        int my = loc[1];
+                        int localBaseX = 0 - 24 * (x1 / 2);
+                        int localBaseY = 63 * 12 - 12 * (x1 / 2);
 
-                        foreach (var item in s32Data.Layer5)
+                        int X = mx + localBaseX + x1 * 24 + y * 24 - worldRect.X;
+                        int Y = my + localBaseY + y * 12 - worldRect.Y;
+
+                        // 跳過不在 Viewport 內的格子
+                        if (X + 24 < 0 || X > worldRect.Width || Y + 12 < 0 || Y > worldRect.Height)
+                            continue;
+
+                        // 繪製半格三角形（根據 X 奇偶決定左半或右半）
+                        Point[] triangle;
+                        if (x1 % 2 == 0)
                         {
-                            // 同位置只畫一次
-                            var posKey = (mx, my, (int)item.X, (int)item.Y);
-                            if (drawnPositions.Contains(posKey)) continue;
-                            drawnPositions.Add(posKey);
-                            // Layer5 的 X 是 0-127（Layer1 座標系），Y 是 0-63
-                            // 繪製半格大小的三角形（X 切半）
-                            int x1 = item.X;  // 0-127
-                            int y = item.Y;   // 0-63
+                            // 偶數 X：左半三角形
+                            Point pLeft = new Point(X + 0, Y + 12);
+                            Point pTop = new Point(X + 24, Y + 0);
+                            Point pBottom = new Point(X + 24, Y + 24);
+                            triangle = new Point[] { pLeft, pTop, pBottom };
 
-                            int localBaseX = 0 - 24 * (x1 / 2);
-                            int localBaseY = 63 * 12 - 12 * (x1 / 2);
+                            // 填充
+                            g.FillPolygon(fillBrush, triangle);
+                            // 邊框（上亮下暗）
+                            g.DrawLine(highlightPen, pLeft, pTop);
+                            g.DrawLine(borderPen, pTop, pBottom);
+                            g.DrawLine(borderPen, pBottom, pLeft);
+                        }
+                        else
+                        {
+                            // 奇數 X：右半三角形
+                            Point pTop = new Point(X + 0, Y + 0);
+                            Point pRight = new Point(X + 24, Y + 12);
+                            Point pBottom = new Point(X + 0, Y + 24);
+                            triangle = new Point[] { pTop, pRight, pBottom };
 
-                            int X = mx + localBaseX + x1 * 24 + y * 24 - worldRect.X;
-                            int Y = my + localBaseY + y * 12 - worldRect.Y;
-
-                            // 跳過不在 Viewport 內的格子
-                            if (X + 24 < 0 || X > worldRect.Width || Y + 12 < 0 || Y > worldRect.Height)
-                                continue;
-
-                            // 繪製半格三角形（根據 X 奇偶決定左半或右半）
-                            Point[] triangle;
-                            if (x1 % 2 == 0)
-                            {
-                                // 偶數 X：左半三角形
-                                Point pLeft = new Point(X + 0, Y + 12);
-                                Point pTop = new Point(X + 24, Y + 0);
-                                Point pBottom = new Point(X + 24, Y + 24);
-                                triangle = new Point[] { pLeft, pTop, pBottom };
-
-                                // 填充
-                                g.FillPolygon(fillBrush, triangle);
-                                // 邊框（上亮下暗）
-                                g.DrawLine(highlightPen, pLeft, pTop);
-                                g.DrawLine(borderPen, pTop, pBottom);
-                                g.DrawLine(borderPen, pBottom, pLeft);
-                            }
-                            else
-                            {
-                                // 奇數 X：右半三角形
-                                Point pTop = new Point(X + 0, Y + 0);
-                                Point pRight = new Point(X + 24, Y + 12);
-                                Point pBottom = new Point(X + 0, Y + 24);
-                                triangle = new Point[] { pTop, pRight, pBottom };
-
-                                // 填充
-                                g.FillPolygon(fillBrush, triangle);
-                                // 邊框（上亮下暗）
-                                g.DrawLine(highlightPen, pTop, pRight);
-                                g.DrawLine(borderPen, pRight, pBottom);
-                                g.DrawLine(borderPen, pBottom, pTop);
-                            }
+                            // 填充
+                            g.FillPolygon(fillBrush, triangle);
+                            // 邊框（上亮下暗）
+                            g.DrawLine(highlightPen, pTop, pRight);
+                            g.DrawLine(borderPen, pRight, pBottom);
+                            g.DrawLine(borderPen, pBottom, pTop);
                         }
                     }
                 }
+            }
 
-                // 在透明編輯模式下，繪製已設定 Layer5 的群組物件覆蓋層
-                if (isLayer5Edit)
-                {
-                    DrawLayer5GroupOverlay(g, worldRect);
-                }
+            // 在透明編輯模式下，繪製已設定 Layer5 的群組物件覆蓋層
+            if (isLayer5Edit)
+            {
+                DrawLayer5GroupOverlay(g, worldRect);
             }
         }
 
         // 繪製群組高亮覆蓋層（綠色標記選取區域內群組的所有位置）
-        private void DrawGroupHighlightOverlay(Bitmap bitmap, Rectangle worldRect)
+        private void DrawGroupHighlightOverlay(Graphics g, Rectangle worldRect, List<(int, int)> groupHighlightCells)
         {
-            if (_editState.GroupHighlightCells.Count == 0)
+            if (groupHighlightCells == null || groupHighlightCells.Count == 0)
                 return;
 
             // 建立快速查找的 HashSet
-            var highlightSet = new HashSet<(int, int)>(_editState.GroupHighlightCells);
+            var highlightSet = new HashSet<(int, int)>(groupHighlightCells);
 
-            using (Graphics g = GraphicsHelper.FromImage(bitmap))
+            g.SetSmoothingMode(SmoothingMode.AntiAlias);
+
+            // 綠色半透明填充
+            using (SolidBrush fillBrush = new SolidBrush(Color.FromArgb(100, 50, 200, 50)))
+            using (Pen borderPen = new Pen(Color.FromArgb(200, 30, 180, 30), 2f))
             {
-                g.SetSmoothingMode(SmoothingMode.AntiAlias);
-
-                // 綠色半透明填充
-                using (SolidBrush fillBrush = new SolidBrush(Color.FromArgb(100, 50, 200, 50)))
-                using (Pen borderPen = new Pen(Color.FromArgb(200, 30, 180, 30), 2f))
+                foreach (var s32Data in _document.S32Files.Values)
                 {
-                    foreach (var s32Data in _document.S32Files.Values)
+                    // 只繪製已啟用的 S32
+                    if (!_checkedS32Files.Contains(s32Data.FilePath)) continue;
+
+                    int[] loc = s32Data.SegInfo.GetLoc(1.0);
+                    int mx = loc[0];
+                    int my = loc[1];
+
+                    int segStartX = s32Data.SegInfo.nLinBeginX * 2;
+                    int segStartY = s32Data.SegInfo.nLinBeginY;
+
+                    // 檢查此 S32 範圍內是否有高亮格子
+                    for (int localY = 0; localY < 64; localY++)
                     {
-                        // 只繪製已啟用的 S32
-                        if (!_checkedS32Files.Contains(s32Data.FilePath)) continue;
-
-                        int[] loc = s32Data.SegInfo.GetLoc(1.0);
-                        int mx = loc[0];
-                        int my = loc[1];
-
-                        int segStartX = s32Data.SegInfo.nLinBeginX * 2;
-                        int segStartY = s32Data.SegInfo.nLinBeginY;
-
-                        // 檢查此 S32 範圍內是否有高亮格子
-                        for (int localY = 0; localY < 64; localY++)
+                        for (int localX = 0; localX < 128; localX += 2)  // 每次跳 2（一格）
                         {
-                            for (int localX = 0; localX < 128; localX += 2)  // 每次跳 2（一格）
+                            int globalX = segStartX + localX;
+                            int globalY = segStartY + localY;
+
+                            if (!highlightSet.Contains((globalX, globalY)))
+                                continue;
+
+                            // 計算像素位置（整格，包含左右兩半）
+                            int x1 = localX;  // 偶數 X（左半）
+                            int localBaseX = 0 - 24 * (x1 / 2);
+                            int localBaseY = 63 * 12 - 12 * (x1 / 2);
+
+                            int X = mx + localBaseX + x1 * 24 + localY * 24 - worldRect.X;
+                            int Y = my + localBaseY + localY * 12 - worldRect.Y;
+
+                            // 跳過不在 Viewport 內的格子
+                            if (X + 48 < 0 || X > worldRect.Width || Y + 24 < 0 || Y > worldRect.Height)
+                                continue;
+
+                            // 繪製整格菱形
+                            Point[] diamond = new Point[]
                             {
-                                int globalX = segStartX + localX;
-                                int globalY = segStartY + localY;
+                                new Point(X + 24, Y),       // 上
+                                new Point(X + 48, Y + 12),  // 右
+                                new Point(X + 24, Y + 24),  // 下
+                                new Point(X, Y + 12)        // 左
+                            };
 
-                                if (!highlightSet.Contains((globalX, globalY)))
-                                    continue;
-
-                                // 計算像素位置（整格，包含左右兩半）
-                                int x1 = localX;  // 偶數 X（左半）
-                                int localBaseX = 0 - 24 * (x1 / 2);
-                                int localBaseY = 63 * 12 - 12 * (x1 / 2);
-
-                                int X = mx + localBaseX + x1 * 24 + localY * 24 - worldRect.X;
-                                int Y = my + localBaseY + localY * 12 - worldRect.Y;
-
-                                // 跳過不在 Viewport 內的格子
-                                if (X + 48 < 0 || X > worldRect.Width || Y + 24 < 0 || Y > worldRect.Height)
-                                    continue;
-
-                                // 繪製整格菱形
-                                Point[] diamond = new Point[]
-                                {
-                                    new Point(X + 24, Y),       // 上
-                                    new Point(X + 48, Y + 12),  // 右
-                                    new Point(X + 24, Y + 24),  // 下
-                                    new Point(X, Y + 12)        // 左
-                                };
-
-                                g.FillPolygon(fillBrush, diamond);
-                                g.DrawPolygon(borderPen, diamond);
-                            }
+                            g.FillPolygon(fillBrush, diamond);
+                            g.DrawPolygon(borderPen, diamond);
                         }
                     }
                 }
@@ -8928,38 +8989,35 @@ namespace L1FlyMapViewer
         }
 
         // 繪製選中格子的高亮（Viewport 版本）
-        private void DrawHighlightedCellViewport(Bitmap bitmap, Struct.L1Map currentMap, Rectangle worldRect)
+        private void DrawHighlightedCellViewport(Graphics g, Rectangle worldRect, L1MapViewer.Models.S32Data highlightedS32Data, int highlightedCellX, int highlightedCellY)
         {
-            if (_editState.HighlightedS32Data == null) return;
+            if (highlightedS32Data == null) return;
 
-            using (Graphics g = GraphicsHelper.FromImage(bitmap))
+            g.SetSmoothingMode(SmoothingMode.AntiAlias);
+
+            int[] loc = highlightedS32Data.SegInfo.GetLoc(1.0);
+            int mx = loc[0];
+            int my = loc[1];
+
+            int localBaseX = 0 - 24 * (highlightedCellX / 2);
+            int localBaseY = 63 * 12 - 12 * (highlightedCellX / 2);
+
+            int X = mx + localBaseX + highlightedCellX * 24 + highlightedCellY * 24 - worldRect.X;
+            int Y = my + localBaseY + highlightedCellY * 12 - worldRect.Y;
+
+            Point p1 = new Point(X + 0, Y + 12);
+            Point p2 = new Point(X + 12, Y + 0);
+            Point p3 = new Point(X + 24, Y + 12);
+            Point p4 = new Point(X + 12, Y + 24);
+
+            using (SolidBrush brush = new SolidBrush(Color.FromArgb(120, 255, 255, 0)))
             {
-                g.SetSmoothingMode(SmoothingMode.AntiAlias);
+                g.FillPolygon(brush, new Point[] { p1, p2, p3, p4 });
+            }
 
-                int[] loc = _editState.HighlightedS32Data.SegInfo.GetLoc(1.0);
-                int mx = loc[0];
-                int my = loc[1];
-
-                int localBaseX = 0 - 24 * (_editState.HighlightedCellX / 2);
-                int localBaseY = 63 * 12 - 12 * (_editState.HighlightedCellX / 2);
-
-                int X = mx + localBaseX + _editState.HighlightedCellX * 24 + _editState.HighlightedCellY * 24 - worldRect.X;
-                int Y = my + localBaseY + _editState.HighlightedCellY * 12 - worldRect.Y;
-
-                Point p1 = new Point(X + 0, Y + 12);
-                Point p2 = new Point(X + 12, Y + 0);
-                Point p3 = new Point(X + 24, Y + 12);
-                Point p4 = new Point(X + 12, Y + 24);
-
-                using (SolidBrush brush = new SolidBrush(Color.FromArgb(120, 255, 255, 0)))
-                {
-                    g.FillPolygon(brush, new Point[] { p1, p2, p3, p4 });
-                }
-
-                using (Pen pen = new Pen(Color.FromArgb(255, 255, 200, 0), 3))
-                {
-                    g.DrawPolygon(pen, new Point[] { p1, p2, p3, p4 });
-                }
+            using (Pen pen = new Pen(Color.FromArgb(255, 255, 200, 0), 3))
+            {
+                g.DrawPolygon(pen, new Point[] { p1, p2, p3, p4 });
             }
         }
 
@@ -9213,211 +9271,216 @@ namespace L1FlyMapViewer
         }
 
         // 繪製 S32 邊界框（Viewport 版本）
-        private void DrawS32BoundaryOnlyViewport(Bitmap bitmap, Struct.L1Map currentMap, Rectangle worldRect)
+        private void DrawS32BoundaryOnlyViewport(Graphics g, Struct.L1Map currentMap, Rectangle worldRect)
         {
-            using (Graphics g = GraphicsHelper.FromImage(bitmap))
+            g.SetSmoothingMode(SmoothingMode.AntiAlias);
+            g.SetTextRenderingHint(TextRenderingHint.ClearTypeGridFit);
+
+            Font font = new Font("Arial", 9, FontStyle.Bold);
+            Pen boundaryPen = new Pen(Colors.Cyan, 2);
+
+            foreach (var s32Data in _document.S32Files.Values)
             {
-                g.SetSmoothingMode(SmoothingMode.AntiAlias);
-                g.SetTextRenderingHint(TextRenderingHint.ClearTypeGridFit);
+                int[] loc = s32Data.SegInfo.GetLoc(1.0);
+                int mx = loc[0];
+                int my = loc[1];
 
-                Font font = new Font("Arial", 9, FontStyle.Bold);
-                Pen boundaryPen = new Pen(Colors.Cyan, 2);
+                Point[] corners = new Point[4];
+                int[][] cornerCoords = new int[][] {
+                    new int[] { 0, 0 },
+                    new int[] { 64, 0 },
+                    new int[] { 64, 64 },
+                    new int[] { 0, 64 }
+                };
 
-                foreach (var s32Data in _document.S32Files.Values)
+                for (int i = 0; i < 4; i++)
                 {
-                    int[] loc = s32Data.SegInfo.GetLoc(1.0);
-                    int mx = loc[0];
-                    int my = loc[1];
+                    int x3 = cornerCoords[i][0];
+                    int y = cornerCoords[i][1];
+                    int x = x3 * 2;
 
-                    Point[] corners = new Point[4];
-                    int[][] cornerCoords = new int[][] {
-                        new int[] { 0, 0 },
-                        new int[] { 64, 0 },
-                        new int[] { 64, 64 },
-                        new int[] { 0, 64 }
-                    };
+                    int localBaseX = 0 - 24 * (x / 2);
+                    int localBaseY = 63 * 12 - 12 * (x / 2);
+                    int X = mx + localBaseX + x * 24 + y * 24 - worldRect.X;
+                    int Y = my + localBaseY + y * 12 - worldRect.Y;
 
-                    for (int i = 0; i < 4; i++)
-                    {
-                        int x3 = cornerCoords[i][0];
-                        int y = cornerCoords[i][1];
-                        int x = x3 * 2;
-
-                        int localBaseX = 0 - 24 * (x / 2);
-                        int localBaseY = 63 * 12 - 12 * (x / 2);
-                        int X = mx + localBaseX + x * 24 + y * 24 - worldRect.X;
-                        int Y = my + localBaseY + y * 12 - worldRect.Y;
-
-                        corners[i] = new Point(X, Y + 12);
-                    }
-
-                    g.DrawLine(boundaryPen, corners[0], corners[1]);
-                    g.DrawLine(boundaryPen, corners[1], corners[2]);
-                    g.DrawLine(boundaryPen, corners[2], corners[3]);
-                    g.DrawLine(boundaryPen, corners[3], corners[0]);
-
-                    int centerX = (corners[0].X + corners[2].X) / 2;
-                    int centerY = (corners[0].Y + corners[2].Y) / 2;
-                    string centerText = $"GetLoc({mx},{my})\n{s32Data.SegInfo.nLinBeginX},{s32Data.SegInfo.nLinBeginY}~{s32Data.SegInfo.nLinEndX},{s32Data.SegInfo.nLinEndY}";
-                    using (SolidBrush cb = new SolidBrush(ColorExtensions.FromArgb(200, Colors.Black)))
-                    using (SolidBrush ct = new SolidBrush(Colors.Lime))
-                    {
-                        SizeF cs = g.MeasureString(centerText, font);
-                        g.FillRectangle(cb, centerX - cs.Width/2 - 2, centerY - cs.Height/2 - 1, cs.Width + 4, cs.Height + 2);
-                        g.DrawString(centerText, font, ct, centerX - cs.Width/2, centerY - cs.Height/2);
-                    }
+                    corners[i] = new Point(X, Y + 12);
                 }
 
-                font.Dispose();
-                boundaryPen.Dispose();
+                g.DrawLine(boundaryPen, corners[0], corners[1]);
+                g.DrawLine(boundaryPen, corners[1], corners[2]);
+                g.DrawLine(boundaryPen, corners[2], corners[3]);
+                g.DrawLine(boundaryPen, corners[3], corners[0]);
+
+                int centerX = (corners[0].X + corners[2].X) / 2;
+                int centerY = (corners[0].Y + corners[2].Y) / 2;
+                string centerText = $"GetLoc({mx},{my})\n{s32Data.SegInfo.nLinBeginX},{s32Data.SegInfo.nLinBeginY}~{s32Data.SegInfo.nLinEndX},{s32Data.SegInfo.nLinEndY}";
+                using (SolidBrush cb = new SolidBrush(ColorExtensions.FromArgb(200, Colors.Black)))
+                using (SolidBrush ct = new SolidBrush(Colors.Lime))
+                {
+                    SizeF cs = g.MeasureString(centerText, font);
+                    g.FillRectangle(cb, centerX - cs.Width/2 - 2, centerY - cs.Height/2 - 1, cs.Width + 4, cs.Height + 2);
+                    g.DrawString(centerText, font, ct, centerX - cs.Width/2, centerY - cs.Height/2);
+                }
             }
+
+            font.Dispose();
+            boundaryPen.Dispose();
         }
 
         // 繪製格線（Viewport 版本）- 擴展範圍: X 0-255, Y 0-127
-        private void DrawS32GridViewport(Bitmap bitmap, Struct.L1Map currentMap, Rectangle worldRect)
+        private void DrawS32GridViewport(Graphics g, Struct.L1Map currentMap, Rectangle worldRect)
         {
-            // 建立 S32Files 的快照，避免在迭代時被修改
+            var totalSw = System.Diagnostics.Stopwatch.StartNew();
+
+            // 使用長線繪製 Grid，而不是每個格子畫 4 條短線
+            // 菱形格子的網格由兩組平行斜線組成：
+            // - "/" 方向線：斜率 = 12/24 = 0.5（從左下往右上）
+            // - "\" 方向線：斜率 = -12/24 = -0.5（從左上往右下）
+
             var s32FilesSnapshot = _document.S32Files.Values.ToList();
+            _logger.Debug($"[GRID-DETAIL] ToList took {totalSw.ElapsedMilliseconds}ms, S32 count: {s32FilesSnapshot.Count}");
 
-            // 預先收集所有 S32 的正常範圍 (遊戲座標)，用於判斷擴展區域是否被覆蓋
-            var normalCoverage = new HashSet<(int gameX, int gameY)>();
-            foreach (var s32Data in s32FilesSnapshot)
+            using (Pen gridPen = new Pen(ColorExtensions.FromArgb(100, Colors.Red), 1))
             {
-                for (int y = 0; y < 64; y++)
-                {
-                    for (int x3 = 0; x3 < 64; x3++)
-                    {
-                        int gameX = s32Data.SegInfo.nLinBeginX + x3;
-                        int gameY = s32Data.SegInfo.nLinBeginY + y;
-                        normalCoverage.Add((gameX, gameY));
-                    }
-                }
-            }
+                _logger.Debug($"[GRID-DETAIL] Pen creation took {totalSw.ElapsedMilliseconds}ms");
+                int totalLinesDrawn = 0;
+                var drawSw = System.Diagnostics.Stopwatch.StartNew();
 
-            // 記錄已繪製的擴展區域格子，避免重複繪製
-            var drawnExtended = new HashSet<(int gameX, int gameY)>();
-
-            using (Graphics g = GraphicsHelper.FromImage(bitmap))
-            {
-                using (Pen gridPen = new Pen(ColorExtensions.FromArgb(100, Colors.Red), 1))
-                using (Pen extendedGridPen = new Pen(ColorExtensions.FromArgb(60, Colors.Blue), 1))
-                {
                     foreach (var s32Data in s32FilesSnapshot)
                     {
                         int[] loc = s32Data.SegInfo.GetLoc(1.0);
                         int mx = loc[0];
                         int my = loc[1];
 
-                        // 擴展範圍 Y: 0-127, X3: 0-127 (Layer1 X: 0-255)
-                        for (int y = 0; y < 128; y++)
+                        // 只畫正常範圍 (64x64 格子) 的 Grid
+                        // 計算 S32 區塊的四個角點（世界像素座標）
+                        // 格子 (0,0) 的左頂點
+                        int baseX0 = 0;
+                        int baseY0 = 63 * 12;
+                        int corner0X = mx + baseX0 - worldRect.X;
+                        int corner0Y = my + baseY0 + 12 - worldRect.Y;
+
+                        // 每格寬 24 像素（水平方向），高 12 像素（垂直方向）
+                        // 菱形格子的 Layer1 座標 x 範圍 0-127，y 範圍 0-63
+                        // 但遊戲座標 x3 範圍 0-63 (Layer1 x = x3 * 2)
+
+                        // 繪製 "/" 方向的線（沿著 y 方向的邊）
+                        // 這些線從 x3=0 的格子左邊緣，到 x3=63 的格子右邊緣
+                        // 總共需要 65 條線（包括最左和最右的邊界）
+                        for (int i = 0; i <= 64; i++)
                         {
-                            for (int x3 = 0; x3 < 128; x3++)
+                            // 線的起點：y=0, x3=i 的格子的上頂點
+                            // 線的終點：y=63, x3=i 的格子的下頂點
+                            int x3 = i;
+                            int x = x3 * 2;
+
+                            // 起點 (y=0 時的上頂點)
+                            int startLocalBaseX = -24 * (x / 2);
+                            int startLocalBaseY = 63 * 12 - 12 * (x / 2);
+                            int startX = mx + startLocalBaseX + x * 24 + 0 * 24 + 24 - worldRect.X; // +24 是到上頂點
+                            int startY = my + startLocalBaseY + 0 * 12 - worldRect.Y;
+
+                            // 終點 (y=63 時的下頂點)
+                            int endX = mx + startLocalBaseX + x * 24 + 63 * 24 + 24 - worldRect.X;
+                            int endY = my + startLocalBaseY + 63 * 12 + 24 - worldRect.Y; // +24 是到下頂點
+
+                            // 檢查是否在 viewport 內
+                            if (endX >= 0 && startX <= worldRect.Width &&
+                                Math.Max(startY, endY) >= 0 && Math.Min(startY, endY) <= worldRect.Height)
                             {
-                                // 判斷是否在原始範圍內 (0-63, 0-63)
-                                bool isExtended = (x3 >= 64 || y >= 64);
+                                g.DrawLine(gridPen, startX, startY, endX, endY);
+                                totalLinesDrawn++;
+                            }
+                        }
 
-                                // 計算遊戲座標
-                                int gameX = s32Data.SegInfo.nLinBeginX + x3;
-                                int gameY = s32Data.SegInfo.nLinBeginY + y;
+                        // 繪製 "\" 方向的線（沿著 x 方向的邊）
+                        // 總共需要 65 條線
+                        for (int j = 0; j <= 64; j++)
+                        {
+                            int y = j;
 
-                                if (isExtended)
-                                {
-                                    // 擴展區域：檢查是否被其他 S32 的正常範圍覆蓋
-                                    if (normalCoverage.Contains((gameX, gameY)))
-                                        continue; // 已被其他 S32 正常範圍覆蓋，不畫藍線
+                            // 起點 (x3=0 時的左頂點)
+                            int x = 0;
+                            int startLocalBaseX = -24 * (x / 2);
+                            int startLocalBaseY = 63 * 12 - 12 * (x / 2);
+                            int startX = mx + startLocalBaseX + x * 24 + y * 24 - worldRect.X;
+                            int startY = my + startLocalBaseY + y * 12 + 12 - worldRect.Y; // +12 是到左頂點
 
-                                    // 檢查是否已經畫過
-                                    if (drawnExtended.Contains((gameX, gameY)))
-                                        continue; // 已畫過，不重複畫
+                            // 終點 (x3=63 時的右頂點)
+                            x = 63 * 2;
+                            int endLocalBaseX = -24 * (x / 2);
+                            int endLocalBaseY = 63 * 12 - 12 * (x / 2);
+                            int endX = mx + endLocalBaseX + x * 24 + y * 24 + 48 - worldRect.X; // +48 是到右頂點
+                            int endY = my + endLocalBaseY + y * 12 + 12 - worldRect.Y;
 
-                                    drawnExtended.Add((gameX, gameY));
-                                }
-
-                                int x = x3 * 2;
-
-                                int localBaseX = 0 - 24 * (x / 2);
-                                int localBaseY = 63 * 12 - 12 * (x / 2);
-
-                                int X = mx + localBaseX + x * 24 + y * 24 - worldRect.X;
-                                int Y = my + localBaseY + y * 12 - worldRect.Y;
-
-                                // 跳過不在 Viewport 內的格子
-                                if (X + 48 < 0 || X > worldRect.Width || Y + 24 < 0 || Y > worldRect.Height)
-                                    continue;
-
-                                Pen currentPen = isExtended ? extendedGridPen : gridPen;
-
-                                Point p1 = new Point(X, Y + 12);
-                                Point p2 = new Point(X + 24, Y);
-                                Point p3 = new Point(X + 48, Y + 12);
-                                Point p4 = new Point(X + 24, Y + 24);
-
-                                g.DrawLine(currentPen, p1, p2);
-                                g.DrawLine(currentPen, p2, p3);
-                                g.DrawLine(currentPen, p3, p4);
-                                g.DrawLine(currentPen, p4, p1);
+                            // 檢查是否在 viewport 內
+                            if (endX >= 0 && startX <= worldRect.Width &&
+                                Math.Max(startY, endY) >= 0 && Math.Min(startY, endY) <= worldRect.Height)
+                            {
+                                g.DrawLine(gridPen, startX, startY, endX, endY);
+                                totalLinesDrawn++;
                             }
                         }
                     }
-                }
+
+                _logger.Debug($"[GRID-DETAIL] DrawLine loop took {drawSw.ElapsedMilliseconds}ms, lines drawn: {totalLinesDrawn}");
             }
+            _logger.Debug($"[GRID-DETAIL] Total time: {totalSw.ElapsedMilliseconds}ms");
         }
 
         // 繪製座標標籤（Viewport 版本）
-        private void DrawCoordinateLabelsViewport(Bitmap bitmap, Struct.L1Map currentMap, Rectangle worldRect)
+        private void DrawCoordinateLabelsViewport(Graphics g, Struct.L1Map currentMap, Rectangle worldRect)
         {
-            using (Graphics g = GraphicsHelper.FromImage(bitmap))
+            g.SetSmoothingMode(SmoothingMode.AntiAlias);
+            g.SetTextRenderingHint(TextRenderingHint.ClearTypeGridFit);
+
+            Font font = new Font("Arial", 8, FontStyle.Bold);
+            int interval = 10;
+
+            foreach (var s32Data in _document.S32Files.Values)
             {
-                g.SetSmoothingMode(SmoothingMode.AntiAlias);
-                g.SetTextRenderingHint(TextRenderingHint.ClearTypeGridFit);
+                int[] loc = s32Data.SegInfo.GetLoc(1.0);
+                int mx = loc[0];
+                int my = loc[1];
 
-                Font font = new Font("Arial", 8, FontStyle.Bold);
-                int interval = 10;
-
-                foreach (var s32Data in _document.S32Files.Values)
+                for (int y = 0; y < 64; y += interval)
                 {
-                    int[] loc = s32Data.SegInfo.GetLoc(1.0);
-                    int mx = loc[0];
-                    int my = loc[1];
-
-                    for (int y = 0; y < 64; y += interval)
+                    for (int x = 0; x < 128; x += interval)
                     {
-                        for (int x = 0; x < 128; x += interval)
+                        int localBaseX = 0 - 24 * (x / 2);
+                        int localBaseY = 63 * 12 - 12 * (x / 2);
+
+                        int X = mx + localBaseX + x * 24 + y * 24 - worldRect.X;
+                        int Y = my + localBaseY + y * 12 - worldRect.Y;
+
+                        // 跳過不在 Viewport 內的格子
+                        if (X + 24 < 0 || X > worldRect.Width || Y + 24 < 0 || Y > worldRect.Height)
+                            continue;
+
+                        int gameX = s32Data.SegInfo.nLinBeginX + x / 2;  // Layer1 座標轉遊戲座標
+                        int gameY = s32Data.SegInfo.nLinBeginY + y;
+
+                        string coordText = $"{gameX},{gameY}";
+                        SizeF textSize = g.MeasureString(coordText, font);
+
+                        int textX = X + 12 - (int)textSize.Width / 2;
+                        int textY = Y + 12 - (int)textSize.Height / 2;
+
+                        using (SolidBrush bgBrush = new SolidBrush(ColorExtensions.FromArgb(180, Colors.White)))
                         {
-                            int localBaseX = 0 - 24 * (x / 2);
-                            int localBaseY = 63 * 12 - 12 * (x / 2);
+                            g.FillRectangle(bgBrush, textX - 2, textY - 1, textSize.Width + 4, textSize.Height + 2);
+                        }
 
-                            int X = mx + localBaseX + x * 24 + y * 24 - worldRect.X;
-                            int Y = my + localBaseY + y * 12 - worldRect.Y;
-
-                            // 跳過不在 Viewport 內的格子
-                            if (X + 24 < 0 || X > worldRect.Width || Y + 24 < 0 || Y > worldRect.Height)
-                                continue;
-
-                            int gameX = s32Data.SegInfo.nLinBeginX + x / 2;  // Layer1 座標轉遊戲座標
-                            int gameY = s32Data.SegInfo.nLinBeginY + y;
-
-                            string coordText = $"{gameX},{gameY}";
-                            SizeF textSize = g.MeasureString(coordText, font);
-
-                            int textX = X + 12 - (int)textSize.Width / 2;
-                            int textY = Y + 12 - (int)textSize.Height / 2;
-
-                            using (SolidBrush bgBrush = new SolidBrush(ColorExtensions.FromArgb(180, Colors.White)))
-                            {
-                                g.FillRectangle(bgBrush, textX - 2, textY - 1, textSize.Width + 4, textSize.Height + 2);
-                            }
-
-                            using (SolidBrush textBrush = new SolidBrush(Colors.Blue))
-                            {
-                                g.DrawString(coordText, font, textBrush, textX, textY);
-                            }
+                        using (SolidBrush textBrush = new SolidBrush(Colors.Blue))
+                        {
+                            g.DrawString(coordText, font, textBrush, textX, textY);
                         }
                     }
                 }
-
-                font.Dispose();
             }
+
+            font.Dispose();
         }
 
         #endregion
@@ -10389,14 +10452,26 @@ namespace L1FlyMapViewer
         // MapViewerControl 繪製覆蓋層 - 繪製 L8 動畫、選取框、多邊形等
         private void MapViewerControl_PaintOverlay(object sender, PaintEventArgs e)
         {
+            var sw = Stopwatch.StartNew();
+
             // 繪製 Layer8 標記和 SPR 動畫
             if (_viewState.ShowLayer8)
             {
+                var l8Sw = Stopwatch.StartNew();
                 DrawLayer8OverlayOnControl(e.Graphics);
+                l8Sw.Stop();
+                if (l8Sw.ElapsedMilliseconds > 5)
+                    _logger.Debug($"[UI-OVERLAY] Layer8 overlay took {l8Sw.ElapsedMilliseconds}ms");
             }
 
             // 繪製編輯覆蓋層
+            var editSw = Stopwatch.StartNew();
             DrawEditingOverlay(e.Graphics);
+            editSw.Stop();
+
+            sw.Stop();
+            if (sw.ElapsedMilliseconds > 10)
+                _logger.Debug($"[UI-OVERLAY] PaintOverlay total={sw.ElapsedMilliseconds}ms, edit={editSw.ElapsedMilliseconds}ms");
         }
 
         // 在 MapViewerControl 的覆蓋層上繪製 Layer8 標記
@@ -11406,6 +11481,7 @@ namespace L1FlyMapViewer
             // 中鍵拖拽移動視圖
             if (e.Buttons == Eto.Forms.MouseButtons.Middle)
             {
+                _logger.Debug($"[DRAG] Drag start at ({e.Location.X},{e.Location.Y}), scroll=({_viewState.ScrollX},{_viewState.ScrollY})");
                 _interaction.StartMainMapDrag(e.Location.ToPoint(), _viewState.ScrollX, _viewState.ScrollY);
                 this._mapViewerControl.Cursor = Cursors.SizeAll;
 
@@ -11639,6 +11715,7 @@ namespace L1FlyMapViewer
                 double fps = dragMs > 0 ? (_dragPaintCount * 1000.0 / dragMs) : 0;
 
                 // 輸出拖曳效能統計
+                _logger.Debug($"[DRAG] Drag end: duration={dragMs}ms, moves={_dragMoveCount}, paints={_dragPaintCount}, FPS={fps:F1}");
                 LogPerf($"[DRAG-END] duration={dragMs}ms, moves={_dragMoveCount}, paints={_dragPaintCount}, FPS={fps:F1}");
 
                 _interaction.EndDrag();
@@ -11648,9 +11725,11 @@ namespace L1FlyMapViewer
                 this.BeginInvoke((MethodInvoker)delegate { UpdateMiniMapViewportRect(); });
 
                 // 拖曳結束後重新渲染
+                _logger.Debug("[DRAG] Calling RenderS32Map after drag end");
                 RenderS32Map();
 
                 upSw.Stop();
+                _logger.Debug($"[DRAG] Mouse up complete in {upSw.ElapsedMilliseconds}ms");
                 LogPerf($"[MOUSE-UP-MIDDLE] total={upSw.ElapsedMilliseconds}ms");
                 return;
             }

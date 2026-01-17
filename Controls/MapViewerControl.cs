@@ -1,5 +1,6 @@
 using System;
 using System.ComponentModel;
+using System.Diagnostics;
 // using System.Drawing; // Replaced with Eto.Drawing
 using System.Threading;
 using Eto.Forms;
@@ -7,6 +8,7 @@ using Eto.Drawing;
 using L1MapViewer.Compatibility;
 using L1MapViewer.Models;
 using L1MapViewer.Rendering;
+using NLog;
 
 namespace L1MapViewer.Controls
 {
@@ -17,6 +19,8 @@ namespace L1MapViewer.Controls
     public class MapViewerControl : UserControl
     {
         #region 私有欄位
+
+        private static readonly Logger _logger = LogManager.GetCurrentClassLogger();
 
         private Panel _mapPanel;
         private PictureBox _mapPictureBox;
@@ -251,13 +255,18 @@ namespace L1MapViewer.Controls
         /// </summary>
         public void SetExternalBitmap(Bitmap bitmap)
         {
+            var sw = Stopwatch.StartNew();
+            _logger.Debug($"[UI] SetExternalBitmap start: bitmap={bitmap?.Width}x{bitmap?.Height}");
             Console.WriteLine($"[MapViewerControl.SetExternalBitmap] bitmap={bitmap?.Width}x{bitmap?.Height}, RenderWidth={_viewState.RenderWidth}, RenderHeight={_viewState.RenderHeight}, PictureBox.Size={_mapPictureBox.Width}x{_mapPictureBox.Height}, Visible={_mapPictureBox.Visible}");
             lock (_viewportBitmapLock)
             {
                 _viewportBitmap?.Dispose();
                 _viewportBitmap = bitmap;
             }
+            _logger.Debug($"[UI] SetExternalBitmap calling Invalidate after {sw.ElapsedMilliseconds}ms");
             _mapPictureBox.Invalidate();
+            sw.Stop();
+            _logger.Debug($"[UI] SetExternalBitmap complete in {sw.ElapsedMilliseconds}ms");
         }
 
         /// <summary>
@@ -738,6 +747,9 @@ namespace L1MapViewer.Controls
 
         private void MapPictureBox_Paint(object sender, PaintEventArgs e)
         {
+            var sw = Stopwatch.StartNew();
+            _logger.Debug("[UI] MapPictureBox_Paint start");
+
             // DEBUG: 無條件繪製邊框確認 Paint 被呼叫
             using (var pen = new Pen(Colors.Yellow, 2))
             {
@@ -758,8 +770,11 @@ namespace L1MapViewer.Controls
                     int viewportWidth = _mapPictureBox.Width;
                     int gap = viewportWidth - bitmapRightEdge;
 
+                    var drawSw = Stopwatch.StartNew();
                     e.Graphics.SetInterpolationMode(InterpolationMode.NearestNeighbor);
                     e.Graphics.DrawImage(_viewportBitmap, drawX, drawY, drawW, drawH);
+                    drawSw.Stop();
+                    _logger.Debug($"[UI] DrawImage took {drawSw.ElapsedMilliseconds}ms for {drawW}x{drawH}");
 
                     // DEBUG: 如果 bitmap 沒有覆蓋整個 viewport，顯示提示
                     if (gap > 10)
@@ -785,7 +800,12 @@ namespace L1MapViewer.Controls
             }
 
             // 讓外部繪製覆蓋層（L8 動畫 + 編輯層）
+            var overlaySw = Stopwatch.StartNew();
             PaintOverlay?.Invoke(this, e);
+            overlaySw.Stop();
+
+            sw.Stop();
+            _logger.Debug($"[UI] MapPictureBox_Paint complete: total={sw.ElapsedMilliseconds}ms, overlay={overlaySw.ElapsedMilliseconds}ms");
         }
 
         #endregion
