@@ -7875,7 +7875,7 @@ namespace L1FlyMapViewer
                             try
                             {
                                 // 使用 RGB565 版本的繪製函數（直接使用 Lin.Helper.Core 的 RenderBlockDirect）
-                                DrawTilToBufferDirect(tile.pixelX, tile.pixelY, tile.tileId, tile.indexId,
+                                DrawTilToBufferDirect565(tile.pixelX, tile.pixelY, tile.tileId, tile.indexId,
                                     rowpix, ptr, skBitmap.Width, skBitmap.Height);
                                 drawnCount++;
                             }
@@ -8265,7 +8265,7 @@ namespace L1FlyMapViewer
                                 int pixelX = baseX + x * 24 + y * 24;
                                 int pixelY = baseY + y * 12;
 
-                                DrawTilToBufferDirect(pixelX, pixelY, cell.TileId, cell.IndexId, rowpix, ptr, blockWidth, blockHeight);
+                                DrawTilToBufferDirect555(pixelX, pixelY, cell.TileId, cell.IndexId, rowpix, ptr, blockWidth, blockHeight);
                             }
                         }
                     }
@@ -8289,7 +8289,7 @@ namespace L1FlyMapViewer
                             int pixelX = baseX + x * 24 + y * 24;
                             int pixelY = baseY + y * 12;
 
-                            DrawTilToBufferDirect(pixelX, pixelY, item.TileId, item.IndexId, rowpix, ptr, blockWidth, blockHeight);
+                            DrawTilToBufferDirect555(pixelX, pixelY, item.TileId, item.IndexId, rowpix, ptr, blockWidth, blockHeight);
                         }
                     }
                 }
@@ -8309,7 +8309,7 @@ namespace L1FlyMapViewer
                         int pixelX = baseX + obj.X * 24 + obj.Y * 24;
                         int pixelY = baseY + obj.Y * 12;
 
-                        DrawTilToBufferDirect(pixelX, pixelY, obj.TileId, obj.IndexId, rowpix, ptr, blockWidth, blockHeight);
+                        DrawTilToBufferDirect555(pixelX, pixelY, obj.TileId, obj.IndexId, rowpix, ptr, blockWidth, blockHeight);
                     }
                 }
             }
@@ -9795,8 +9795,8 @@ namespace L1FlyMapViewer
 
         #endregion
 
-        // 繪製 Tile 到緩衝區（直接使用像素座標）- RGB565 版本
-        private unsafe void DrawTilToBufferDirect(int pixelX, int pixelY, int tileId, int indexId, int rowpix, byte* ptr, int maxWidth, int maxHeight)
+        // 繪製 Tile 到緩衝區（直接使用像素座標）- RGB565 版本（用於 SkiaSharp SKColorType.Rgb565）
+        private unsafe void DrawTilToBufferDirect565(int pixelX, int pixelY, int tileId, int indexId, int rowpix, byte* ptr, int maxWidth, int maxHeight)
         {
             try
             {
@@ -9808,6 +9808,26 @@ namespace L1FlyMapViewer
 
                 // 使用 Lin.Helper.Core.L1Til 渲染 RGB565，支援 type 6/7 半透明效果
                 Lin.Helper.Core.Tile.L1Til.RenderBlockDirectRgb565(tilData, pixelX, pixelY, ptr, rowpix, maxWidth, maxHeight, applyTypeAlpha: true);
+            }
+            catch
+            {
+                // 忽略錯誤
+            }
+        }
+
+        // 繪製 Tile 到緩衝區（直接使用像素座標）- RGB555 版本（用於 PixelFormat.Format16bppRgb555）
+        private unsafe void DrawTilToBufferDirect555(int pixelX, int pixelY, int tileId, int indexId, int rowpix, byte* ptr, int maxWidth, int maxHeight)
+        {
+            try
+            {
+                // 使用 TileProvider 取得 til 資料（自動處理 override 和備援）
+                var tilArray = TileProvider.Instance.GetTilArrayWithFallback(tileId, indexId, pixelX, out indexId);
+                if (tilArray == null || indexId < 0 || indexId >= tilArray.Count) return;
+                byte[] tilData = tilArray[indexId];
+                if (tilData == null) return;
+
+                // 使用 Lin.Helper.Core.L1Til 渲染 RGB555，支援 type 6/7 半透明效果
+                Lin.Helper.Core.Tile.L1Til.RenderBlockDirect(tilData, pixelX, pixelY, ptr, rowpix, maxWidth, maxHeight, applyTypeAlpha: true);
             }
             catch
             {
@@ -12954,7 +12974,7 @@ namespace L1FlyMapViewer
                     {
                         int pixelX = (int)((tile.px - pixelMinX + margin) * preScale);
                         int pixelY = (int)((tile.py - pixelMinY + margin) * preScale);
-                        DrawTilToBufferDirect(pixelX, pixelY, tile.tileId, tile.indexId, rowpix, ptr, tempWidth, tempHeight);
+                        DrawTilToBufferDirect555(pixelX, pixelY, tile.tileId, tile.indexId, rowpix, ptr, tempWidth, tempHeight);
                     }
                 }
 
@@ -20348,7 +20368,7 @@ namespace L1FlyMapViewer
                     // 平行繪製所有 tiles
                     Parallel.ForEach(drawItems, item =>
                     {
-                        DrawTilToBufferDirect(item.pixelX, item.pixelY, item.obj.TileId, item.obj.IndexId, rowpix, ptr, tempWidth, tempHeight);
+                        DrawTilToBufferDirect555(item.pixelX, item.pixelY, item.obj.TileId, item.obj.IndexId, rowpix, ptr, tempWidth, tempHeight);
                     });
                 }
 
