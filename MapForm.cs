@@ -8742,7 +8742,7 @@ namespace L1FlyMapViewer
 
             using (Graphics g = GraphicsHelper.FromImage(bitmap))
             {
-                using (Pen gridPen = new Pen(ColorExtensions.FromArgb(100, Colors.Red), 1)) // 半透明紅色
+                using (Pen gridPen = new Pen(ColorExtensions.FromArgb(100, Colors.Red), 2)) // 半透明紅色
                 using (Pen extendedGridPen = new Pen(ColorExtensions.FromArgb(60, Colors.Blue), 1)) // 擴展區域用淡藍色
                 {
                     // 遍歷所有 S32 檔案
@@ -9651,7 +9651,7 @@ namespace L1FlyMapViewer
             var s32FilesSnapshot = _document.S32Files.Values.ToList();
             _logger.Debug($"[GRID-DETAIL] ToList took {totalSw.ElapsedMilliseconds}ms, S32 count: {s32FilesSnapshot.Count}");
 
-            using (Pen gridPen = new Pen(ColorExtensions.FromArgb(100, Colors.Red), 1))
+            using (Pen gridPen = new Pen(ColorExtensions.FromArgb(100, Colors.Red), 2))
             {
                 _logger.Debug($"[GRID-DETAIL] Pen creation took {totalSw.ElapsedMilliseconds}ms");
                 int totalLinesDrawn = 0;
@@ -9691,9 +9691,9 @@ namespace L1FlyMapViewer
                             int startX = mx + startLocalBaseX + x * 24 + 0 * 24 + 24 - worldRect.X; // +24 是到上頂點
                             int startY = my + startLocalBaseY + 0 * 12 - worldRect.Y;
 
-                            // 終點 (y=63 時的下頂點)
-                            int endX = mx + startLocalBaseX + x * 24 + 63 * 24 + 24 - worldRect.X;
-                            int endY = my + startLocalBaseY + 63 * 12 + 24 - worldRect.Y; // +24 是到下頂點
+                            // 終點 (y=63 時的右頂點) = (X+48, Y+12)
+                            int endX = mx + startLocalBaseX + x * 24 + 63 * 24 + 48 - worldRect.X;
+                            int endY = my + startLocalBaseY + 63 * 12 + 12 - worldRect.Y;
 
                             // 檢查是否在 viewport 內
                             if (endX >= 0 && startX <= worldRect.Width &&
@@ -9717,12 +9717,12 @@ namespace L1FlyMapViewer
                             int startX = mx + startLocalBaseX + x * 24 + y * 24 - worldRect.X;
                             int startY = my + startLocalBaseY + y * 12 + 12 - worldRect.Y; // +12 是到左頂點
 
-                            // 終點 (x3=63 時的右頂點)
+                            // 終點 (x3=63 時的上頂點) = (X+24, Y)
                             x = 63 * 2;
                             int endLocalBaseX = -24 * (x / 2);
                             int endLocalBaseY = 63 * 12 - 12 * (x / 2);
-                            int endX = mx + endLocalBaseX + x * 24 + y * 24 + 48 - worldRect.X; // +48 是到右頂點
-                            int endY = my + endLocalBaseY + y * 12 + 12 - worldRect.Y;
+                            int endX = mx + endLocalBaseX + x * 24 + y * 24 + 24 - worldRect.X;
+                            int endY = my + endLocalBaseY + y * 12 - worldRect.Y;
 
                             // 檢查是否在 viewport 內
                             if (endX >= 0 && startX <= worldRect.Width &&

@@ -234,7 +234,7 @@ namespace L1FlyMapViewer
             {
                 IsAntialias = false,
                 Style = SKPaintStyle.Stroke,
-                StrokeWidth = 1,
+                StrokeWidth = 2,
                 Color = new SKColor(255, 0, 0, 100)
             };
 
@@ -255,8 +255,9 @@ namespace L1FlyMapViewer
                     int startX = mx + startLocalBaseX + x * 24 + 0 * 24 + 24 - worldRect.X;
                     int startY = my + startLocalBaseY + 0 * 12 - worldRect.Y;
 
-                    int endX = mx + startLocalBaseX + x * 24 + 63 * 24 + 24 - worldRect.X;
-                    int endY = my + startLocalBaseY + 63 * 12 + 24 - worldRect.Y;
+                    // 終點: y=63 格子的右頂點 = (X+48, Y+12)
+                    int endX = mx + startLocalBaseX + x * 24 + 63 * 24 + 48 - worldRect.X;
+                    int endY = my + startLocalBaseY + 63 * 12 + 12 - worldRect.Y;
 
                     if (endX >= 0 && startX <= worldRect.Width &&
                         Math.Max(startY, endY) >= 0 && Math.Min(startY, endY) <= worldRect.Height)
@@ -265,22 +266,25 @@ namespace L1FlyMapViewer
                     }
                 }
 
-                // 繪製 "\" 方向的線
+                // 繪製 "\" 方向的線（沿著 x 方向的邊）
+                // 總共需要 65 條線
                 for (int j = 0; j <= 64; j++)
                 {
                     int y = j;
 
+                    // 起點 (x3=0 時的左頂點)
                     int x = 0;
                     int startLocalBaseX = -24 * (x / 2);
                     int startLocalBaseY = 63 * 12 - 12 * (x / 2);
                     int startX = mx + startLocalBaseX + x * 24 + y * 24 - worldRect.X;
-                    int startY = my + startLocalBaseY + y * 12 + 12 - worldRect.Y;
+                    int startY = my + startLocalBaseY + y * 12 + 12 - worldRect.Y; // +12 是到左頂點
 
+                    // 終點 (x3=63 時的上頂點) = (X+24, Y)
                     x = 63 * 2;
                     int endLocalBaseX = -24 * (x / 2);
                     int endLocalBaseY = 63 * 12 - 12 * (x / 2);
-                    int endX = mx + endLocalBaseX + x * 24 + y * 24 + 48 - worldRect.X;
-                    int endY = my + endLocalBaseY + y * 12 + 12 - worldRect.Y;
+                    int endX = mx + endLocalBaseX + x * 24 + y * 24 + 24 - worldRect.X;
+                    int endY = my + endLocalBaseY + y * 12 - worldRect.Y;
 
                     if (endX >= 0 && startX <= worldRect.Width &&
                         Math.Max(startY, endY) >= 0 && Math.Min(startY, endY) <= worldRect.Height)
