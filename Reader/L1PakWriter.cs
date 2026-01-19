@@ -311,7 +311,18 @@ namespace L1MapViewer.Reader
 
                 // 取得 pak 檔案目前大小作為新偏移
                 var pakFileInfo = new FileInfo(pakFilePath);
-                int newOffset = (int)pakFileInfo.Length;
+                long pakSize = pakFileInfo.Length;
+
+                // 檢查 pak 檔案大小是否超過 2GB 限制
+                const long MaxPakSize = int.MaxValue;
+                if (pakSize + data.Length > MaxPakSize)
+                {
+                    _logger.Error($"[UpdateFile] Writing {fileName} ({data.Length:N0} bytes) would exceed 2GB limit. " +
+                                  $"Current size: {pakSize:N0} bytes, Limit: {MaxPakSize:N0} bytes.");
+                    return false;
+                }
+
+                int newOffset = (int)pakSize;
 
                 // 附加新資料到 pak 末尾
                 using (var pakFs = new FileStream(pakFilePath, FileMode.Append, FileAccess.Write, FileShare.Read))
@@ -438,8 +449,37 @@ namespace L1MapViewer.Reader
 
                 // 取得 pak 檔案目前大小作為起始偏移
                 var pakFileInfo = new FileInfo(pakFilePath);
-                int currentOffset = (int)pakFileInfo.Length;
-                _logger.Debug($"[AppendFiles] pak file current size: {currentOffset} bytes");
+                long pakSize = pakFileInfo.Length;
+                _logger.Debug($"[AppendFiles] pak file current size: {pakSize} bytes");
+
+                // 檢查 pak 檔案大小是否超過 2GB 限制
+                // idx 格式使用 32 位元有符號整數存儲 Position，最大值為 2,147,483,647 (約 2GB)
+                const long MaxPakSize = int.MaxValue; // 2,147,483,647 bytes
+                if (pakSize > MaxPakSize)
+                {
+                    _logger.Error($"[AppendFiles] pak file size ({pakSize:N0} bytes) exceeds 2GB limit ({MaxPakSize:N0} bytes). " +
+                                  "The Lineage idx format uses 32-bit signed integers for file positions, " +
+                                  "which cannot address data beyond 2GB. Please create a new pak file or remove unused entries.");
+                    return 0;
+                }
+
+                // 計算寫入後的預估大小
+                long totalDataSize = 0;
+                foreach (var kvp in files)
+                {
+                    if (kvp.Value != null)
+                        totalDataSize += kvp.Value.Length;
+                }
+
+                if (pakSize + totalDataSize > MaxPakSize)
+                {
+                    _logger.Error($"[AppendFiles] Writing {files.Count} files ({totalDataSize:N0} bytes) would exceed 2GB limit. " +
+                                  $"Current size: {pakSize:N0} bytes, After write: {pakSize + totalDataSize:N0} bytes, Limit: {MaxPakSize:N0} bytes. " +
+                                  "Please create a new pak file or remove unused entries.");
+                    return 0;
+                }
+
+                int currentOffset = (int)pakSize;
 
                 int successCount = 0;
                 var newRecords = new List<IdxRecord>();
