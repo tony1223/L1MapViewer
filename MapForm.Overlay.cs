@@ -782,15 +782,15 @@ namespace L1FlyMapViewer
             }
             else if (currentRegionEditMode != RegionEditMode.None)
             {
-                string regionTypeName = GetRegionTypeName(currentRegionType);
-                helpText = $"【區域設置模式】\n" +
-                           $"• 當前類型：{regionTypeName}\n" +
+                helpText = "【區域設置模式】\n" +
                            "• 左鍵拖曳選取區域\n" +
-                           "• 右鍵：套用區域類型\n" +
-                           "• 1/2/3鍵：切換類型\n" +
+                           "• 右鍵：選擇區域類型\n" +
+                           "  - 一般區域（灰色）\n" +
+                           "  - 安全區域（藍色）\n" +
+                           "  - 戰鬥區域（紅色）\n" +
                            "• 再按按鈕：取消模式";
                 bgColor = new SKColor(40, 80, 40, 200);
-                textColor = GetRegionTypeColorSK(currentRegionType);
+                textColor = new SKColor(144, 238, 144); // LightGreen
             }
             else
             {
@@ -859,17 +859,6 @@ namespace L1FlyMapViewer
                 canvas.DrawText(line, x + padding, textY, textPaint);
                 textY += lineHeight;
             }
-        }
-
-        // 取得區域類型的 SKColor
-        private SKColor GetRegionTypeColorSK(RegionType regionType)
-        {
-            return regionType switch
-            {
-                RegionType.Safe => new SKColor(100, 150, 255),    // 藍色
-                RegionType.Combat => new SKColor(255, 100, 100),  // 紅色
-                _ => new SKColor(200, 200, 200)                   // 灰色（一般）
-            };
         }
 
         // 繪製 Layer8 覆蓋層（SK 版本）

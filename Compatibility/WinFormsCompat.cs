@@ -5424,6 +5424,7 @@ public static class KeysCompat
     public const Eto.Forms.Keys NumPad9 = Eto.Forms.Keys.Keypad9;
     public const Eto.Forms.Keys OemPeriod = Eto.Forms.Keys.Period;
     public const Eto.Forms.Keys OemMinus = Eto.Forms.Keys.Minus;
+    public const Eto.Forms.Keys Oemplus = Eto.Forms.Keys.Equal;  // + and = share the same physical key
 }
 
 /// <summary>
