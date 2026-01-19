@@ -4,10 +4,7 @@
         <OutputType>WinExe</OutputType>
         <!-- Use Windows TFM on Windows for WPF support, macOS TFM when UseGtk=false, plain net10.0 otherwise -->
         <TargetFramework Condition="$([MSBuild]::IsOSPlatform('Windows'))">net10.0-windows</TargetFramework>
-        <!-- Use net10.0-macos for macOS native platform -->
-        <TargetFramework Condition="$([MSBuild]::IsOSPlatform('OSX'))">net10.0-macos</TargetFramework>
-        <!-- Use plain net10.0 for Linux -->
-        <TargetFramework Condition="$([MSBuild]::IsOSPlatform('Linux'))">net10.0</TargetFramework>
+        <TargetFramework Condition="!$([MSBuild]::IsOSPlatform('Windows'))">net10.0</TargetFramework>
         <UseWPF Condition="$([MSBuild]::IsOSPlatform('Windows'))">true</UseWPF>
         <!-- Define WINDOWS for conditional compilation -->
         <DefineConstants Condition="$([MSBuild]::IsOSPlatform('Windows'))">$(DefineConstants);WINDOWS</DefineConstants>
