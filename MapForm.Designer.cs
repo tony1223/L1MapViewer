@@ -5,6 +5,7 @@ using Eto.Drawing;
 using L1MapViewer.Controls;
 using L1MapViewer.Localization;
 using L1MapViewer.Other;
+using static L1MapViewer.Compatibility.KeysCompat;
 
 namespace L1FlyMapViewer
 {
@@ -12,20 +13,67 @@ namespace L1FlyMapViewer
     {
         private IContainer components;
         private MenuStrip menuStrip1;
+
+        // 頂級選單
+        private ToolStripMenuItem menuFile;
+        private ToolStripMenuItem menuEdit;
+        private ToolStripMenuItem menuView;
+        private ToolStripMenuItem menuTools;
+        private ToolStripMenuItem menuHelp;
+
+        // 檔案選單項目
         private ToolStripMenuItem openToolStripMenuItem;
+        private ToolStripMenuItem importMaterialToolStripMenuItem;
+        private ToolStripMenuItem importFs32ToNewMapToolStripMenuItem;
+        private ToolStripMenuItem menuSaveS32;
+        private ToolStripMenuItem menuExportFs32;
         private ToolStripMenuItem exportToolStripMenuItem;
         private ToolStripMenuItem exportL1JToolStripMenuItem;
         private ToolStripMenuItem exportDIRToolStripMenuItem;
         private ToolStripMenuItem exportAllL1JToolStripMenuItem;
         private ToolStripMenuItem exportAllDIRToolStripMenuItem;
-        private ToolStripMenuItem importMaterialToolStripMenuItem;
-        private ToolStripMenuItem importFs32ToNewMapToolStripMenuItem;
-        private ToolStripMenuItem discordToolStripMenuItem;
+        private ToolStripMenuItem menuExit;
+
+        // 編輯選單項目
+        private ToolStripMenuItem menuUndo;
+        private ToolStripMenuItem menuRedo;
+        private ToolStripMenuItem menuCopy;
+        private ToolStripMenuItem menuPaste;
+        private ToolStripMenuItem menuDelete;
         private ToolStripMenuItem batchDeleteTileToolStripMenuItem;
+        private ToolStripMenuItem menuBatchReplaceTile;
+
+        // 檢視選單項目
+        private ToolStripMenuItem menuReloadMap;
+        private ToolStripMenuItem menuLayers;
+        private ToolStripMenuItem menuLayerL1;
+        private ToolStripMenuItem menuLayerL2;
+        private ToolStripMenuItem menuLayerL4;
+        private ToolStripMenuItem menuLayerL5;
+        private ToolStripMenuItem menuLayerL8;
+        private ToolStripMenuItem menuLayerPassable;
+        private ToolStripMenuItem menuLayerSafe;
+        private ToolStripMenuItem menuLayerCombat;
+        private ToolStripMenuItem menuLayerGrid;
+        private ToolStripMenuItem menuLayerS32Bound;
+        private ToolStripMenuItem menuZoom;
+        private ToolStripMenuItem menuZoomIn;
+        private ToolStripMenuItem menuZoomOut;
+        private ToolStripMenuItem menuZoom100;
+
+        // 工具選單項目
+        private ToolStripMenuItem menuPassableEdit;
+        private ToolStripMenuItem menuRegionEdit;
+        private ToolStripMenuItem menuLayer5Edit;
+        private ToolStripMenuItem menuValidateMap;
+
+        // 說明選單項目
+        private ToolStripMenuItem discordToolStripMenuItem;
         private ToolStripMenuItem languageToolStripMenuItem;
         private ToolStripMenuItem langZhTWToolStripMenuItem;
         private ToolStripMenuItem langJaJPToolStripMenuItem;
         private ToolStripMenuItem langEnUSToolStripMenuItem;
+        private ToolStripMenuItem menuAbout;
         private StatusStrip statusStrip1;
         public ToolStripStatusLabel toolStripStatusLabel1;
         public ToolStripProgressBar toolStripProgressBar1;
@@ -167,20 +215,67 @@ namespace L1FlyMapViewer
 
             // MenuStrip
             this.menuStrip1 = new MenuStrip();
+
+            // 頂級選單
+            this.menuFile = new ToolStripMenuItem();
+            this.menuEdit = new ToolStripMenuItem();
+            this.menuView = new ToolStripMenuItem();
+            this.menuTools = new ToolStripMenuItem();
+            this.menuHelp = new ToolStripMenuItem();
+
+            // 檔案選單項目
             this.openToolStripMenuItem = new ToolStripMenuItem();
+            this.importMaterialToolStripMenuItem = new ToolStripMenuItem();
+            this.importFs32ToNewMapToolStripMenuItem = new ToolStripMenuItem();
+            this.menuSaveS32 = new ToolStripMenuItem();
+            this.menuExportFs32 = new ToolStripMenuItem();
             this.exportToolStripMenuItem = new ToolStripMenuItem();
             this.exportL1JToolStripMenuItem = new ToolStripMenuItem();
             this.exportDIRToolStripMenuItem = new ToolStripMenuItem();
             this.exportAllL1JToolStripMenuItem = new ToolStripMenuItem();
             this.exportAllDIRToolStripMenuItem = new ToolStripMenuItem();
-            this.importMaterialToolStripMenuItem = new ToolStripMenuItem();
-            this.importFs32ToNewMapToolStripMenuItem = new ToolStripMenuItem();
-            this.discordToolStripMenuItem = new ToolStripMenuItem();
+            this.menuExit = new ToolStripMenuItem();
+
+            // 編輯選單項目
+            this.menuUndo = new ToolStripMenuItem();
+            this.menuRedo = new ToolStripMenuItem();
+            this.menuCopy = new ToolStripMenuItem();
+            this.menuPaste = new ToolStripMenuItem();
+            this.menuDelete = new ToolStripMenuItem();
             this.batchDeleteTileToolStripMenuItem = new ToolStripMenuItem();
+            this.menuBatchReplaceTile = new ToolStripMenuItem();
+
+            // 檢視選單項目
+            this.menuReloadMap = new ToolStripMenuItem();
+            this.menuLayers = new ToolStripMenuItem();
+            this.menuLayerL1 = new ToolStripMenuItem();
+            this.menuLayerL2 = new ToolStripMenuItem();
+            this.menuLayerL4 = new ToolStripMenuItem();
+            this.menuLayerL5 = new ToolStripMenuItem();
+            this.menuLayerL8 = new ToolStripMenuItem();
+            this.menuLayerPassable = new ToolStripMenuItem();
+            this.menuLayerSafe = new ToolStripMenuItem();
+            this.menuLayerCombat = new ToolStripMenuItem();
+            this.menuLayerGrid = new ToolStripMenuItem();
+            this.menuLayerS32Bound = new ToolStripMenuItem();
+            this.menuZoom = new ToolStripMenuItem();
+            this.menuZoomIn = new ToolStripMenuItem();
+            this.menuZoomOut = new ToolStripMenuItem();
+            this.menuZoom100 = new ToolStripMenuItem();
+
+            // 工具選單項目
+            this.menuPassableEdit = new ToolStripMenuItem();
+            this.menuRegionEdit = new ToolStripMenuItem();
+            this.menuLayer5Edit = new ToolStripMenuItem();
+            this.menuValidateMap = new ToolStripMenuItem();
+
+            // 說明選單項目
+            this.discordToolStripMenuItem = new ToolStripMenuItem();
             this.languageToolStripMenuItem = new ToolStripMenuItem();
             this.langZhTWToolStripMenuItem = new ToolStripMenuItem();
             this.langJaJPToolStripMenuItem = new ToolStripMenuItem();
             this.langEnUSToolStripMenuItem = new ToolStripMenuItem();
+            this.menuAbout = new ToolStripMenuItem();
 
             // StatusStrip
             this.statusStrip1 = new StatusStrip();
@@ -330,49 +425,61 @@ namespace L1FlyMapViewer
             this.SuspendLayout();
 
             //
-            // menuStrip1
+            // menuStrip1 - 主選單列
             //
             this.menuStrip1.Items.AddRange(new ToolStripItem[] {
-                this.openToolStripMenuItem,
-                this.importMaterialToolStripMenuItem,
-                this.importFs32ToNewMapToolStripMenuItem,
-                this.exportToolStripMenuItem,
-                this.batchDeleteTileToolStripMenuItem,
-                this.discordToolStripMenuItem,
-                this.languageToolStripMenuItem
+                this.menuFile,
+                this.menuEdit,
+                this.menuView,
+                this.menuTools,
+                this.menuHelp
             });
             this.menuStrip1.SetLocation(new Point(0, 0));
             this.menuStrip1.SetName("menuStrip1");
             this.menuStrip1.Size = new Size(1200, 24);
             this.menuStrip1.TabIndex = 0;
 
-            //
-            // openToolStripMenuItem
-            //
+            // ========== 檔案選單 ==========
+            this.menuFile.SetName("menuFile");
+            this.menuFile.Text = "檔案(&F)";
+            this.menuFile.DropDownItems.AddRange(new ToolStripItem[] {
+                this.openToolStripMenuItem,
+                new ToolStripSeparator(),
+                this.importMaterialToolStripMenuItem,
+                this.importFs32ToNewMapToolStripMenuItem,
+                new ToolStripSeparator(),
+                this.menuSaveS32,
+                this.menuExportFs32,
+                this.exportToolStripMenuItem,
+                new ToolStripSeparator(),
+                this.menuExit
+            });
+
             this.openToolStripMenuItem.SetName("openToolStripMenuItem");
-            this.openToolStripMenuItem.Size = new Size(164, 20);
-            this.openToolStripMenuItem.Text = "開啟天堂客戶端讀取地圖";
+            this.openToolStripMenuItem.Text = "開啟天堂客戶端...";
+            this.openToolStripMenuItem.ShortcutKeys = Keys.Control | Keys.O;
             this.openToolStripMenuItem.Click += new System.EventHandler(this.openToolStripMenuItem_Click);
 
-            //
-            // importMaterialToolStripMenuItem
-            //
             this.importMaterialToolStripMenuItem.SetName("importMaterialToolStripMenuItem");
-            this.importMaterialToolStripMenuItem.Size = new Size(86, 20);
             this.importMaterialToolStripMenuItem.Text = "匯入素材...";
+            this.importMaterialToolStripMenuItem.ShortcutKeys = Keys.Control | Keys.I;
             this.importMaterialToolStripMenuItem.Click += new System.EventHandler(this.importMaterialToolStripMenuItem_Click);
 
-            //
-            // importFs32ToNewMapToolStripMenuItem
-            //
             this.importFs32ToNewMapToolStripMenuItem.SetName("importFs32ToNewMapToolStripMenuItem");
-            this.importFs32ToNewMapToolStripMenuItem.Size = new Size(140, 20);
             this.importFs32ToNewMapToolStripMenuItem.Text = "匯入地圖包到新地圖...";
             this.importFs32ToNewMapToolStripMenuItem.Click += new System.EventHandler(this.importFs32ToNewMapToolStripMenuItem_Click);
 
-            //
-            // exportToolStripMenuItem (下拉選單)
-            //
+            this.menuSaveS32.SetName("menuSaveS32");
+            this.menuSaveS32.Text = "儲存 S32";
+            this.menuSaveS32.ShortcutKeys = Keys.Control | Keys.S;
+            this.menuSaveS32.Click += new System.EventHandler(this.btnSaveS32_Click);
+
+            this.menuExportFs32.SetName("menuExportFs32");
+            this.menuExportFs32.Text = "匯出 FS32 地圖包...";
+            this.menuExportFs32.Click += new System.EventHandler(this.ExportFs32MenuItem_Click);
+
+            this.exportToolStripMenuItem.SetName("exportToolStripMenuItem");
+            this.exportToolStripMenuItem.Text = "匯出通行資料";
             this.exportToolStripMenuItem.DropDownItems.AddRange(new ToolStripItem[] {
                 this.exportL1JToolStripMenuItem,
                 this.exportDIRToolStripMenuItem,
@@ -380,63 +487,218 @@ namespace L1FlyMapViewer
                 this.exportAllL1JToolStripMenuItem,
                 this.exportAllDIRToolStripMenuItem
             });
-            this.exportToolStripMenuItem.SetName("exportToolStripMenuItem");
-            this.exportToolStripMenuItem.Size = new Size(130, 20);
-            this.exportToolStripMenuItem.Text = "輸出伺服器通行txt";
 
-            //
-            // exportL1JToolStripMenuItem
-            //
             this.exportL1JToolStripMenuItem.SetName("exportL1JToolStripMenuItem");
-            this.exportL1JToolStripMenuItem.Size = new Size(100, 22);
             this.exportL1JToolStripMenuItem.Text = "L1J 格式";
             this.exportL1JToolStripMenuItem.Click += new System.EventHandler(this.exportL1JToolStripMenuItem_Click);
 
-            //
-            // exportDIRToolStripMenuItem
-            //
             this.exportDIRToolStripMenuItem.SetName("exportDIRToolStripMenuItem");
-            this.exportDIRToolStripMenuItem.Size = new Size(100, 22);
             this.exportDIRToolStripMenuItem.Text = "DIR 格式";
             this.exportDIRToolStripMenuItem.Click += new System.EventHandler(this.exportDIRToolStripMenuItem_Click);
 
-            //
-            // exportAllL1JToolStripMenuItem
-            //
             this.exportAllL1JToolStripMenuItem.SetName("exportAllL1JToolStripMenuItem");
-            this.exportAllL1JToolStripMenuItem.Size = new Size(180, 22);
             this.exportAllL1JToolStripMenuItem.Text = "輸出所有地圖 (L1J)";
             this.exportAllL1JToolStripMenuItem.Click += new System.EventHandler(this.exportAllL1JToolStripMenuItem_Click);
 
-            //
-            // exportAllDIRToolStripMenuItem
-            //
             this.exportAllDIRToolStripMenuItem.SetName("exportAllDIRToolStripMenuItem");
-            this.exportAllDIRToolStripMenuItem.Size = new Size(180, 22);
             this.exportAllDIRToolStripMenuItem.Text = "輸出所有地圖 (DIR)";
             this.exportAllDIRToolStripMenuItem.Click += new System.EventHandler(this.exportAllDIRToolStripMenuItem_Click);
 
-            //
-            // discordToolStripMenuItem
-            //
-            this.discordToolStripMenuItem.SetName("discordToolStripMenuItem");
-            this.discordToolStripMenuItem.Size = new Size(100, 20);
-            this.discordToolStripMenuItem.Text = "到 Discord 討論";
-            this.discordToolStripMenuItem.Click += new System.EventHandler(this.discordToolStripMenuItem_Click);
+            this.menuExit.SetName("menuExit");
+            this.menuExit.Text = "結束";
+            this.menuExit.Click += (s, e) => this.Close();
 
-            //
-            // batchDeleteTileToolStripMenuItem
-            //
+            // ========== 編輯選單 ==========
+            this.menuEdit.SetName("menuEdit");
+            this.menuEdit.Text = "編輯(&E)";
+            this.menuEdit.DropDownItems.AddRange(new ToolStripItem[] {
+                this.menuUndo,
+                this.menuRedo,
+                new ToolStripSeparator(),
+                this.menuCopy,
+                this.menuPaste,
+                this.menuDelete,
+                new ToolStripSeparator(),
+                this.batchDeleteTileToolStripMenuItem,
+                this.menuBatchReplaceTile
+            });
+
+            this.menuUndo.SetName("menuUndo");
+            this.menuUndo.Text = "復原";
+            this.menuUndo.ShortcutKeys = Keys.Control | Keys.Z;
+            this.menuUndo.Click += new System.EventHandler(this.btnToolUndo_Click);
+
+            this.menuRedo.SetName("menuRedo");
+            this.menuRedo.Text = "重做";
+            this.menuRedo.ShortcutKeys = Keys.Control | Keys.Y;
+            this.menuRedo.Click += new System.EventHandler(this.btnToolRedo_Click);
+
+            this.menuCopy.SetName("menuCopy");
+            this.menuCopy.Text = "複製";
+            this.menuCopy.ShortcutKeys = Keys.Control | Keys.C;
+            this.menuCopy.Click += new System.EventHandler(this.btnToolCopy_Click);
+
+            this.menuPaste.SetName("menuPaste");
+            this.menuPaste.Text = "貼上";
+            this.menuPaste.ShortcutKeys = Keys.Control | Keys.V;
+            this.menuPaste.Click += new System.EventHandler(this.btnToolPaste_Click);
+
+            this.menuDelete.SetName("menuDelete");
+            this.menuDelete.Text = "刪除";
+            this.menuDelete.ShortcutKeys = Keys.Delete;
+            this.menuDelete.Click += new System.EventHandler(this.btnToolDelete_Click);
+
             this.batchDeleteTileToolStripMenuItem.SetName("batchDeleteTileToolStripMenuItem");
-            this.batchDeleteTileToolStripMenuItem.Size = new Size(110, 20);
             this.batchDeleteTileToolStripMenuItem.Text = "批次刪除 Tile...";
             this.batchDeleteTileToolStripMenuItem.Click += new System.EventHandler(this.batchDeleteTileToolStripMenuItem_Click);
 
-            //
-            // languageToolStripMenuItem
-            //
+            this.menuBatchReplaceTile.SetName("menuBatchReplaceTile");
+            this.menuBatchReplaceTile.Text = "批次取代 Tile...";
+            this.menuBatchReplaceTile.Click += new System.EventHandler(this.btnToolReplaceTile_Click);
+
+            // ========== 檢視選單 ==========
+            this.menuView.SetName("menuView");
+            this.menuView.Text = "檢視(&V)";
+            this.menuView.DropDownItems.AddRange(new ToolStripItem[] {
+                this.menuReloadMap,
+                new ToolStripSeparator(),
+                this.menuLayers,
+                this.menuZoom
+            });
+
+            this.menuReloadMap.SetName("menuReloadMap");
+            this.menuReloadMap.Text = "重新載入地圖";
+            this.menuReloadMap.ShortcutKeys = Keys.F5;
+            this.menuReloadMap.Click += new System.EventHandler(this.btnReloadMap_Click);
+
+            // 圖層子選單
+            this.menuLayers.SetName("menuLayers");
+            this.menuLayers.Text = "圖層";
+            this.menuLayers.DropDownItems.AddRange(new ToolStripItem[] {
+                this.menuLayerL1,
+                this.menuLayerL2,
+                this.menuLayerL4,
+                this.menuLayerL5,
+                this.menuLayerL8,
+                new ToolStripSeparator(),
+                this.menuLayerPassable,
+                this.menuLayerSafe,
+                this.menuLayerCombat,
+                new ToolStripSeparator(),
+                this.menuLayerGrid,
+                this.menuLayerS32Bound
+            });
+
+            this.menuLayerL1.SetName("menuLayerL1");
+            this.menuLayerL1.Text = "Layer 1 地板";
+            this.menuLayerL1.Checked = true;
+            this.menuLayerL1.Click += (s, e) => { menuLayerL1.Checked = !menuLayerL1.Checked; chkLayer1.Checked = menuLayerL1.Checked; };
+
+            this.menuLayerL2.SetName("menuLayerL2");
+            this.menuLayerL2.Text = "Layer 2 裝飾";
+            this.menuLayerL2.Checked = true;
+            this.menuLayerL2.Click += (s, e) => { menuLayerL2.Checked = !menuLayerL2.Checked; chkLayer2.Checked = menuLayerL2.Checked; };
+
+            this.menuLayerL4.SetName("menuLayerL4");
+            this.menuLayerL4.Text = "Layer 4 物件";
+            this.menuLayerL4.Checked = true;
+            this.menuLayerL4.Click += (s, e) => { menuLayerL4.Checked = !menuLayerL4.Checked; chkLayer4.Checked = menuLayerL4.Checked; };
+
+            this.menuLayerL5.SetName("menuLayerL5");
+            this.menuLayerL5.Text = "Layer 5 事件";
+            this.menuLayerL5.Click += (s, e) => { menuLayerL5.Checked = !menuLayerL5.Checked; chkShowLayer5.Checked = menuLayerL5.Checked; };
+
+            this.menuLayerL8.SetName("menuLayerL8");
+            this.menuLayerL8.Text = "Layer 8 SPR";
+            this.menuLayerL8.Click += (s, e) => { menuLayerL8.Checked = !menuLayerL8.Checked; chkFloatLayer8Spr.Checked = menuLayerL8.Checked; };
+
+            this.menuLayerPassable.SetName("menuLayerPassable");
+            this.menuLayerPassable.Text = "通行性";
+            this.menuLayerPassable.Click += (s, e) => { menuLayerPassable.Checked = !menuLayerPassable.Checked; chkShowPassable.Checked = menuLayerPassable.Checked; };
+
+            this.menuLayerSafe.SetName("menuLayerSafe");
+            this.menuLayerSafe.Text = "安全區域";
+            this.menuLayerSafe.Click += (s, e) => { menuLayerSafe.Checked = !menuLayerSafe.Checked; chkShowSafeZones.Checked = menuLayerSafe.Checked; };
+
+            this.menuLayerCombat.SetName("menuLayerCombat");
+            this.menuLayerCombat.Text = "戰鬥區域";
+            this.menuLayerCombat.Click += (s, e) => { menuLayerCombat.Checked = !menuLayerCombat.Checked; chkShowCombatZones.Checked = menuLayerCombat.Checked; };
+
+            this.menuLayerGrid.SetName("menuLayerGrid");
+            this.menuLayerGrid.Text = "格線";
+            this.menuLayerGrid.Click += (s, e) => { menuLayerGrid.Checked = !menuLayerGrid.Checked; chkShowGrid.Checked = menuLayerGrid.Checked; };
+
+            this.menuLayerS32Bound.SetName("menuLayerS32Bound");
+            this.menuLayerS32Bound.Text = "S32 邊界";
+            this.menuLayerS32Bound.Click += (s, e) => { menuLayerS32Bound.Checked = !menuLayerS32Bound.Checked; chkShowS32Boundary.Checked = menuLayerS32Bound.Checked; };
+
+            // 縮放子選單
+            this.menuZoom.SetName("menuZoom");
+            this.menuZoom.Text = "縮放";
+            this.menuZoom.DropDownItems.AddRange(new ToolStripItem[] {
+                this.menuZoomIn,
+                this.menuZoomOut,
+                this.menuZoom100
+            });
+
+            this.menuZoomIn.SetName("menuZoomIn");
+            this.menuZoomIn.Text = "放大";
+            this.menuZoomIn.ShortcutKeys = Keys.Control | Oemplus;
+            this.menuZoomIn.Click += (s, e) => ZoomIn();
+
+            this.menuZoomOut.SetName("menuZoomOut");
+            this.menuZoomOut.Text = "縮小";
+            this.menuZoomOut.ShortcutKeys = Keys.Control | OemMinus;
+            this.menuZoomOut.Click += (s, e) => ZoomOut();
+
+            this.menuZoom100.SetName("menuZoom100");
+            this.menuZoom100.Text = "100%";
+            this.menuZoom100.ShortcutKeys = Keys.Control | Keys.D0;
+            this.menuZoom100.Click += (s, e) => ResetZoom();
+
+            // ========== 工具選單 ==========
+            this.menuTools.SetName("menuTools");
+            this.menuTools.Text = "工具(&T)";
+            this.menuTools.DropDownItems.AddRange(new ToolStripItem[] {
+                this.menuPassableEdit,
+                this.menuRegionEdit,
+                this.menuLayer5Edit,
+                new ToolStripSeparator(),
+                this.menuValidateMap
+            });
+
+            this.menuPassableEdit.SetName("menuPassableEdit");
+            this.menuPassableEdit.Text = "通行編輯模式";
+            this.menuPassableEdit.Click += new System.EventHandler(this.btnEditPassable_Click);
+
+            this.menuRegionEdit.SetName("menuRegionEdit");
+            this.menuRegionEdit.Text = "區域編輯模式";
+            this.menuRegionEdit.Click += new System.EventHandler(this.btnRegionEdit_Click);
+
+            this.menuLayer5Edit.SetName("menuLayer5Edit");
+            this.menuLayer5Edit.Text = "透明編輯模式";
+            this.menuLayer5Edit.Click += new System.EventHandler(this.btnEditLayer5_Click);
+
+            this.menuValidateMap.SetName("menuValidateMap");
+            this.menuValidateMap.Text = "驗證地圖正確性";
+            this.menuValidateMap.Click += new System.EventHandler(this.btnMapValidate_Click);
+
+            // ========== 說明選單 ==========
+            this.menuHelp.SetName("menuHelp");
+            this.menuHelp.Text = "說明(&H)";
+            this.menuHelp.DropDownItems.AddRange(new ToolStripItem[] {
+                this.discordToolStripMenuItem,
+                new ToolStripSeparator(),
+                this.languageToolStripMenuItem,
+                new ToolStripSeparator(),
+                this.menuAbout
+            });
+
+            this.discordToolStripMenuItem.SetName("discordToolStripMenuItem");
+            this.discordToolStripMenuItem.Text = "到 Discord 討論";
+            this.discordToolStripMenuItem.Click += new System.EventHandler(this.discordToolStripMenuItem_Click);
+
             this.languageToolStripMenuItem.SetName("languageToolStripMenuItem");
-            this.languageToolStripMenuItem.Size = new Size(54, 20);
             this.languageToolStripMenuItem.Text = "Language";
             this.languageToolStripMenuItem.DropDownItems.AddRange(new ToolStripItem[] {
                 this.langZhTWToolStripMenuItem,
@@ -444,32 +706,24 @@ namespace L1FlyMapViewer
                 this.langEnUSToolStripMenuItem
             });
 
-            //
-            // langZhTWToolStripMenuItem
-            //
             this.langZhTWToolStripMenuItem.SetName("langZhTWToolStripMenuItem");
-            this.langZhTWToolStripMenuItem.Size = new Size(120, 22);
             this.langZhTWToolStripMenuItem.Text = "繁體中文";
             this.langZhTWToolStripMenuItem.Tag = "zh-TW";
             this.langZhTWToolStripMenuItem.Click += new System.EventHandler(this.LanguageMenuItem_Click);
 
-            //
-            // langJaJPToolStripMenuItem
-            //
             this.langJaJPToolStripMenuItem.SetName("langJaJPToolStripMenuItem");
-            this.langJaJPToolStripMenuItem.Size = new Size(120, 22);
             this.langJaJPToolStripMenuItem.Text = "日本語";
             this.langJaJPToolStripMenuItem.Tag = "ja-JP";
             this.langJaJPToolStripMenuItem.Click += new System.EventHandler(this.LanguageMenuItem_Click);
 
-            //
-            // langEnUSToolStripMenuItem
-            //
             this.langEnUSToolStripMenuItem.SetName("langEnUSToolStripMenuItem");
-            this.langEnUSToolStripMenuItem.Size = new Size(120, 22);
             this.langEnUSToolStripMenuItem.Text = "English";
             this.langEnUSToolStripMenuItem.Tag = "en-US";
             this.langEnUSToolStripMenuItem.Click += new System.EventHandler(this.LanguageMenuItem_Click);
+
+            this.menuAbout.SetName("menuAbout");
+            this.menuAbout.Text = "關於...";
+            this.menuAbout.Click += (s, e) => MessageBox.Show("L1MapViewer\n天堂地圖編輯器\n\n作者: Flyworld (Tony1223)", "關於");
 
             //
             // statusStrip1

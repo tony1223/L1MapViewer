@@ -123,21 +123,12 @@ namespace L1FlyMapViewer
             Editing         // 通行編輯模式（選取區域後右鍵設定）
         }
         private PassableEditMode currentPassableEditMode = PassableEditMode.None;
-        private Label lblPassabilityHelp; // 通行性編輯操作說明標籤
 
         // 區域編輯模式
         private RegionEditMode currentRegionEditMode = RegionEditMode.None;
-        private RegionType currentRegionType = RegionType.Normal;
-        private Label lblRegionHelp; // 區域編輯操作說明標籤
-        private Button btnRegionNormal;  // 一般區域按鈕
-        private Button btnRegionSafe;    // 安全區域按鈕
-        private Button btnRegionCombat;  // 戰鬥區域按鈕
 
         // Layer5 透明編輯模式（狀態存於 _editState.IsLayer5EditMode）
-        private Label lblLayer5Help; // Layer5 編輯操作說明標籤
-
-        // 預設操作提示標籤
-        private Label lblDefaultHint;
+        // 編輯模式說明文字現在由 DrawEditModeHelpLabelSK 在 overlay 中繪製
 
         // Undo 相關常數
         private const int MAX_UNDO_HISTORY = 5;
@@ -473,104 +464,8 @@ namespace L1FlyMapViewer
             // 拖曳移動視圖時更新小地圖（使用防抖避免過度更新）
             // 注意：現在使用中鍵拖曳移動視圖，不再使用 Panel AutoScroll
 
-            // 建立通行性編輯操作說明標籤
-            lblPassabilityHelp = new Label
-            {
-                AutoSize = true,
-                BackColor = Color.FromArgb(200, 30, 30, 30),
-                ForeColor = Colors.White,
-                Font = new Font("Microsoft JhengHei", 9, FontStyle.None),
-                Padding = new Padding(8),
-                Visible = false,
-                BorderStyle = BorderStyle.FixedSingle
-            };
-            this.s32MapPanel.GetControls().Add(lblPassabilityHelp);
-            lblPassabilityHelp.BringToFront();
-            lblPassabilityHelp.SetLocation(new Point(10, 10));
-
-            // 建立區域編輯操作說明標籤
-            lblRegionHelp = new Label
-            {
-                AutoSize = true,
-                BackColor = Color.FromArgb(200, 40, 80, 40),
-                ForeColor = Colors.White,
-                Font = new Font("Microsoft JhengHei", 9, FontStyle.None),
-                Padding = new Padding(8),
-                Visible = false,
-                BorderStyle = BorderStyle.FixedSingle
-            };
-            this.s32MapPanel.GetControls().Add(lblRegionHelp);
-            lblRegionHelp.BringToFront();
-            lblRegionHelp.SetLocation(new Point(10, 10));
-
-            // 建立預設操作提示標籤
-            lblDefaultHint = new Label
-            {
-                AutoSize = true,
-                BackColor = Color.FromArgb(180, 50, 50, 50),
-                ForeColor = Colors.White,
-                Font = new Font("Microsoft JhengHei", 9, FontStyle.None),
-                Padding = new Padding(8),
-                Text = LocalizationManager.L("Hint_MouseControls"),
-                Visible = true,
-                BorderStyle = BorderStyle.FixedSingle
-            };
-            this.s32MapPanel.GetControls().Add(lblDefaultHint);
-            lblDefaultHint.BringToFront();
-            lblDefaultHint.SetLocation(new Point(10, 10));
-
-            // 建立 Layer5 透明編輯操作說明標籤（預先創建，避免運行時添加控件導致的布局問題）
-            lblLayer5Help = new Label();
-            lblLayer5Help.SetAutoSize(false);
-            lblLayer5Help.Size = new Size(200, 130);
-            lblLayer5Help.BackgroundColor = Color.FromArgb(220, 30, 30, 50);
-            lblLayer5Help.TextColor = Color.FromArgb(100, 180, 255);
-            lblLayer5Help.Font = new Font("Microsoft JhengHei", 9F, FontStyle.None);
-            lblLayer5Help.Padding = new Padding(8);
-            lblLayer5Help.BorderStyle = BorderStyle.FixedSingle;
-            lblLayer5Help.Visible = false; // 初始隱藏
-            this.s32MapPanel.GetControls().Add(lblLayer5Help);
-            lblLayer5Help.SetLocation(new Point(10, 10));
-
-            // 建立區域類型切換按鈕
-            btnRegionNormal = new Button
-            {
-                Text = "一般",
-                Size = new Size(50, 25),
-                Location = new Point(10, 85),
-                BackColor = Color.FromArgb(200, 200, 200),
-                FlatStyle = FlatStyle.Flat,
-                Visible = false
-            };
-            btnRegionNormal.Click += (s, ev) => { currentRegionType = RegionType.Normal; UpdateRegionHelpLabel(); };
-            this.s32MapPanel.GetControls().Add(btnRegionNormal);
-            btnRegionNormal.BringToFront();
-
-            btnRegionSafe = new Button
-            {
-                Text = "安全",
-                Size = new Size(50, 25),
-                Location = new Point(65, 85),
-                BackColor = Color.FromArgb(100, 150, 255),
-                FlatStyle = FlatStyle.Flat,
-                Visible = false
-            };
-            btnRegionSafe.Click += (s, ev) => { currentRegionType = RegionType.Safe; UpdateRegionHelpLabel(); };
-            this.s32MapPanel.GetControls().Add(btnRegionSafe);
-            btnRegionSafe.BringToFront();
-
-            btnRegionCombat = new Button
-            {
-                Text = "戰鬥",
-                Size = new Size(50, 25),
-                Location = new Point(120, 85),
-                BackColor = Color.FromArgb(180, 100, 255),
-                FlatStyle = FlatStyle.Flat,
-                Visible = false
-            };
-            btnRegionCombat.Click += (s, ev) => { currentRegionType = RegionType.Combat; UpdateRegionHelpLabel(); };
-            this.s32MapPanel.GetControls().Add(btnRegionCombat);
-            btnRegionCombat.BringToFront();
+            // 編輯模式說明文字現在由 DrawEditModeHelpLabelSK 在 overlay 中繪製
+            // 區域類型切換現在由右鍵選單處理
 
             // 註冊 F5 快捷鍵重新載入
             this.KeyPreview = true;
@@ -1104,38 +999,6 @@ namespace L1FlyMapViewer
             {
                 e.Handled = true;
                 DeleteSelectedLayer4Objects();
-            }
-            // 1/2/3 鍵：區域編輯模式下切換區域類型
-            else if (currentRegionEditMode == RegionEditMode.SetRegion)
-            {
-                RegionType newRegionType = currentRegionType;
-                string newRegionName = "";
-
-                if (e.GetKeyCode() == Keys.D1 || e.GetKeyCode() == Keys.Keypad1)
-                {
-                    newRegionType = RegionType.Normal;
-                    newRegionName = "一般區域";
-                    e.Handled = true;
-                }
-                else if (e.GetKeyCode() == Keys.D2 || e.GetKeyCode() == Keys.Keypad2)
-                {
-                    newRegionType = RegionType.Safe;
-                    newRegionName = "安全區域";
-                    e.Handled = true;
-                }
-                else if (e.GetKeyCode() == Keys.D3 || e.GetKeyCode() == Keys.Keypad3)
-                {
-                    newRegionType = RegionType.Combat;
-                    newRegionName = "戰鬥區域";
-                    e.Handled = true;
-                }
-
-                if (newRegionType != currentRegionType)
-                {
-                    currentRegionType = newRegionType;
-                    this.toolStripStatusLabel1.Text = $"區域設置模式 ({newRegionName})：直接點擊格子設定區域類型 | 1/2/3鍵切換區域類型";
-                    UpdateRegionHelpLabel();
-                }
             }
             // 方向鍵：小地圖焦點時移動視圖
             else if (_interaction.IsMiniMapFocused && (e.GetKeyCode() == Keys.Up || e.GetKeyCode() == Keys.Down ||
@@ -4272,6 +4135,32 @@ namespace L1FlyMapViewer
             }
         }
 
+        // 縮放功能（供選單使用）
+        private void ZoomIn()
+        {
+            double currentZoom = _viewState.ZoomLevel - 1.0; // 轉換為 targetZoomLevel
+            double newZoom = Math.Min(currentZoom + 0.25, 3.0); // 最大 400%
+            ApplyS32Zoom(newZoom);
+        }
+
+        private void ZoomOut()
+        {
+            double currentZoom = _viewState.ZoomLevel - 1.0;
+            double newZoom = Math.Max(currentZoom - 0.25, -0.75); // 最小 25%
+            ApplyS32Zoom(newZoom);
+        }
+
+        private void ResetZoom()
+        {
+            ApplyS32Zoom(0.0); // 100%
+        }
+
+        // 匯出 FS32 地圖包（選單項目）
+        private void ExportFs32MenuItem_Click(object sender, EventArgs e)
+        {
+            ExportCurrentMapAsFs32();
+        }
+
         // 顯示單點座標
         private void ShowSinglePoint(int x, int y)
         {
@@ -6608,6 +6497,26 @@ namespace L1FlyMapViewer
                 chkFloatCombatZones.Checked = chkShowCombatZones.Checked;
             }
 
+            // 同步到選單項目（CheckBox → Menu）
+            if (sender == chkLayer1 && menuLayerL1.Checked != (chkLayer1.Checked == true))
+                menuLayerL1.Checked = chkLayer1.Checked == true;
+            else if (sender == chkLayer2 && menuLayerL2.Checked != (chkLayer2.Checked == true))
+                menuLayerL2.Checked = chkLayer2.Checked == true;
+            else if (sender == chkLayer4 && menuLayerL4.Checked != (chkLayer4.Checked == true))
+                menuLayerL4.Checked = chkLayer4.Checked == true;
+            else if (sender == chkShowLayer5 && menuLayerL5.Checked != (chkShowLayer5.Checked == true))
+                menuLayerL5.Checked = chkShowLayer5.Checked == true;
+            else if (sender == chkShowPassable && menuLayerPassable.Checked != (chkShowPassable.Checked == true))
+                menuLayerPassable.Checked = chkShowPassable.Checked == true;
+            else if (sender == chkShowSafeZones && menuLayerSafe.Checked != (chkShowSafeZones.Checked == true))
+                menuLayerSafe.Checked = chkShowSafeZones.Checked == true;
+            else if (sender == chkShowCombatZones && menuLayerCombat.Checked != (chkShowCombatZones.Checked == true))
+                menuLayerCombat.Checked = chkShowCombatZones.Checked == true;
+            else if (sender == chkShowGrid && menuLayerGrid.Checked != (chkShowGrid.Checked == true))
+                menuLayerGrid.Checked = chkShowGrid.Checked == true;
+            else if (sender == chkShowS32Boundary && menuLayerS32Bound.Checked != (chkShowS32Boundary.Checked == true))
+                menuLayerS32Bound.Checked = chkShowS32Boundary.Checked == true;
+
             // 更新圖示顯示狀態
             UpdateLayerIconText();
 
@@ -6859,7 +6768,7 @@ namespace L1FlyMapViewer
                 UpdateLayer5HelpLabel();
                 // 自動顯示區域覆蓋層
                 EnsureRegionsLayerVisible();
-                this.toolStripStatusLabel1.Text = $"區域設置模式 ({GetRegionTypeName(currentRegionType)})：左鍵拖曳選取，右鍵套用 | 1=一般 2=安全 3=戰鬥";
+                this.toolStripStatusLabel1.Text = "區域設置模式：左鍵選取區域，右鍵選擇區域類型";
                 UpdateRegionHelpLabel();
             }
         }
@@ -7474,11 +7383,8 @@ namespace L1FlyMapViewer
         // 注意：所有提示現在都由 DrawEditModeHelpLabelSK 在 overlay 中繪製
         private void UpdateDefaultHintVisibility()
         {
-            // 隱藏舊的 Label（保留以避免 null reference）
-            if (lblDefaultHint != null) lblDefaultHint.Visible = false;
-            if (lblPassabilityHelp != null) lblPassabilityHelp.Visible = false;
-            if (lblRegionHelp != null) lblRegionHelp.Visible = false;
-            if (lblLayer5Help != null) lblLayer5Help.Visible = false;
+            // 所有提示現在都由 overlay 繪製，此函數僅觸發重繪
+            _mapViewerControl?.InvalidateOverlay();
         }
 
         // 重新載入按鈕點擊事件
@@ -10718,15 +10624,8 @@ namespace L1FlyMapViewer
                     UpdateStatusBarWithLayer3Info(s32Data, x, y);
                 }
 
-                // 區域編輯模式：右鍵變更選取區域的區域類型
-                if (currentRegionEditMode != RegionEditMode.None && e.Buttons == Eto.Forms.MouseButtons.Alternate)
-                {
-                    if (_editState.SelectedCells.Count > 0)
-                    {
-                        SetSelectedCellsRegionType(currentRegionType);
-                    }
-                    return;
-                }
+                // 區域編輯模式：右鍵顯示選單讓使用者選擇區域類型
+                // 注意：已改由 ShowSelectionContextMenu 處理，這裡不再直接套用
 
                 // 素材貼上模式：點擊貼上素材
                 if (_pendingMaterial != null && e.Buttons == Eto.Forms.MouseButtons.Primary)
@@ -11946,6 +11845,25 @@ namespace L1FlyMapViewer
                 var allImpassable = new ToolStripMenuItem($"整格 不可通行 ({cellCount} 格)");
                 allImpassable.Click += (s, ev) => SetSelectedCellsPassability(PassabilityTarget.All, false);
                 menu.Items.Add(allImpassable);
+            }
+
+            // 區域編輯模式：加入區域類型設定選項
+            if (currentRegionEditMode == RegionEditMode.SetRegion)
+            {
+                int cellCount = _editState.SelectedCells.Count;
+                menu.Items.Add(new ToolStripSeparator());
+
+                var regionNormalItem = new ToolStripMenuItem($"設為一般區域 ({cellCount} 格)");
+                regionNormalItem.Click += (s, ev) => SetSelectedCellsRegionType(RegionType.Normal);
+                menu.Items.Add(regionNormalItem);
+
+                var regionSafeItem = new ToolStripMenuItem($"設為安全區域 ({cellCount} 格)");
+                regionSafeItem.Click += (s, ev) => SetSelectedCellsRegionType(RegionType.Safe);
+                menu.Items.Add(regionSafeItem);
+
+                var regionCombatItem = new ToolStripMenuItem($"設為戰鬥區域 ({cellCount} 格)");
+                regionCombatItem.Click += (s, ev) => SetSelectedCellsRegionType(RegionType.Combat);
+                menu.Items.Add(regionCombatItem);
             }
 
             // 新增 S32 選項（在任何情況下都顯示，方便在延伸區新增 S32）
@@ -18473,182 +18391,15 @@ namespace L1FlyMapViewer
                     return;
                 }
 
-                var sb = new System.Text.StringBuilder();
-                sb.AppendLine($"素材名稱: {material.Name}");
-                sb.AppendLine($"檔案路徑: {filePath}");
-                sb.AppendLine();
-                sb.AppendLine($"尺寸: {material.Width} x {material.Height}");
-                sb.AppendLine($"原點偏移: ({material.OriginOffsetX}, {material.OriginOffsetY})");
-                sb.AppendLine();
-
-                // Layer 資訊
-                sb.AppendLine("=== 圖層資料 ===");
-                if (material.HasLayer1)
-                    sb.AppendLine($"Layer1 (地板): {material.Layer1Items.Count} 項");
-                if (material.HasLayer2)
-                    sb.AppendLine($"Layer2 (裝飾): {material.Layer2Items.Count} 項");
-                if (material.HasLayer3)
-                    sb.AppendLine($"Layer3 (屬性): {material.Layer3Items.Count} 項");
-                if (material.HasLayer4)
-                    sb.AppendLine($"Layer4 (物件): {material.Layer4Items.Count} 項");
-
-                if (!material.HasLayer1 && !material.HasLayer2 && !material.HasLayer3 && !material.HasLayer4)
-                    sb.AppendLine("(無圖層資料)");
-
-                // Layer1 詳細列表
-                if (material.HasLayer1 && material.Layer1Items.Count > 0)
+                using (var dialog = new L1MapViewer.Forms.MaterialDetailDialog(material, filePath))
                 {
-                    sb.AppendLine();
-                    sb.AppendLine("=== Layer1 明細 (地板) ===");
-                    sb.AppendLine("  X\t  Y\tIndexId\tTileId");
-                    sb.AppendLine("────────────────────────────────");
-                    foreach (var item in material.Layer1Items.OrderBy(i => i.RelativeY).ThenBy(i => i.RelativeX))
-                    {
-                        sb.AppendLine($"{item.RelativeX,4}\t{item.RelativeY,4}\t{item.IndexId,4}\t{item.TileId,6}");
-                    }
-                }
-
-                // Layer2 詳細列表
-                if (material.HasLayer2 && material.Layer2Items.Count > 0)
-                {
-                    sb.AppendLine();
-                    sb.AppendLine("=== Layer2 明細 (裝飾) ===");
-                    sb.AppendLine("  X\t  Y\tIndexId\tTileId\tUK");
-                    sb.AppendLine("────────────────────────────────────────");
-                    foreach (var item in material.Layer2Items.OrderBy(i => i.RelativeY).ThenBy(i => i.RelativeX))
-                    {
-                        sb.AppendLine($"{item.RelativeX,4}\t{item.RelativeY,4}\t{item.IndexId,4}\t{item.TileId,6}\t{item.UK,3}");
-                    }
-                }
-
-                // Layer4 詳細列表
-                if (material.HasLayer4 && material.Layer4Items.Count > 0)
-                {
-                    sb.AppendLine();
-                    sb.AppendLine("=== Layer4 明細 (物件) ===");
-                    sb.AppendLine("  X\t  Y\tGroupId\tLayer\tIndexId\tTileId");
-                    sb.AppendLine("──────────────────────────────────────────────────");
-                    foreach (var item in material.Layer4Items.OrderBy(i => i.GroupId).ThenBy(i => i.Layer))
-                    {
-                        sb.AppendLine($"{item.RelativeX,4}\t{item.RelativeY,4}\t{item.GroupId,5}\t{item.Layer,3}\t{item.IndexId,4}\t{item.TileId,6}");
-                    }
-                }
-
-                sb.AppendLine();
-
-                // Tile 資訊
-                sb.AppendLine("=== Tile 資料 ===");
-                if (material.Tiles.Count > 0)
-                {
-                    sb.AppendLine($"包含 {material.Tiles.Count} 個 Tiles:");
-                    foreach (var tile in material.Tiles.OrderBy(t => t.Key))
-                    {
-                        sb.AppendLine($"  - Tile {tile.Key} ({tile.Value.TilData?.Length ?? 0} bytes)");
-                    }
-                }
-                else
-                {
-                    sb.AppendLine("(未包含 Tile 資料)");
-                }
-
-                sb.AppendLine();
-
-                // 使用的 TileId 統計
-                var usedTileIds = new HashSet<int>();
-                foreach (var item in material.Layer1Items)
-                    if (item.TileId > 0) usedTileIds.Add(item.TileId);
-                foreach (var item in material.Layer2Items)
-                    if (item.TileId > 0) usedTileIds.Add(item.TileId);
-                foreach (var item in material.Layer4Items)
-                    if (item.TileId > 0) usedTileIds.Add(item.TileId);
-
-                if (usedTileIds.Count > 0)
-                {
-                    sb.AppendLine($"=== 使用的 TileId ({usedTileIds.Count} 個) ===");
-                    var sortedIds = usedTileIds.OrderBy(x => x).ToList();
-                    for (int i = 0; i < sortedIds.Count; i += 10)
-                    {
-                        var batch = sortedIds.Skip(i).Take(10);
-                        sb.AppendLine(string.Join(", ", batch));
-                    }
-                }
-
-                // Metadata
-                sb.AppendLine();
-                sb.AppendLine("=== 中繼資料 ===");
-                if (material.CreatedTime > 0)
-                {
-                    var created = DateTimeOffset.FromUnixTimeSeconds(material.CreatedTime).LocalDateTime;
-                    sb.AppendLine($"建立時間: {created:yyyy-MM-dd HH:mm:ss}");
-                }
-                if (material.ModifiedTime > 0)
-                {
-                    var modified = DateTimeOffset.FromUnixTimeSeconds(material.ModifiedTime).LocalDateTime;
-                    sb.AppendLine($"修改時間: {modified:yyyy-MM-dd HH:mm:ss}");
-                }
-                if (material.Tags.Count > 0)
-                {
-                    sb.AppendLine($"標籤: {string.Join(", ", material.Tags)}");
-                }
-
-                // 使用可複製的對話框
-                using (var detailForm = new Form())
-                {
-                    detailForm.Text = $"素材詳情 - {material.Name}";
-                    detailForm.Size = new Size(700, 600);
-                    detailForm.SetStartPosition(FormStartPosition.CenterParent);
-                    detailForm.SetFormBorderStyle(FormBorderStyle.Sizable);
-                    detailForm.MinimumSize = new Size(500, 400);
-
-                    var textBox = new TextBox
-                    {
-                        Multiline = true,
-                        ReadOnly = true,
-                        ScrollBars = ScrollBars.Both,
-                        Dock = DockStyle.Fill,
-                        Font = new Font("Consolas", 9),
-                        Text = sb.ToString(),
-                        SelectionStart = 0,
-                        SelectionLength = 0
-                    };
-
-                    var btnPanel = new Panel
-                    {
-                        Dock = DockStyle.Bottom,
-                        Height = 40
-                    };
-
-                    var btnCopy = new Button
-                    {
-                        Text = "複製全部",
-                        Size = new Size(80, 28),
-                        Location = new Point(10, 6)
-                    };
-                    btnCopy.Click += (s, ev) =>
-                    {
-                        ClipboardHelper.SetText(sb.ToString());
-                        toolStripStatusLabel1.Text = "已複製素材詳情到剪貼簿";
-                    };
-
-                    var btnClose = new Button
-                    {
-                        Text = "關閉",
-                        Size = new Size(80, 28),
-                        Location = new Point(100, 6),
-                        DialogResult = DialogResult.Ok
-                    };
-
-                    btnPanel.GetControls().Add(btnCopy);
-                    btnPanel.GetControls().Add(btnClose);
-                    detailForm.GetControls().Add(textBox);
-                    detailForm.GetControls().Add(btnPanel);
-                    detailForm.AcceptButton = btnClose;
-
-                    detailForm.ShowDialog(this);
+                    dialog.StatusUpdated += (msg) => toolStripStatusLabel1.Text = msg;
+                    dialog.ShowDialog(this);
                 }
             }
             catch (Exception ex)
             {
+                _logger.Error(ex, "讀取素材失敗");
                 WinFormsMessageBox.Show($"讀取素材失敗: {ex.Message}", "錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
@@ -26853,6 +26604,10 @@ namespace L1FlyMapViewer
             tabControl.SetAnchor(AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right);
             resultForm.GetControls().Add(tabControl);
 
+            // TabPage 內容的參考大小（使用 TabControl 大小減去邊框）
+            const int tabContentWidth = 800;
+            const int tabContentHeight = 480;
+
             // ===== Tab 1: Layer5 異常 =====
             if (invalidL5Items.Count > 0)
             {
@@ -26862,13 +26617,13 @@ namespace L1FlyMapViewer
                 Label lblL5Summary = new Label();
                 lblL5Summary.Text = string.Format(LocalizationManager.L("AbnormalCheck_Layer5Summary"), invalidL5Items.Count);
                 lblL5Summary.SetLocation(new Point(5, 5));
-                lblL5Summary.Size = new Size(tabL5.ClientSize.Width - 10, 20);
+                lblL5Summary.Size = new Size(tabContentWidth - 10, 20);
                 lblL5Summary.SetAnchor(AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right);
                 tabL5.GetControls().Add(lblL5Summary);
 
                 CheckedListBox clbL5Items = new CheckedListBox();
                 clbL5Items.SetLocation(new Point(5, 30));
-                clbL5Items.Size = new Size(tabL5.ClientSize.Width - 10, tabL5.ClientSize.Height - 110);
+                clbL5Items.Size = new Size(tabContentWidth - 10, tabContentHeight - 110);
                 clbL5Items.Font = new Font("Consolas", 9);
                 clbL5Items.CheckOnClick = true;
                 clbL5Items.SetAnchor(AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right);
@@ -26882,8 +26637,8 @@ namespace L1FlyMapViewer
 
                 // 按鈕面板
                 Panel pnlL5Buttons = new Panel();
-                pnlL5Buttons.SetLocation(new Point(5, tabL5.ClientSize.Height - 75));
-                pnlL5Buttons.Size = new Size(tabL5.ClientSize.Width - 10, 70);
+                pnlL5Buttons.SetLocation(new Point(5, tabContentHeight - 75));
+                pnlL5Buttons.Size = new Size(tabContentWidth - 10, 70);
                 pnlL5Buttons.SetAnchor(AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right);
                 tabL5.GetControls().Add(pnlL5Buttons);
 
@@ -26961,13 +26716,13 @@ namespace L1FlyMapViewer
                 Label lblTileSummary = new Label();
                 lblTileSummary.Text = string.Format(LocalizationManager.L("AbnormalCheck_TileSummary"), invalidTileItems.Count, l1Count, l2Count, l4Count);
                 lblTileSummary.SetLocation(new Point(5, 5));
-                lblTileSummary.Size = new Size(tabTile.ClientSize.Width - 10, 20);
+                lblTileSummary.Size = new Size(tabContentWidth - 10, 20);
                 lblTileSummary.SetAnchor(AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right);
                 tabTile.GetControls().Add(lblTileSummary);
 
                 CheckedListBox clbTileItems = new CheckedListBox();
                 clbTileItems.SetLocation(new Point(5, 30));
-                clbTileItems.Size = new Size(tabTile.ClientSize.Width - 10, tabTile.ClientSize.Height - 110);
+                clbTileItems.Size = new Size(tabContentWidth - 10, tabContentHeight - 110);
                 clbTileItems.Font = new Font("Consolas", 9);
                 clbTileItems.CheckOnClick = true;
                 clbTileItems.SetAnchor(AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right);
@@ -26981,8 +26736,8 @@ namespace L1FlyMapViewer
 
                 // 按鈕面板
                 Panel pnlTileButtons = new Panel();
-                pnlTileButtons.SetLocation(new Point(5, tabTile.ClientSize.Height - 75));
-                pnlTileButtons.Size = new Size(tabTile.ClientSize.Width - 10, 70);
+                pnlTileButtons.SetLocation(new Point(5, tabContentHeight - 75));
+                pnlTileButtons.Size = new Size(tabContentWidth - 10, 70);
                 pnlTileButtons.SetAnchor(AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right);
                 tabTile.GetControls().Add(pnlTileButtons);
 
@@ -27089,13 +26844,13 @@ namespace L1FlyMapViewer
                 Label lblL8Summary = new Label();
                 lblL8Summary.Text = string.Format(LocalizationManager.L("AbnormalCheck_Layer8Summary"), layer8ExtendedS32.Count, totalL8Items);
                 lblL8Summary.SetLocation(new Point(5, 5));
-                lblL8Summary.Size = new Size(tabL8.ClientSize.Width - 10, 20);
+                lblL8Summary.Size = new Size(tabContentWidth - 10, 20);
                 lblL8Summary.SetAnchor(AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right);
                 tabL8.GetControls().Add(lblL8Summary);
 
                 CheckedListBox clbL8Items = new CheckedListBox();
                 clbL8Items.SetLocation(new Point(5, 30));
-                clbL8Items.Size = new Size(tabL8.ClientSize.Width - 10, tabL8.ClientSize.Height - 110);
+                clbL8Items.Size = new Size(tabContentWidth - 10, tabContentHeight - 110);
                 clbL8Items.Font = new Font("Consolas", 9);
                 clbL8Items.CheckOnClick = true;
                 clbL8Items.SetAnchor(AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right);
@@ -27109,8 +26864,8 @@ namespace L1FlyMapViewer
 
                 // 按鈕面板
                 Panel pnlL8Buttons = new Panel();
-                pnlL8Buttons.SetLocation(new Point(5, tabL8.ClientSize.Height - 75));
-                pnlL8Buttons.Size = new Size(tabL8.ClientSize.Width - 10, 70);
+                pnlL8Buttons.SetLocation(new Point(5, tabContentHeight - 75));
+                pnlL8Buttons.Size = new Size(tabContentWidth - 10, 70);
                 pnlL8Buttons.SetAnchor(AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right);
                 tabL8.GetControls().Add(pnlL8Buttons);
 
@@ -27190,13 +26945,13 @@ namespace L1FlyMapViewer
                 Label lblOverLimitSummary = new Label();
                 lblOverLimitSummary.Text = string.Format(LocalizationManager.L("AbnormalCheck_OverLimitSummary"), overLimitTileIds.Count, tileLimit, maxTileId);
                 lblOverLimitSummary.SetLocation(new Point(5, 5));
-                lblOverLimitSummary.Size = new Size(tabOverLimit.ClientSize.Width - 10, 40);
+                lblOverLimitSummary.Size = new Size(tabContentWidth - 10, 40);
                 lblOverLimitSummary.SetAnchor(AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right);
                 tabOverLimit.GetControls().Add(lblOverLimitSummary);
 
                 ListBox lbOverLimitItems = new ListBox();
                 lbOverLimitItems.SetLocation(new Point(5, 50));
-                lbOverLimitItems.Size = new Size(tabOverLimit.ClientSize.Width - 10, tabOverLimit.ClientSize.Height - 130);
+                lbOverLimitItems.Size = new Size(tabContentWidth - 10, tabContentHeight - 130);
                 lbOverLimitItems.Font = new Font("Consolas", 9);
                 lbOverLimitItems.SetAnchor(AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right);
 
@@ -27208,8 +26963,8 @@ namespace L1FlyMapViewer
 
                 // 按鈕面板
                 Panel pnlOverLimitButtons = new Panel();
-                pnlOverLimitButtons.SetLocation(new Point(5, tabOverLimit.ClientSize.Height - 75));
-                pnlOverLimitButtons.Size = new Size(tabOverLimit.ClientSize.Width - 10, 70);
+                pnlOverLimitButtons.SetLocation(new Point(5, tabContentHeight - 75));
+                pnlOverLimitButtons.Size = new Size(tabContentWidth - 10, 70);
                 pnlOverLimitButtons.SetAnchor(AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right);
                 tabOverLimit.GetControls().Add(pnlOverLimitButtons);
 
@@ -27283,13 +27038,13 @@ namespace L1FlyMapViewer
                 Label lblL5TypeSummary = new Label();
                 lblL5TypeSummary.Text = $"發現 {invalidL5TypeItems.Count} 個 L5 項目使用無效的 Type 值 (有效值: 0=半透明, 1=消失)\n分佈: {string.Join(", ", typeCounts)}";
                 lblL5TypeSummary.SetLocation(new Point(5, 5));
-                lblL5TypeSummary.Size = new Size(tabL5Type.ClientSize.Width - 10, 40);
+                lblL5TypeSummary.Size = new Size(tabContentWidth - 10, 40);
                 lblL5TypeSummary.SetAnchor(AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right);
                 tabL5Type.GetControls().Add(lblL5TypeSummary);
 
                 CheckedListBox clbL5TypeItems = new CheckedListBox();
                 clbL5TypeItems.SetLocation(new Point(5, 50));
-                clbL5TypeItems.Size = new Size(tabL5Type.ClientSize.Width - 10, tabL5Type.ClientSize.Height - 130);
+                clbL5TypeItems.Size = new Size(tabContentWidth - 10, tabContentHeight - 130);
                 clbL5TypeItems.Font = new Font("Consolas", 9);
                 clbL5TypeItems.CheckOnClick = true;
                 clbL5TypeItems.SetAnchor(AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right);
@@ -27311,8 +27066,8 @@ namespace L1FlyMapViewer
 
                 // 按鈕面板
                 Panel pnlL5TypeButtons = new Panel();
-                pnlL5TypeButtons.SetLocation(new Point(5, tabL5Type.ClientSize.Height - 75));
-                pnlL5TypeButtons.Size = new Size(tabL5Type.ClientSize.Width - 10, 70);
+                pnlL5TypeButtons.SetLocation(new Point(5, tabContentHeight - 75));
+                pnlL5TypeButtons.Size = new Size(tabContentWidth - 10, 70);
                 pnlL5TypeButtons.SetAnchor(AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right);
                 tabL5Type.GetControls().Add(pnlL5TypeButtons);
 
