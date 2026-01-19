@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
@@ -21,20 +22,79 @@ namespace L1MapViewer.Other {
             return result;
         }
 
-        [DllImport("kernel32.dll", CharSet = CharSet.Auto)]
-        public static extern int GetPrivateProfileString(string lpAppName, string lpKeyName, string lpDefault, StringBuilder lpReturnedString, int nSize, string lpFileName);
-        [DllImport("kernel32.dll", CharSet = CharSet.Auto)]
-        public static extern int WritePrivateProfileString(string lpAppName, string lpKeyName, string lpString, string lpFileName);
-
-
+        // Cross-platform INI file implementation (replaces Windows kernel32.dll P/Invoke)
         public static string GetINI(string lpAppName, string lpKeyName, string lpDefault, string lpFileName) {
-            StringBuilder sb = new StringBuilder(1024);
-            GetPrivateProfileString(lpAppName, lpKeyName, lpDefault, sb, sb.Capacity, lpFileName);
-            return sb.ToString();
+            try {
+                if (!File.Exists(lpFileName)) return lpDefault;
+
+                string[] lines = File.ReadAllLines(lpFileName);
+                string currentSection = "";
+
+                foreach (string line in lines) {
+                    string trimmed = line.Trim();
+                    if (trimmed.StartsWith("[") && trimmed.EndsWith("]")) {
+                        currentSection = trimmed.Substring(1, trimmed.Length - 2);
+                    } else if (currentSection.Equals(lpAppName, StringComparison.OrdinalIgnoreCase)) {
+                        int eqIndex = trimmed.IndexOf('=');
+                        if (eqIndex > 0) {
+                            string key = trimmed.Substring(0, eqIndex).Trim();
+                            if (key.Equals(lpKeyName, StringComparison.OrdinalIgnoreCase)) {
+                                return trimmed.Substring(eqIndex + 1).Trim();
+                            }
+                        }
+                    }
+                }
+                return lpDefault;
+            } catch {
+                return lpDefault;
+            }
         }
 
         public static int WriteINI(string lpAppName, string lpKeyName, string lpString, string lpFileName) {
-            return WritePrivateProfileString(lpAppName, lpKeyName, lpString, lpFileName);
+            try {
+                var sections = new Dictionary<string, Dictionary<string, string>>(StringComparer.OrdinalIgnoreCase);
+
+                // Read existing file
+                if (File.Exists(lpFileName)) {
+                    string[] lines = File.ReadAllLines(lpFileName);
+                    string currentSection = "";
+
+                    foreach (string line in lines) {
+                        string trimmed = line.Trim();
+                        if (trimmed.StartsWith("[") && trimmed.EndsWith("]")) {
+                            currentSection = trimmed.Substring(1, trimmed.Length - 2);
+                            if (!sections.ContainsKey(currentSection))
+                                sections[currentSection] = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                        } else if (!string.IsNullOrEmpty(currentSection)) {
+                            int eqIndex = trimmed.IndexOf('=');
+                            if (eqIndex > 0) {
+                                string key = trimmed.Substring(0, eqIndex).Trim();
+                                string value = trimmed.Substring(eqIndex + 1).Trim();
+                                sections[currentSection][key] = value;
+                            }
+                        }
+                    }
+                }
+
+                // Update value
+                if (!sections.ContainsKey(lpAppName))
+                    sections[lpAppName] = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                sections[lpAppName][lpKeyName] = lpString;
+
+                // Write back
+                using (var writer = new StreamWriter(lpFileName, false, Encoding.UTF8)) {
+                    foreach (var section in sections) {
+                        writer.WriteLine($"[{section.Key}]");
+                        foreach (var kvp in section.Value) {
+                            writer.WriteLine($"{kvp.Key}={kvp.Value}");
+                        }
+                        writer.WriteLine();
+                    }
+                }
+                return 1;
+            } catch {
+                return 0;
+            }
         }
 
         //進度條 搭配ApplicationHelper.DoEvents(); 系統就會暫時把頁面還給你

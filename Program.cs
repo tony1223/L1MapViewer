@@ -54,6 +54,23 @@ static class Program
         // GUI 模式
         LogPerf("[PROGRAM] Starting GUI mode");
 
+        // 處理命令列參數 - 如果傳入資料夾路徑，設定為天堂路徑
+        if (args.Length > 0 && Directory.Exists(args[0]))
+        {
+            string folderPath = args[0];
+            // 檢查是否為有效的天堂資料夾（包含 map 子資料夾）
+            string mapFolder = Path.Combine(folderPath, "map");
+            if (Directory.Exists(mapFolder))
+            {
+                L1MapViewer.Share.LineagePath = folderPath;
+                DebugLog.Log($"[PROGRAM] Set LineagePath from args: {folderPath}");
+            }
+            else
+            {
+                DebugLog.Log($"[PROGRAM] Folder doesn't contain 'map' subfolder: {folderPath}");
+            }
+        }
+
         // 初始化多語言支援
         LogPerf("[PROGRAM] Initializing localization...");
         LocalizationManager.Initialize();

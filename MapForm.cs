@@ -689,6 +689,8 @@ namespace L1FlyMapViewer
             Eto.Drawing.Size lastMapContainerSize = Eto.Drawing.Size.Empty;
             mapContainer.SizeChanged += (s, e) =>
             {
+                Console.WriteLine($"[mapContainer.SizeChanged] current={mapContainer.Size}, last={lastMapContainerSize}, isAdjusting={isAdjustingMapSize}");
+
                 // 防止循環：如果大小沒變或正在調整中，跳過
                 if (isAdjustingMapSize || mapContainer.Size == lastMapContainerSize)
                     return;
@@ -697,8 +699,19 @@ namespace L1FlyMapViewer
                 if (mapContainer.Width <= 0 || mapContainer.Height <= 0)
                     return;
 
+                // GTK 平台上的佈局循環修復：忽略小於 10 像素的變化
+                // GTK 在設置子控件大小時會觸發額外的 4 像素增長
+                int widthDiff = Math.Abs(mapContainer.Width - lastMapContainerSize.Width);
+                int heightDiff = Math.Abs(mapContainer.Height - lastMapContainerSize.Height);
+                if (lastMapContainerSize != Eto.Drawing.Size.Empty && widthDiff < 10 && heightDiff < 10)
+                {
+                    Console.WriteLine($"[mapContainer.SizeChanged] ignoring small change: widthDiff={widthDiff}, heightDiff={heightDiff}");
+                    return;
+                }
+
                 isAdjustingMapSize = true;
                 lastMapContainerSize = mapContainer.Size;
+                Console.WriteLine($"[mapContainer.SizeChanged] applying size to _mapViewerControl: {mapContainer.Size}");
                 try
                 {
                     _mapViewerControl.Size = mapContainer.Size;
@@ -825,7 +838,7 @@ namespace L1FlyMapViewer
             {
                 Orientation = Eto.Forms.Orientation.Horizontal,
                 FixedPanel = Eto.Forms.SplitterFixedPanel.Panel2,
-                Panel2MinimumSize = 200,
+                Panel2MinimumSize = 250,  // 增加右側面板最小寬度
                 Panel1 = centerLayout,
                 Panel2 = rightLayout
             };
@@ -846,11 +859,17 @@ namespace L1FlyMapViewer
                 // 延遲設定位置，確保佈局已完成
                 Eto.Forms.Application.Instance.AsyncInvoke(() =>
                 {
-                    _mainSplitter.Position = 280;
+                    // 根據視窗大小動態調整面板配置
+                    int windowWidth = this.ClientSize.Width;
+                    int leftPanelWidth = Math.Min(280, windowWidth / 5);  // 左側最多佔 1/5
+                    int rightPanelWidth = Math.Max(250, windowWidth / 4); // 右側至少 250px 或佔 1/4
+
+                    _mainSplitter.Position = leftPanelWidth;
                     // centerRightSplitter 使用 FixedPanel=Panel2，Position 代表 Panel1 的寬度
-                    // 計算為視窗寬度減去右側面板和左側面板的寬度
-                    int centerWidth = Math.Max(600, this.ClientSize.Width - 280 - 300);
+                    int centerWidth = Math.Max(400, windowWidth - leftPanelWidth - rightPanelWidth);
                     _centerRightSplitter.Position = centerWidth;
+
+                    Console.WriteLine($"[Layout] windowWidth={windowWidth}, left={leftPanelWidth}, center={centerWidth}, right={rightPanelWidth}");
                 });
             };
 
@@ -2708,8 +2727,20 @@ namespace L1FlyMapViewer
 
             string iniPath = Path.GetTempPath() + "mapviewer.ini";
 
-            // 檢查是否有保存的天堂路徑，如果有就自動載入
-            if (File.Exists(iniPath))
+            // 優先使用命令列參數傳入的路徑
+            if (!string.IsNullOrEmpty(Share.LineagePath) && Directory.Exists(Share.LineagePath))
+            {
+                if (Share.MapDataList == null || Share.MapDataList.Count == 0)
+                {
+                    LogPerf($"[FORM-LOAD] Loading from command line path: {Share.LineagePath}");
+                    this.toolStripStatusLabel3.Text = Share.LineagePath;
+                    this.LoadMap(Share.LineagePath);
+                    LogPerf("[FORM-LOAD] LoadMap returned (async continues in background)");
+                    return;
+                }
+            }
+            // 否則檢查是否有保存的天堂路徑
+            else if (File.Exists(iniPath))
             {
                 string savedPath = Utils.GetINI("Path", "LineagePath", "", iniPath);
                 LogPerf($"[FORM-LOAD] INI savedPath={savedPath}");
