@@ -536,6 +536,17 @@ namespace L1MapViewer.Localization
             { "BatchReplaceTile_Complete", "교체 완료!\n{0}개 교체됨\n{1}개 S32 파일에 영향\n\n변경 사항을 저장하세요." },
             { "BatchReplaceTile_StatusComplete", "[{0}] {1}개 교체됨, {2}개 S32 파일에 영향" },
             { "BatchReplaceTile_NoMap", "먼저 맵을 로드하세요" },
+
+            // === Map List Context Menu ===
+            { "MapList_ExportAsFs32", "맵 패키지로 내보내기 (fs32)..." },
+            { "MapList_MapNotExist", "맵 {0}이(가) 존재하지 않습니다" },
+            { "MapList_LoadingMap", "맵 {0} 로드 중..." },
+            { "MapList_LoadingFiles", "맵 파일 로드 중... ({0})" },
+            { "MapList_NoMapFiles", "맵 {0}에 사용 가능한 맵 파일이 없습니다 (.s32 또는 .seg)" },
+            { "MapList_CreatingFs32", "fs32 파일 생성 중..." },
+            { "MapList_ExportResult", "{0}에 내보냈습니다\n({1}개 블록, {2}개 타일, {3}개 SPR)" },
+            { "MapList_ExportComplete", "내보내기 완료" },
+            { "MapList_ExportFailed", "내보내기 실패: {0}" },
         };
     }
 }

@@ -536,6 +536,17 @@ namespace L1MapViewer.Localization
             { "BatchReplaceTile_Complete", "替換完成！\n共替換 {0} 個項目\n影響 {1} 個 S32 檔案\n\n請記得儲存修改。" },
             { "BatchReplaceTile_StatusComplete", "[{0}] 已替換 {1} 個項目，影響 {2} 個 S32 檔案" },
             { "BatchReplaceTile_NoMap", "請先載入地圖" },
+
+            // === Map List Context Menu ===
+            { "MapList_ExportAsFs32", "匯出為地圖包 (fs32)..." },
+            { "MapList_MapNotExist", "地圖 {0} 不存在" },
+            { "MapList_LoadingMap", "正在載入地圖 {0}..." },
+            { "MapList_LoadingFiles", "正在載入地圖檔案... ({0})" },
+            { "MapList_NoMapFiles", "地圖 {0} 沒有可用的地圖檔案 (.s32 或 .seg)" },
+            { "MapList_CreatingFs32", "正在建立 fs32 檔案..." },
+            { "MapList_ExportResult", "已匯出至 {0}\n({1} 區塊, {2} 圖塊, {3} SPR)" },
+            { "MapList_ExportComplete", "匯出完成" },
+            { "MapList_ExportFailed", "匯出失敗: {0}" },
         };
     }
 }

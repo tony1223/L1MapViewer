@@ -3744,7 +3744,7 @@ namespace L1FlyMapViewer
             var menu = new ContextMenuStrip();
 
             // 匯出為地圖包選項
-            var exportItem = new ToolStripMenuItem("匯出為地圖包 (fs32)...");
+            var exportItem = new ToolStripMenuItem(LocalizationManager.L("MapList_ExportAsFs32"));
             exportItem.Click += (s, args) => ExportMapAsFs32(mapId);
             menu.Items.Add(exportItem);
 
@@ -3757,7 +3757,7 @@ namespace L1FlyMapViewer
             // 檢查地圖是否存在
             if (!Share.MapDataList.ContainsKey(mapId))
             {
-                WinFormsMessageBox.Show($"地圖 {mapId} 不存在", "錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                WinFormsMessageBox.Show(string.Format(LocalizationManager.L("MapList_MapNotExist"), mapId), LocalizationManager.L("Error"), MessageBoxButtons.OK, MessageBoxIcon.Error);
                 return;
             }
 
@@ -3770,7 +3770,7 @@ namespace L1FlyMapViewer
                 try
                 {
                     // 先載入 S32 檔案
-                    toolStripStatusLabel1.Text = $"正在載入地圖 {mapId}...";
+                    toolStripStatusLabel1.Text = string.Format(LocalizationManager.L("MapList_LoadingMap"), mapId);
                     ApplicationHelper.DoEvents();
 
                     var currentMap = Share.MapDataList[mapId];
@@ -3804,7 +3804,7 @@ namespace L1FlyMapViewer
                                 loadedCount++;
                                 if (loadedCount % 10 == 0)
                                 {
-                                    toolStripStatusLabel1.Text = $"正在載入地圖檔案... ({loadedCount})";
+                                    toolStripStatusLabel1.Text = string.Format(LocalizationManager.L("MapList_LoadingFiles"), loadedCount);
                                     ApplicationHelper.DoEvents();
                                 }
                             }
@@ -3813,7 +3813,7 @@ namespace L1FlyMapViewer
 
                     if (tempDocument.S32Files.Count == 0)
                     {
-                        WinFormsMessageBox.Show($"地圖 {mapId} 沒有可用的地圖檔案 (.s32 或 .seg)", "錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        WinFormsMessageBox.Show(string.Format(LocalizationManager.L("MapList_NoMapFiles"), mapId), LocalizationManager.L("Error"), MessageBoxButtons.OK, MessageBoxIcon.Error);
                         return;
                     }
 
@@ -3833,7 +3833,7 @@ namespace L1FlyMapViewer
                         if (saveDialog.ShowDialog(this) != DialogResult.Ok)
                             return;
 
-                        toolStripStatusLabel1.Text = $"正在建立 fs32 檔案...";
+                        toolStripStatusLabel1.Text = LocalizationManager.L("MapList_CreatingFs32");
                         ApplicationHelper.DoEvents();
 
                         // 建立 fs32
@@ -3844,15 +3844,15 @@ namespace L1FlyMapViewer
 
                         Fs32Writer.Write(fs32, saveDialog.FileName);
 
-                        string resultMsg = $"已匯出至 {saveDialog.FileName}\n({fs32.Blocks.Count} 區塊, {fs32.Tiles.Count} 圖塊, {fs32.Sprs.Count} SPR)";
+                        string resultMsg = string.Format(LocalizationManager.L("MapList_ExportResult"), saveDialog.FileName, fs32.Blocks.Count, fs32.Tiles.Count, fs32.Sprs.Count);
                         toolStripStatusLabel1.Text = resultMsg.Replace("\n", " ");
-                        ShowAutoCloseMessage(resultMsg, "匯出完成");
+                        ShowAutoCloseMessage(resultMsg, LocalizationManager.L("MapList_ExportComplete"));
                     }
                 }
                 catch (Exception ex)
                 {
                     Console.WriteLine($"[Export] Error: {ex}");
-                    WinFormsMessageBox.Show($"匯出失敗: {ex.Message}\n\n{ex.StackTrace}", "錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    WinFormsMessageBox.Show(string.Format(LocalizationManager.L("MapList_ExportFailed"), ex.Message), LocalizationManager.L("Error"), MessageBoxButtons.OK, MessageBoxIcon.Error);
                 }
             }
         }

@@ -536,6 +536,17 @@ namespace L1MapViewer.Localization
             { "BatchReplaceTile_Complete", "Replace complete!\nReplaced {0} items\nAffected {1} S32 files\n\nPlease remember to save changes." },
             { "BatchReplaceTile_StatusComplete", "[{0}] Replaced {1} items, affected {2} S32 files" },
             { "BatchReplaceTile_NoMap", "Please load a map first" },
+
+            // === Map List Context Menu ===
+            { "MapList_ExportAsFs32", "Export as Map Package (fs32)..." },
+            { "MapList_MapNotExist", "Map {0} does not exist" },
+            { "MapList_LoadingMap", "Loading map {0}..." },
+            { "MapList_LoadingFiles", "Loading map files... ({0})" },
+            { "MapList_NoMapFiles", "Map {0} has no available map files (.s32 or .seg)" },
+            { "MapList_CreatingFs32", "Creating fs32 file..." },
+            { "MapList_ExportResult", "Exported to {0}\n({1} blocks, {2} tiles, {3} SPR)" },
+            { "MapList_ExportComplete", "Export Complete" },
+            { "MapList_ExportFailed", "Export failed: {0}" },
         };
     }
 }
