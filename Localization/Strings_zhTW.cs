@@ -518,6 +518,24 @@ namespace L1MapViewer.Localization
             { "BatchDeleteTile_Processing", "正在處理 {0} ({1}/{2})..." },
             { "BatchDeleteTile_Result", "刪除完成！\n\n刪除數量: {0}\n修改檔案: {1}\n失敗檔案: {2}" },
             { "BatchDeleteTile_Complete", "批次刪除完成" },
+
+            // === Batch Replace Tile Dialog ===
+            { "Form_BatchReplaceTile_Title", "批次替換 TileId" },
+            { "BatchReplaceTile_SelectLayer", "選擇圖層" },
+            { "BatchReplaceTile_Layer1", "Layer1 (地板)" },
+            { "BatchReplaceTile_Layer2", "Layer2 (索引)" },
+            { "BatchReplaceTile_Layer4", "Layer4 (物件)" },
+            { "BatchReplaceTile_Source", "來源" },
+            { "BatchReplaceTile_Target", "替換為" },
+            { "BatchReplaceTile_MatchIndexId", "比對 IndexId" },
+            { "BatchReplaceTile_ReplaceIndexId", "替換 IndexId" },
+            { "BatchReplaceTile_Execute", "執行替換" },
+            { "BatchReplaceTile_PreviewResult", "[{0}] 找到 {1} 個匹配項目，分布在 {2} 個 S32 檔案" },
+            { "BatchReplaceTile_ConfirmMessage", "確定要在 [{0}] 將所有 {1}\n替換為 {2} 嗎？\n\n此操作會影響所有已載入的 S32 檔案。" },
+            { "BatchReplaceTile_Confirm", "確認替換" },
+            { "BatchReplaceTile_Complete", "替換完成！\n共替換 {0} 個項目\n影響 {1} 個 S32 檔案\n\n請記得儲存修改。" },
+            { "BatchReplaceTile_StatusComplete", "[{0}] 已替換 {1} 個項目，影響 {2} 個 S32 檔案" },
+            { "BatchReplaceTile_NoMap", "請先載入地圖" },
         };
     }
 }

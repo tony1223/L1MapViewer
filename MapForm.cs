@@ -21,6 +21,7 @@ using L1MapViewer.Reader;
 using Lin.Helper.Core.Sprite;
 using Lin.Helper.Core.Pak;
 using L1MapViewer.Compatibility;
+using L1MapViewer.Forms;
 using flyworld.eto.component;
 using NLog;
 
@@ -2746,26 +2747,38 @@ namespace L1FlyMapViewer
 
         private void openToolStripMenuItem_Click(object sender, EventArgs e)
         {
+            _logger.Info("[OpenClient] Start");
             using (FolderBrowserDialog folderDialog = new FolderBrowserDialog())
             {
                 folderDialog.Description = "請選擇天堂資料夾";
                 folderDialog.ShowNewFolderButton = false;
 
                 string iniPath = Path.GetTempPath() + "mapviewer.ini";
+                _logger.Debug($"[OpenClient] iniPath={iniPath}");
                 if (File.Exists(iniPath))
                 {
                     string savedPath = Utils.GetINI("Path", "LineagePath", "", iniPath);
+                    _logger.Debug($"[OpenClient] savedPath from ini={savedPath}");
                     if (!string.IsNullOrEmpty(savedPath) && Directory.Exists(savedPath))
                         folderDialog.SelectedPath = savedPath;
                 }
                 else
                 {
                     folderDialog.SelectedPath = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
+                    _logger.Debug($"[OpenClient] Using default path={folderDialog.SelectedPath}");
                 }
 
-                if (folderDialog.ShowDialog(this) != DialogResult.Ok || string.IsNullOrEmpty(folderDialog.SelectedPath))
-                    return;
+                _logger.Info("[OpenClient] Showing folder dialog...");
+                var dialogResult = folderDialog.ShowDialog(this);
+                _logger.Info($"[OpenClient] Dialog result={dialogResult}, SelectedPath={folderDialog.SelectedPath}");
 
+                if (dialogResult != DialogResult.Ok || string.IsNullOrEmpty(folderDialog.SelectedPath))
+                {
+                    _logger.Info("[OpenClient] User cancelled or empty path");
+                    return;
+                }
+
+                _logger.Info($"[OpenClient] Loading map from: {folderDialog.SelectedPath}");
                 this.toolStripStatusLabel3.Text = folderDialog.SelectedPath;
                 Share.LineagePath = folderDialog.SelectedPath;
                 Utils.WriteINI("Path", "LineagePath", folderDialog.SelectedPath, iniPath);
@@ -22012,115 +22025,23 @@ namespace L1FlyMapViewer
             // 檢查是否已載入地圖
             if (_document.S32Files.Count == 0)
             {
-                WinFormsMessageBox.Show("請先載入地圖", "提示", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                WinFormsMessageBox.Show(
+                    LocalizationManager.L("BatchReplaceTile_NoMap"),
+                    LocalizationManager.L("Hint"),
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
                 return;
             }
 
-            // 創建替換對話框
-            Form replaceForm = new Form();
-            replaceForm.Text = "批次替換 TileId";
-            replaceForm.Size = new Size(420, 350);
-            replaceForm.SetFormBorderStyle(FormBorderStyle.FixedDialog);
-            replaceForm.SetStartPosition(FormStartPosition.CenterParent);
-            replaceForm.SetMaximizeBox(false);
-            replaceForm.SetMinimizeBox(false);
+            using var dialog = new BatchReplaceTileDialog();
 
-            // 圖層選擇
-            GroupBox gbLayer = new GroupBox();
-            gbLayer.Text = "選擇圖層";
-            gbLayer.SetLocation(new Point(15, 10));
-            gbLayer.Size = new Size(375, 50);
-            replaceForm.GetControls().Add(gbLayer);
-
-            RadioButton rbLayer1 = new RadioButton { Text = "Layer1 (地板)", Size = new Size(110, 20), Checked = true };
-            rbLayer1.SetLocation(new Point(15, 20));
-            RadioButton rbLayer2 = new RadioButton { Text = "Layer2 (索引)", Size = new Size(110, 20) };
-            rbLayer2.SetLocation(new Point(135, 20));
-            RadioButton rbLayer4 = new RadioButton { Text = "Layer4 (物件)", Size = new Size(110, 20) };
-            rbLayer4.SetLocation(new Point(255, 20));
-            gbLayer.GetControls().Add(rbLayer1);
-            gbLayer.GetControls().Add(rbLayer2);
-            gbLayer.GetControls().Add(rbLayer4);
-
-            // 來源設定
-            GroupBox gbSource = new GroupBox();
-            gbSource.Text = "來源";
-            gbSource.SetLocation(new Point(15, 65));
-            gbSource.Size = new Size(375, 80);
-            replaceForm.GetControls().Add(gbSource);
-
-            Label lblSrcTileId = new Label { Text = "TileId:", Size = new Size(55, 20) };
-            lblSrcTileId.SetLocation(new Point(15, 25));
-            TextBox txtSrcTileId = new TextBox { Size = new Size(100, 22) };
-            txtSrcTileId.SetLocation(new Point(75, 22));
-            Label lblSrcIndexId = new Label { Text = "IndexId:", Size = new Size(55, 20) };
-            lblSrcIndexId.SetLocation(new Point(190, 25));
-            TextBox txtSrcIndexId = new TextBox { Size = new Size(100, 22) };
-            txtSrcIndexId.SetLocation(new Point(250, 22));
-            CheckBox chkMatchIndexId = new CheckBox { Text = "比對 IndexId", Size = new Size(120, 20), Checked = true };
-            chkMatchIndexId.SetLocation(new Point(15, 50));
-            gbSource.GetControls().Add(lblSrcTileId);
-            gbSource.GetControls().Add(txtSrcTileId);
-            gbSource.GetControls().Add(lblSrcIndexId);
-            gbSource.GetControls().Add(txtSrcIndexId);
-            gbSource.GetControls().Add(chkMatchIndexId);
-
-            // 目標設定
-            GroupBox gbTarget = new GroupBox();
-            gbTarget.Text = "替換為";
-            gbTarget.SetLocation(new Point(15, 150));
-            gbTarget.Size = new Size(375, 80);
-            replaceForm.GetControls().Add(gbTarget);
-
-            Label lblDstTileId = new Label { Text = "TileId:", Size = new Size(55, 20) };
-            lblDstTileId.SetLocation(new Point(15, 25));
-            TextBox txtDstTileId = new TextBox { Size = new Size(100, 22) };
-            txtDstTileId.SetLocation(new Point(75, 22));
-            Label lblDstIndexId = new Label { Text = "IndexId:", Size = new Size(55, 20) };
-            lblDstIndexId.SetLocation(new Point(190, 25));
-            TextBox txtDstIndexId = new TextBox { Size = new Size(100, 22) };
-            txtDstIndexId.SetLocation(new Point(250, 22));
-            CheckBox chkReplaceIndexId = new CheckBox { Text = "替換 IndexId", Size = new Size(120, 20), Checked = true };
-            chkReplaceIndexId.SetLocation(new Point(15, 50));
-            gbTarget.GetControls().Add(lblDstTileId);
-            gbTarget.GetControls().Add(txtDstTileId);
-            gbTarget.GetControls().Add(lblDstIndexId);
-            gbTarget.GetControls().Add(txtDstIndexId);
-            gbTarget.GetControls().Add(chkReplaceIndexId);
-
-            // 按鈕
-            Button btnPreview = new Button { Text = "預覽", Size = new Size(80, 30) };
-            btnPreview.SetLocation(new Point(70, 245));
-            Button btnExecute = new Button { Text = "執行替換", Size = new Size(80, 30) };
-            btnExecute.SetLocation(new Point(160, 245));
-            Button btnCancel = new Button { Text = "取消", Size = new Size(80, 30) };
-            btnCancel.SetLocation(new Point(250, 245));
-            btnCancel.Click += (s, args) => replaceForm.Close();
-            replaceForm.GetControls().Add(btnPreview);
-            replaceForm.GetControls().Add(btnExecute);
-            replaceForm.GetControls().Add(btnCancel);
-
-            // 結果標籤
-            Label lblResult = new Label { Text = "", Size = new Size(375, 20), ForeColor = Colors.Blue };
-            lblResult.SetLocation(new Point(15, 285));
-            replaceForm.GetControls().Add(lblResult);
-
-            // 預覽功能
-            btnPreview.Click += (s, args) =>
+            // 預覽事件
+            dialog.PreviewClicked += (s, args) =>
             {
-                if (!int.TryParse(txtSrcTileId.Text, out int srcTileId))
-                {
-                    WinFormsMessageBox.Show("請輸入有效的來源 TileId", "錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                    return;
-                }
-
-                int srcIndexId = 0;
-                bool matchIndex = chkMatchIndexId.Checked == true;
-                if (matchIndex && !int.TryParse(txtSrcIndexId.Text, out srcIndexId))
-                {
-                    WinFormsMessageBox.Show("請輸入有效的來源 IndexId", "錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                    return;
-                }
+                int srcTileId = dialog.SourceTileId;
+                int srcIndexId = dialog.SourceIndexId;
+                bool matchIndex = dialog.MatchIndexId;
+                int layer = dialog.SelectedLayer;
 
                 int matchCount = 0;
                 int s32Count = 0;
@@ -22130,7 +22051,7 @@ namespace L1FlyMapViewer
                     S32Data s32Data = kvp.Value;
                     bool hasMatch = false;
 
-                    if (rbLayer1.Checked == true)
+                    if (layer == 1)
                     {
                         for (int y = 0; y < 64; y++)
                         {
@@ -22145,7 +22066,7 @@ namespace L1FlyMapViewer
                             }
                         }
                     }
-                    else if (rbLayer2.Checked == true)
+                    else if (layer == 2)
                     {
                         foreach (var item in s32Data.Layer2)
                         {
@@ -22156,7 +22077,7 @@ namespace L1FlyMapViewer
                             }
                         }
                     }
-                    else if (rbLayer4.Checked == true)
+                    else if (layer == 4)
                     {
                         foreach (var obj in s32Data.Layer4)
                         {
@@ -22171,42 +22092,29 @@ namespace L1FlyMapViewer
                     if (hasMatch) s32Count++;
                 }
 
-                string layerName = rbLayer1.Checked ? "Layer1" : (rbLayer2.Checked ? "Layer2" : "Layer4");
-                lblResult.Text = $"[{layerName}] 找到 {matchCount} 個匹配項目，分布在 {s32Count} 個 S32 檔案";
+                dialog.PreviewResult = string.Format(
+                    LocalizationManager.L("BatchReplaceTile_PreviewResult"),
+                    dialog.GetLayerName(), matchCount, s32Count);
             };
 
-            // 執行替換功能
-            btnExecute.Click += (s, args) =>
+            // 執行替換事件
+            dialog.ExecuteClicked += (s, args) =>
             {
-                if (!int.TryParse(txtSrcTileId.Text, out int srcTileId) ||
-                    !int.TryParse(txtDstTileId.Text, out int dstTileId))
-                {
-                    WinFormsMessageBox.Show("請輸入有效的來源和目標 TileId", "錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                    return;
-                }
+                int srcTileId = dialog.SourceTileId;
+                int srcIndexId = dialog.SourceIndexId;
+                bool matchIndex = dialog.MatchIndexId;
+                int dstTileId = dialog.TargetTileId;
+                int dstIndexId = dialog.TargetIndexId;
+                bool replaceIndex = dialog.ReplaceIndexId;
+                int layer = dialog.SelectedLayer;
+                string layerName = dialog.GetLayerName();
 
-                int srcIndexId = 0, dstIndexId = 0;
-                bool matchIndex = chkMatchIndexId.Checked == true;
-                bool replaceIndex = chkReplaceIndexId.Checked == true;
-
-                if (matchIndex && !int.TryParse(txtSrcIndexId.Text, out srcIndexId))
-                {
-                    WinFormsMessageBox.Show("請輸入有效的來源 IndexId", "錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                    return;
-                }
-                if (replaceIndex && !int.TryParse(txtDstIndexId.Text, out dstIndexId))
-                {
-                    WinFormsMessageBox.Show("請輸入有效的目標 IndexId", "錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                    return;
-                }
-
-                string layerName = rbLayer1.Checked == true ? "Layer1" : (rbLayer2.Checked == true ? "Layer2" : "Layer4");
                 string matchInfo = matchIndex ? $"TileId={srcTileId}, IndexId={srcIndexId}" : $"TileId={srcTileId}";
                 string replaceInfo = replaceIndex ? $"TileId={dstTileId}, IndexId={dstIndexId}" : $"TileId={dstTileId}";
 
                 var confirmResult = WinFormsMessageBox.Show(
-                    $"確定要在 [{layerName}] 將所有 {matchInfo}\n替換為 {replaceInfo} 嗎？\n\n此操作會影響所有已載入的 S32 檔案。",
-                    "確認替換",
+                    string.Format(LocalizationManager.L("BatchReplaceTile_ConfirmMessage"), layerName, matchInfo, replaceInfo),
+                    LocalizationManager.L("BatchReplaceTile_Confirm"),
                     MessageBoxButtons.YesNo,
                     MessageBoxIcon.Warning);
 
@@ -22220,7 +22128,7 @@ namespace L1FlyMapViewer
                     S32Data s32Data = kvp.Value;
                     bool hasModified = false;
 
-                    if (rbLayer1.Checked == true)
+                    if (layer == 1)
                     {
                         for (int y = 0; y < 64; y++)
                         {
@@ -22238,7 +22146,7 @@ namespace L1FlyMapViewer
                             }
                         }
                     }
-                    else if (rbLayer2.Checked == true)
+                    else if (layer == 2)
                     {
                         foreach (var item in s32Data.Layer2)
                         {
@@ -22251,7 +22159,7 @@ namespace L1FlyMapViewer
                             }
                         }
                     }
-                    else if (rbLayer4.Checked == true)
+                    else if (layer == 4)
                     {
                         foreach (var obj in s32Data.Layer4)
                         {
@@ -22280,14 +22188,20 @@ namespace L1FlyMapViewer
                 RenderS32Map();
                 UpdateTileList();
 
-                WinFormsMessageBox.Show($"替換完成！\n共替換 {replacedCount} 個項目\n影響 {modifiedS32Files.Count} 個 S32 檔案\n\n請記得儲存修改。",
-                    "完成", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                WinFormsMessageBox.Show(
+                    string.Format(LocalizationManager.L("BatchReplaceTile_Complete"), replacedCount, modifiedS32Files.Count),
+                    LocalizationManager.L("Complete"),
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
 
-                this.toolStripStatusLabel1.Text = $"[{layerName}] 已替換 {replacedCount} 個項目，影響 {modifiedS32Files.Count} 個 S32 檔案";
-                replaceForm.Close();
+                this.toolStripStatusLabel1.Text = string.Format(
+                    LocalizationManager.L("BatchReplaceTile_StatusComplete"),
+                    layerName, replacedCount, modifiedS32Files.Count);
+
+                dialog.Close();
             };
 
-            replaceForm.ShowDialog(this);
+            dialog.ShowDialog(this);
         }
 
         // 清除所有第七層（傳送點）資料

@@ -518,6 +518,24 @@ namespace L1MapViewer.Localization
             { "BatchDeleteTile_Processing", "{0} を処理中 ({1}/{2})..." },
             { "BatchDeleteTile_Result", "削除完了！\n\n削除数: {0}\n変更ファイル: {1}\n失敗ファイル: {2}" },
             { "BatchDeleteTile_Complete", "一括削除完了" },
+
+            // === Batch Replace Tile Dialog ===
+            { "Form_BatchReplaceTile_Title", "一括置換 TileId" },
+            { "BatchReplaceTile_SelectLayer", "レイヤー選択" },
+            { "BatchReplaceTile_Layer1", "Layer1 (床)" },
+            { "BatchReplaceTile_Layer2", "Layer2 (インデックス)" },
+            { "BatchReplaceTile_Layer4", "Layer4 (オブジェクト)" },
+            { "BatchReplaceTile_Source", "ソース" },
+            { "BatchReplaceTile_Target", "置換先" },
+            { "BatchReplaceTile_MatchIndexId", "IndexId を照合" },
+            { "BatchReplaceTile_ReplaceIndexId", "IndexId を置換" },
+            { "BatchReplaceTile_Execute", "置換実行" },
+            { "BatchReplaceTile_PreviewResult", "[{0}] {2} 個の S32 ファイルで {1} 件一致" },
+            { "BatchReplaceTile_ConfirmMessage", "[{0}] で {1} を\n{2} に置換しますか？\n\n読み込み済みの全 S32 ファイルに影響します。" },
+            { "BatchReplaceTile_Confirm", "置換確認" },
+            { "BatchReplaceTile_Complete", "置換完了！\n{0} 件置換\n{1} 個の S32 ファイルに影響\n\n変更を保存してください。" },
+            { "BatchReplaceTile_StatusComplete", "[{0}] {1} 件置換、{2} 個の S32 ファイルに影響" },
+            { "BatchReplaceTile_NoMap", "先にマップを読み込んでください" },
         };
     }
 }

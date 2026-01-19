@@ -2049,9 +2049,54 @@ public class WinFormsSaveFileDialog : Eto.Forms.SaveFileDialog
 /// </summary>
 public class WinFormsFolderBrowserDialog : Eto.Forms.SelectFolderDialog
 {
+    private static readonly NLog.Logger _logger = NLog.LogManager.GetCurrentClassLogger();
+
     public string SelectedPath { get => Directory; set => Directory = value; }
     public string Description { get => Title; set => Title = value; }
     public bool ShowNewFolderButton { get; set; } = true;
+
+    /// <summary>
+    /// Shows the folder browser dialog with the specified owner
+    /// </summary>
+    public new DialogResultCompat ShowDialog(Eto.Forms.Control owner)
+    {
+        _logger.Debug($"[FolderBrowser] ShowDialog called, owner={owner?.GetType().Name}");
+        _logger.Debug($"[FolderBrowser] Initial Directory={Directory}, Title={Title}");
+
+        Eto.Forms.DialogResult result;
+        try
+        {
+            // 在 GTK 上，有時需要使用 Window 而不是 Control
+            if (owner is Eto.Forms.Window window)
+            {
+                _logger.Debug("[FolderBrowser] Calling base.ShowDialog(Window)...");
+                result = base.ShowDialog(window);
+            }
+            else
+            {
+                _logger.Debug("[FolderBrowser] Calling base.ShowDialog(Control)...");
+                result = base.ShowDialog(owner);
+            }
+            _logger.Debug($"[FolderBrowser] base.ShowDialog returned: {result}");
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "[FolderBrowser] Exception in ShowDialog");
+            return DialogResultCompat.Cancel;
+        }
+
+        _logger.Debug($"[FolderBrowser] Final Directory={Directory}");
+        return result == Eto.Forms.DialogResult.Ok ? DialogResultCompat.Ok : DialogResultCompat.Cancel;
+    }
+
+    /// <summary>
+    /// Shows the folder browser dialog without owner
+    /// </summary>
+    public new DialogResultCompat ShowDialog()
+    {
+        _logger.Debug("[FolderBrowser] ShowDialog() called (no owner)");
+        return ShowDialog(null);
+    }
 }
 
 /// <summary>

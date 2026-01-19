@@ -518,6 +518,24 @@ namespace L1MapViewer.Localization
             { "BatchDeleteTile_Processing", "Processing {0} ({1}/{2})..." },
             { "BatchDeleteTile_Result", "Delete complete!\n\nDeleted: {0}\nModified files: {1}\nFailed files: {2}" },
             { "BatchDeleteTile_Complete", "Batch Delete Complete" },
+
+            // === Batch Replace Tile Dialog ===
+            { "Form_BatchReplaceTile_Title", "Batch Replace TileId" },
+            { "BatchReplaceTile_SelectLayer", "Select Layer" },
+            { "BatchReplaceTile_Layer1", "Layer1 (Floor)" },
+            { "BatchReplaceTile_Layer2", "Layer2 (Index)" },
+            { "BatchReplaceTile_Layer4", "Layer4 (Object)" },
+            { "BatchReplaceTile_Source", "Source" },
+            { "BatchReplaceTile_Target", "Replace With" },
+            { "BatchReplaceTile_MatchIndexId", "Match IndexId" },
+            { "BatchReplaceTile_ReplaceIndexId", "Replace IndexId" },
+            { "BatchReplaceTile_Execute", "Execute" },
+            { "BatchReplaceTile_PreviewResult", "[{0}] Found {1} matches in {2} S32 files" },
+            { "BatchReplaceTile_ConfirmMessage", "Are you sure you want to replace all {1}\nwith {2} in [{0}]?\n\nThis will affect all loaded S32 files." },
+            { "BatchReplaceTile_Confirm", "Confirm Replace" },
+            { "BatchReplaceTile_Complete", "Replace complete!\nReplaced {0} items\nAffected {1} S32 files\n\nPlease remember to save changes." },
+            { "BatchReplaceTile_StatusComplete", "[{0}] Replaced {1} items, affected {2} S32 files" },
+            { "BatchReplaceTile_NoMap", "Please load a map first" },
         };
     }
 }

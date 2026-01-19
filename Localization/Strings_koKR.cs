@@ -518,6 +518,24 @@ namespace L1MapViewer.Localization
             { "BatchDeleteTile_Processing", "{0} 처리 중 ({1}/{2})..." },
             { "BatchDeleteTile_Result", "삭제 완료!\n\n삭제됨: {0}\n수정된 파일: {1}\n실패한 파일: {2}" },
             { "BatchDeleteTile_Complete", "일괄 삭제 완료" },
+
+            // === Batch Replace Tile Dialog ===
+            { "Form_BatchReplaceTile_Title", "일괄 교체 TileId" },
+            { "BatchReplaceTile_SelectLayer", "레이어 선택" },
+            { "BatchReplaceTile_Layer1", "Layer1 (바닥)" },
+            { "BatchReplaceTile_Layer2", "Layer2 (인덱스)" },
+            { "BatchReplaceTile_Layer4", "Layer4 (오브젝트)" },
+            { "BatchReplaceTile_Source", "원본" },
+            { "BatchReplaceTile_Target", "교체 대상" },
+            { "BatchReplaceTile_MatchIndexId", "IndexId 일치" },
+            { "BatchReplaceTile_ReplaceIndexId", "IndexId 교체" },
+            { "BatchReplaceTile_Execute", "교체 실행" },
+            { "BatchReplaceTile_PreviewResult", "[{0}] {2}개 S32 파일에서 {1}개 일치" },
+            { "BatchReplaceTile_ConfirmMessage", "[{0}]에서 {1}을(를)\n{2}(으)로 교체하시겠습니까?\n\n로드된 모든 S32 파일에 영향을 미칩니다." },
+            { "BatchReplaceTile_Confirm", "교체 확인" },
+            { "BatchReplaceTile_Complete", "교체 완료!\n{0}개 교체됨\n{1}개 S32 파일에 영향\n\n변경 사항을 저장하세요." },
+            { "BatchReplaceTile_StatusComplete", "[{0}] {1}개 교체됨, {2}개 S32 파일에 영향" },
+            { "BatchReplaceTile_NoMap", "먼저 맵을 로드하세요" },
         };
     }
 }
