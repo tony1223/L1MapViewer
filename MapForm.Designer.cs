@@ -1385,7 +1385,7 @@ namespace L1FlyMapViewer
             // lblLayerIcon (圖層圖示)
             //
             this.lblLayerIcon.BackgroundColor = Colors.Transparent;
-            this.lblLayerIcon.Font = new Font("Segoe UI", 10F, FontStyle.Bold);
+            this.lblLayerIcon.Font = FontHelper.CreateUIFont(10F, FontStyle.Bold);
             this.lblLayerIcon.TextColor = Colors.White;
             this.lblLayerIcon.SetLocation(new Point(0, 0));
             this.lblLayerIcon.SetName("lblLayerIcon");

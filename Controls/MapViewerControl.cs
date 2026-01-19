@@ -543,7 +543,7 @@ namespace L1MapViewer.Controls
             var btn = new Button
             {
                 Text = text,
-                Font = new Font("Segoe UI", 10, FontStyle.Bold),
+                Font = FontHelper.CreateUIFont(10, FontStyle.Bold),
                 Size = new Size(48, 38),
                 Location = new Point(0, top),
                 FlatStyle = FlatStyle.Flat,

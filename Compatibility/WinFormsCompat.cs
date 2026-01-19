@@ -5369,9 +5369,75 @@ public static class FontExtensions
     {
         if (baseFont == null)
         {
-            return new Eto.Drawing.Font(Eto.Drawing.SystemFonts.Default().Family, 9, style);
+            return new Eto.Drawing.Font(Eto.Drawing.SystemFonts.Default().Family, 12, style);
         }
         return new Eto.Drawing.Font(baseFont.Family, baseFont.Size, style);
+    }
+}
+
+/// <summary>
+/// 跨平台字體輔助類別，自動處理字體 fallback
+/// </summary>
+public static class FontHelper
+{
+    private static readonly NLog.Logger _logger = NLog.LogManager.GetCurrentClassLogger();
+
+    /// <summary>
+    /// 根據平台選擇適當的 UI 字體系列名稱
+    /// Windows: Segoe UI, macOS: San Francisco / Helvetica Neue, Linux: DejaVu Sans / Liberation Sans
+    /// </summary>
+    private static readonly string[] UiFontFallbacks = new[]
+    {
+        "Segoe UI",           // Windows
+        "SF Pro Text",        // macOS (San Francisco)
+        "Helvetica Neue",     // macOS fallback
+        "DejaVu Sans",        // Linux
+        "Liberation Sans",    // Linux fallback
+        "Noto Sans",          // Linux / Cross-platform
+        "Ubuntu",             // Ubuntu Linux
+        "Cantarell",          // GNOME
+        "Arial",              // Universal fallback
+    };
+
+    /// <summary>
+    /// 建立跨平台相容的 UI 字體，自動 fallback 到可用字體
+    /// </summary>
+    public static Eto.Drawing.Font CreateUIFont(float size, Eto.Drawing.FontStyle style = Eto.Drawing.FontStyle.None)
+    {
+        foreach (var familyName in UiFontFallbacks)
+        {
+            try
+            {
+                var font = new Eto.Drawing.Font(familyName, size, style);
+                return font;
+            }
+            catch (ArgumentException)
+            {
+                // 字體不存在，嘗試下一個
+                continue;
+            }
+        }
+
+        // 全部都失敗，使用系統預設字體
+        _logger.Warn("All UI font fallbacks failed, using system default font");
+        var defaultFont = Eto.Drawing.SystemFonts.Default();
+        return new Eto.Drawing.Font(defaultFont.Family, size, style);
+    }
+
+    /// <summary>
+    /// 嘗試建立指定字體，若失敗則 fallback 到 UI 字體
+    /// </summary>
+    public static Eto.Drawing.Font CreateFontWithFallback(string familyName, float size, Eto.Drawing.FontStyle style = Eto.Drawing.FontStyle.None)
+    {
+        try
+        {
+            return new Eto.Drawing.Font(familyName, size, style);
+        }
+        catch (ArgumentException)
+        {
+            _logger.Debug("Font '{FontFamily}' not available, falling back to UI font", familyName);
+            return CreateUIFont(size, style);
+        }
     }
 }
 
