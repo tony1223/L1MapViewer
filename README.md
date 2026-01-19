@@ -81,4 +81,5 @@ dotnet publish --configuration Release --runtime win-x64 --self-contained true -
 
 * srwh1234   original project which I fork from.
 - **非誠勿擾** - 幫忙解決幾個非常棘手的 Bug！
-- 
+- **aardvark** - Tile type bit 4/5 research and analysis (Tile type bit 4/5 研究與解析)
+

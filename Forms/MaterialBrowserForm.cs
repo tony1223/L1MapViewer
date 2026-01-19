@@ -1,10 +1,12 @@
 using System;
 using System.Collections.Generic;
-using System.Drawing;
+// using System.Drawing; // Replaced with Eto.Drawing
 using System.IO;
 using System.Linq;
-using System.Windows.Forms;
+using Eto.Forms;
+using Eto.Drawing;
 using L1MapViewer.CLI;
+using L1MapViewer.Compatibility;
 using L1MapViewer.Helper;
 using L1MapViewer.Localization;
 using L1MapViewer.Models;
@@ -14,7 +16,7 @@ namespace L1MapViewer.Forms
     /// <summary>
     /// 素材庫瀏覽器
     /// </summary>
-    public class MaterialBrowserForm : Form
+    public class MaterialBrowserForm : WinFormsDialog
     {
         /// <summary>
         /// 選取的素材
@@ -57,8 +59,8 @@ namespace L1MapViewer.Forms
 
         private void OnLanguageChanged(object? sender, EventArgs e)
         {
-            if (InvokeRequired)
-                Invoke(new Action(() => UpdateLocalization()));
+            if (this.GetInvokeRequired())
+                this.Invoke(new Action(() => UpdateLocalization()));
             else
                 UpdateLocalization();
         }
@@ -84,7 +86,7 @@ namespace L1MapViewer.Forms
                 Location = new Point(5, 5),
                 Size = new Size(200, 23)
             };
-            txtSearch.KeyDown += (s, e) => { if (e.KeyCode == Keys.Enter) SearchMaterials(); };
+            txtSearch.KeyDown += (s, e) => { if (e.GetKeyCode() == Keys.Enter) SearchMaterials(); };
             searchPanel.Controls.Add(txtSearch);
 
             btnSearch = new Button
@@ -139,7 +141,12 @@ namespace L1MapViewer.Forms
             menuDelete = new ToolStripMenuItem("刪除", null, (s, e) => BtnDelete_Click(s, e));
             menuOpenFolder = new ToolStripMenuItem("開啟所在資料夾", null, (s, e) => OpenContainingFolder());
             menuRefresh = new ToolStripMenuItem("重新整理", null, (s, e) => { _library.ClearCache(); LoadMaterials(); });
-            contextMenu.Items.AddRange(new ToolStripItem[] { menuUse, new ToolStripSeparator(), menuDelete, menuOpenFolder, new ToolStripSeparator(), menuRefresh });
+            contextMenu.Items.Add(menuUse);
+            contextMenu.Items.Add(new Eto.Forms.SeparatorMenuItem());
+            contextMenu.Items.Add(menuDelete);
+            contextMenu.Items.Add(menuOpenFolder);
+            contextMenu.Items.Add(new Eto.Forms.SeparatorMenuItem());
+            contextMenu.Items.Add(menuRefresh);
             contextMenu.Opening += (s, e) =>
             {
                 bool hasSelection = lvMaterials.SelectedItems.Count > 0;
@@ -149,7 +156,7 @@ namespace L1MapViewer.Forms
             };
             lvMaterials.ContextMenuStrip = contextMenu;
 
-            contentPanel.Panel1.Controls.Add(lvMaterials);
+            contentPanel.Panel1 = lvMaterials;
 
             imageList = new ImageList
             {
@@ -164,7 +171,7 @@ namespace L1MapViewer.Forms
                 Dock = DockStyle.Fill,
                 Padding = new Padding(5)
             };
-            contentPanel.Panel2.Controls.Add(rightPanel);
+            contentPanel.Panel2 = rightPanel;
 
             pbPreview = new PictureBox
             {
@@ -218,7 +225,7 @@ namespace L1MapViewer.Forms
                 Size = new Size(80, 28),
                 Anchor = AnchorStyles.Bottom | AnchorStyles.Right,
                 Enabled = false,
-                DialogResult = DialogResult.OK
+                DialogResult = DialogResult.Ok
             };
             btnOK.Click += BtnOK_Click;
             buttonPanel.Controls.Add(btnOK);
@@ -406,7 +413,7 @@ namespace L1MapViewer.Forms
         {
             if (string.IsNullOrEmpty(SelectedFilePath))
             {
-                MessageBox.Show("請選擇素材", "提示", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                WinFormsMessageBox.Show("請選擇素材", "提示", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 DialogResult = DialogResult.None;
                 return;
             }
@@ -416,14 +423,14 @@ namespace L1MapViewer.Forms
                 SelectedMaterial = _library.LoadMaterial(SelectedFilePath);
                 if (SelectedMaterial == null)
                 {
-                    MessageBox.Show("無法載入素材", "錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    WinFormsMessageBox.Show("無法載入素材", "錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error);
                     DialogResult = DialogResult.None;
                     return;
                 }
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"載入素材失敗: {ex.Message}", "錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                WinFormsMessageBox.Show($"載入素材失敗: {ex.Message}", "錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 DialogResult = DialogResult.None;
             }
         }
@@ -435,7 +442,7 @@ namespace L1MapViewer.Forms
                 ofd.Filter = "素材檔案|*.fs32p|所有檔案|*.*";
                 ofd.Title = "開啟素材檔案";
 
-                if (ofd.ShowDialog() == DialogResult.OK)
+                if (ofd.ShowDialog(this) == DialogResult.Ok)
                 {
                     try
                     {
@@ -444,17 +451,17 @@ namespace L1MapViewer.Forms
 
                         if (SelectedMaterial != null)
                         {
-                            DialogResult = DialogResult.OK;
+                            DialogResult = DialogResult.Ok;
                             Close();
                         }
                         else
                         {
-                            MessageBox.Show("無法解析素材檔案", "錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                            WinFormsMessageBox.Show("無法解析素材檔案", "錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error);
                         }
                     }
                     catch (Exception ex)
                     {
-                        MessageBox.Show($"開啟檔案失敗: {ex.Message}", "錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        WinFormsMessageBox.Show($"開啟檔案失敗: {ex.Message}", "錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error);
                     }
                 }
             }
@@ -465,7 +472,7 @@ namespace L1MapViewer.Forms
             if (string.IsNullOrEmpty(SelectedFilePath))
                 return;
 
-            var result = MessageBox.Show(
+            var result = WinFormsMessageBox.Show(
                 $"確定要刪除素材 \"{lvMaterials.SelectedItems[0].Text}\"？",
                 "確認刪除",
                 MessageBoxButtons.YesNo,
@@ -479,7 +486,7 @@ namespace L1MapViewer.Forms
                 }
                 else
                 {
-                    MessageBox.Show("刪除失敗", "錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    WinFormsMessageBox.Show("刪除失敗", "錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 }
             }
         }
@@ -491,7 +498,7 @@ namespace L1MapViewer.Forms
                 fbd.Description = "選擇素材庫資料夾";
                 fbd.SelectedPath = _library.LibraryPath;
 
-                if (fbd.ShowDialog() == DialogResult.OK)
+                if (fbd.ShowDialog(this) == DialogResult.Ok)
                 {
                     _library.LibraryPath = fbd.SelectedPath;
                     _library.ClearCache();

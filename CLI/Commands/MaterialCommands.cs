@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
-using System.Drawing;
-using System.Drawing.Imaging;
+// using System.Drawing; // Replaced with Eto.Drawing
+// using System.Drawing.Imaging; // Replaced with SkiaSharp
 using System.IO;
 using System.Linq;
 using L1MapViewer.Helper;
@@ -464,39 +464,39 @@ namespace L1MapViewer.CLI.Commands
             Console.WriteLine($"  素材基準點 Local Layer1: ({itemLocalX}, {itemLocalY})");
 
             // 在素材圖上畫標記
-            using (var g = Graphics.FromImage(materialBitmap))
+            using (var g = GraphicsHelper.FromImage(materialBitmap))
             {
                 // 畫黃點 - 素材 RelativeX=0, RelativeY=0 的渲染位置
-                using (var brush = new SolidBrush(Color.Yellow))
+                using (var brush = new SolidBrush(Colors.Yellow))
                 {
                     g.FillEllipse(brush, yellowMarkerX - 6, yellowMarkerY - 6, 12, 12);
                 }
-                using (var pen = new Pen(Color.Yellow, 2))
+                using (var pen = new Pen(Colors.Yellow, 2))
                 {
                     g.DrawLine(pen, yellowMarkerX - 15, yellowMarkerY, yellowMarkerX + 15, yellowMarkerY);
                     g.DrawLine(pen, yellowMarkerX, yellowMarkerY - 15, yellowMarkerX, yellowMarkerY + 15);
                 }
                 using (var font = new Font("Arial", 9, FontStyle.Bold))
-                using (var bgBrush = new SolidBrush(Color.Black))
-                using (var fgBrush = new SolidBrush(Color.Yellow))
+                using (var bgBrush = new SolidBrush(Colors.Black))
+                using (var fgBrush = new SolidBrush(Colors.Yellow))
                 {
                     g.DrawString($"Rel(0,0)", font, bgBrush, yellowMarkerX + 12, yellowMarkerY + 3);
                     g.DrawString($"Rel(0,0)", font, fgBrush, yellowMarkerX + 10, yellowMarkerY + 1);
                 }
 
                 // 畫紅點 - 指定座標位置
-                using (var brush = new SolidBrush(Color.Red))
+                using (var brush = new SolidBrush(Colors.Red))
                 {
                     g.FillEllipse(brush, markerX - 8, markerY - 8, 16, 16);
                 }
-                using (var pen = new Pen(Color.Red, 2))
+                using (var pen = new Pen(Colors.Red, 2))
                 {
                     g.DrawLine(pen, markerX - 20, markerY, markerX + 20, markerY);
                     g.DrawLine(pen, markerX, markerY - 20, markerX, markerY + 20);
                 }
                 using (var font = new Font("Arial", 10, FontStyle.Bold))
-                using (var bgBrush = new SolidBrush(Color.Black))
-                using (var fgBrush = new SolidBrush(Color.White))
+                using (var bgBrush = new SolidBrush(Colors.Black))
+                using (var fgBrush = new SolidBrush(Colors.White))
                 {
                     g.DrawString($"指定({gameX},{gameY})", font, bgBrush, markerX + 17, markerY - 18);
                     g.DrawString($"指定({gameX},{gameY})", font, fgBrush, markerX + 15, markerY - 20);
@@ -509,15 +509,15 @@ namespace L1MapViewer.CLI.Commands
             {
                 // 並排顯示
                 outputBitmap = new Bitmap(originalBitmap.Width * 2 + 10, originalBitmap.Height);
-                using (var g = Graphics.FromImage(outputBitmap))
+                using (var g = GraphicsHelper.FromImage(outputBitmap))
                 {
-                    g.Clear(Color.Black);
+                    g.Clear(Colors.Black);
                     g.DrawImage(originalBitmap, 0, 0);
                     g.DrawImage(materialBitmap, originalBitmap.Width + 10, 0);
 
                     // 加標籤
                     using (var font = new Font("Arial", 14, FontStyle.Bold))
-                    using (var brush = new SolidBrush(Color.White))
+                    using (var brush = new SolidBrush(Colors.White))
                     {
                         g.DrawString("原始", font, brush, 10, 10);
                         g.DrawString("套用素材後", font, brush, originalBitmap.Width + 20, 10);

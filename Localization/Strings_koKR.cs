@@ -10,20 +10,56 @@ namespace L1MapViewer.Localization
         public static Dictionary<string, string> GetStrings() => new()
         {
             // === Menu Items ===
-            { "Menu_File", "파일" },
+            { "Menu_File", "파일(&F)" },
             { "Menu_File_OpenClient", "리니지 클라이언트를 열어 맵 읽기" },
             { "Menu_File_Export", "맵 통행 데이터 내보내기" },
+            { "Menu_File_Save", "S32 저장" },
+            { "Menu_File_ExportFs32", "FS32 패키지 내보내기..." },
+            { "Menu_File_Exit", "종료" },
             { "Menu_Import", "가져오기" },
             { "Menu_Import_Material", "소재 가져오기..." },
             { "Menu_Import_Fs32ToNewMap", "맵 패키지를 새 맵으로 가져오기..." },
-            { "Menu_Database", "데이터베이스 설정" },
+            { "Menu_Edit", "편집(&E)" },
+            { "Menu_Edit_Undo", "실행 취소" },
+            { "Menu_Edit_Redo", "다시 실행" },
+            { "Menu_Edit_Copy", "복사" },
+            { "Menu_Edit_Paste", "붙여넣기" },
+            { "Menu_Edit_Delete", "삭제" },
+            { "Menu_Edit_BatchDeleteTile", "타일 일괄 삭제..." },
+            { "Menu_Edit_BatchReplaceTile", "타일 일괄 교체..." },
+            { "Menu_View", "보기(&V)" },
+            { "Menu_View_Reload", "맵 다시 불러오기" },
+            { "Menu_View_Layers", "레이어" },
+            { "Menu_View_Layer1", "Layer 1 바닥" },
+            { "Menu_View_Layer2", "Layer 2 장식" },
+            { "Menu_View_Layer4", "Layer 4 오브젝트" },
+            { "Menu_View_Layer5", "Layer 5 이벤트" },
+            { "Menu_View_Layer8", "Layer 8 SPR" },
+            { "Menu_View_Passable", "통행성" },
+            { "Menu_View_SafeZone", "안전 구역" },
+            { "Menu_View_CombatZone", "전투 구역" },
+            { "Menu_View_Grid", "그리드" },
+            { "Menu_View_S32Border", "S32 경계" },
+            { "Menu_View_Zoom", "확대/축소" },
+            { "Menu_View_ZoomIn", "확대" },
+            { "Menu_View_ZoomOut", "축소" },
+            { "Menu_View_Zoom100", "100%" },
+            { "Menu_Tools", "도구(&T)" },
+            { "Menu_Tools_PassableEdit", "통행 편집 모드" },
+            { "Menu_Tools_RegionEdit", "구역 편집 모드" },
+            { "Menu_Tools_Layer5Edit", "투명 편집 모드" },
+            { "Menu_Tools_ValidateMap", "맵 무결성 검증" },
+            { "Menu_Tools_AnalyzeAttr", "속성 분석" },
             { "Menu_MapEditor", "맵 에디터" },
+            { "Menu_Help", "도움말(&H)" },
             { "Menu_Help_Discord", "Discord에서 토론하기" },
-            { "Menu_Help_About", "정보" },
+            { "Menu_Help_About", "정보..." },
             { "Menu_Language", "언어" },
             { "Menu_Export_ServerPassability", "서버 통행 데이터 내보내기" },
             { "Menu_Export_L1JFormat", "L1J 형식" },
             { "Menu_Export_DIRFormat", "DIR 형식" },
+            { "Menu_Export_AllMapsL1J", "모든 맵 내보내기 (L1J)" },
+            { "Menu_Export_AllMapsDIR", "모든 맵 내보내기 (DIR)" },
 
             // === Tab Pages ===
             { "Tab_MapPreview", "맵 미리보기" },
@@ -100,16 +136,6 @@ namespace L1MapViewer.Localization
             { "Placeholder_SearchTileId", "TileId 검색..." },
             { "Label_SearchResult", "검색 결과" },
 
-            // === Buttons - Form1 (Monster Tool) ===
-            { "Button_Connect", "연결" },
-            { "Button_AddToDatabase", "데이터베이스에 추가" },
-            { "Button_ReloadMap", "현재 맵 새로고침" },
-            { "Button_ShowAllMonsters", "모든 몬스터 위치 표시" },
-            { "Button_AddSpawn", "추가" },
-            { "Button_CopySpawn", "복사" },
-            { "Button_DeleteSpawn", "삭제" },
-            { "Button_TestConnection", "연결 테스트" },
-
             // === Labels - Common ===
             { "Label_Name", "이름" },
             { "Label_ID", "ID" },
@@ -123,29 +149,6 @@ namespace L1MapViewer.Localization
             { "Label_Layer1Coord", "Layer1 좌표" },
             { "Label_Zoom", "확대/축소" },
             { "Label_S32Files", "S32 파일" },
-
-            // === Labels - Form1 (Monster Tool) ===
-            { "Label_ExpectedAdd", "추가 예정" },
-            { "Label_CenterX", "중심 X" },
-            { "Label_CenterY", "중심 Y" },
-            { "Label_Radius", "반경" },
-            { "Label_RespawnMin", "리스폰 시간 (최소)" },
-            { "Label_RespawnMax", "리스폰 시간 (최대)" },
-            { "Label_SpawnInScreen", "화면 내 스폰" },
-            { "Label_TeleportDistance", "텔레포트 거리" },
-            { "Label_MonsterID", "몬스터 ID" },
-            { "Label_MonsterNote", "몬스터 메모" },
-            { "Label_MonsterCount", "몬스터 수" },
-
-            // === Labels - Database ===
-            { "Label_SavedConnections", "저장된 연결:" },
-            { "Label_ConnectionName", "연결 이름:" },
-            { "Label_ServerAddress", "서버 주소:" },
-            { "Label_Port", "포트:" },
-            { "Label_Database", "데이터베이스:" },
-            { "Label_Username", "사용자 이름:" },
-            { "Label_Password", "비밀번호:" },
-            { "Group_ConnectionInfo", "연결 정보" },
 
             // === Layer Names ===
             { "Layer_1", "레이어 1 (바닥)" },
@@ -173,6 +176,8 @@ namespace L1MapViewer.Localization
             { "Layer_FloatS32Border", "S32 경계" },
             { "Layer_FloatSafeZones", "안전 지역" },
             { "Layer_FloatCombatZones", "전투 지역" },
+            { "Layer_L8Spr", "L8 이미지" },
+            { "Layer_L8Marker", "L8 보조" },
 
             // === Hints ===
             { "Hint_MouseControls", "마우스 가운데 버튼으로 드래그 | Ctrl+휠로 확대/축소 | 좌클릭으로 선택" },
@@ -232,24 +237,6 @@ namespace L1MapViewer.Localization
             { "ImportNewMap_Success", "맵 패키지가 새 맵 {0}에 성공적으로 가져와졌습니다" },
             { "ImportNewMap_Failed", "가져오기 실패: {0}" },
             { "ImportNewMap_PleaseOpenClient", "먼저 리니지 클라이언트를 열어주세요" },
-
-            // === Messages - Database ===
-            { "Message_PleaseConnectDB", "먼저 데이터베이스에 연결하세요" },
-            { "Message_ConnectionSuccess", "연결 성공!" },
-            { "Message_ConnectionFailed", "연결 실패: {0}" },
-            { "Message_PleaseEnterConnName", "연결 이름을 입력하세요" },
-            { "Message_PleaseEnterServer", "서버 주소를 입력하세요" },
-            { "Message_PleaseEnterDatabase", "데이터베이스 이름을 입력하세요" },
-            { "Message_ConnectionSaved", "연결이 저장되었습니다" },
-            { "Message_ConfirmDeleteConnection", "이 연결을 삭제하시겠습니까?" },
-
-            // === Messages - Monster Tool ===
-            { "Message_PleaseEnterMonsterID", "몬스터 ID를 입력하세요" },
-            { "Message_InvalidMonsterID", "잘못된 몬스터 ID" },
-            { "Message_MonsterAddedToQueue", "대기열에 추가됨" },
-            { "Message_SpawnAdded", "스폰 포인트 추가됨" },
-            { "Message_SpawnDeleted", "스폰 포인트 삭제됨" },
-            { "Message_NoSpawnSelected", "먼저 스폰 포인트를 선택하세요" },
 
             // === Messages - MapForm ===
             { "Message_S32Saved", "S32 저장됨" },
@@ -349,10 +336,8 @@ namespace L1MapViewer.Localization
 
             // === Form Titles ===
             { "Form_MapEditor_Title", "맵 에디터" },
-            { "Form_MonsterTool_Title", "몬스터 설정 도구" },
-            { "Form_DatabaseConnection_Title", "데이터베이스 연결 관리자" },
-            { "Form_MonsterSearch_Title", "몬스터 검색" },
             { "Form_ExportOptions_Title", "내보내기 옵션" },
+            { "Form_ExportFs32_Title", "FS32 맵 패키지 내보내기" },
             { "Form_CopySettings_Title", "설정 복사" },
             { "Form_MaterialBrowser_Title", "소재 브라우저" },
 

@@ -1,7 +1,8 @@
 using System;
 using System.Collections.Generic;
-using System.Drawing;
-using System.Windows.Forms;
+using Eto.Forms;
+using Eto.Drawing;
+using L1MapViewer.Compatibility;
 using L1MapViewer.Models;
 
 namespace L1MapViewer.Forms
@@ -9,15 +10,15 @@ namespace L1MapViewer.Forms
     /// <summary>
     /// L4 物件編輯對話框
     /// </summary>
-    public class L4EditDialog : Form
+    public class L4EditDialog : Dialog<DialogResult>
     {
-        private NumericUpDown numGroupId;
-        private NumericUpDown numX;
-        private NumericUpDown numY;
-        private NumericUpDown numLayer;
-        private NumericUpDown numIndexId;
-        private NumericUpDown numTileId;
-        private ComboBox cmbTargetS32;
+        private NumericStepper numGroupId;
+        private NumericStepper numX;
+        private NumericStepper numY;
+        private NumericStepper numLayer;
+        private NumericStepper numIndexId;
+        private NumericStepper numTileId;
+        private DropDown cmbTargetS32;
         private Label lblCoordInfo;
         private Button btnOK;
         private Button btnCancel;
@@ -31,7 +32,7 @@ namespace L1MapViewer.Forms
         public int Layer => (int)numLayer.Value;
         public int IndexId => (int)numIndexId.Value;
         public int TileId => (int)numTileId.Value;
-        public S32Data SelectedS32 => (cmbTargetS32?.SelectedItem as S32ComboItem)?.S32;
+        public S32Data SelectedS32 => (cmbTargetS32?.SelectedValue as S32ComboItem)?.S32;
         public bool S32Changed { get; private set; } = false;
 
         /// <summary>
@@ -45,202 +46,141 @@ namespace L1MapViewer.Forms
             _originalS32 = currentS32;
             _originalObject = obj;
 
-            Text = "編輯 L4 物件";
-            Size = new Size(420, 400);
-            FormBorderStyle = FormBorderStyle.FixedDialog;
-            StartPosition = FormStartPosition.CenterParent;
-            MaximizeBox = false;
-            MinimizeBox = false;
+            Title = "編輯 L4 物件";
+            MinimumSize = new Size(420, 100);
+            Resizable = false;
 
-            int yOffset = 20;
-
-            // 目標 S32
-            Label lblTargetS32 = new Label();
-            lblTargetS32.Text = "所屬 S32:";
-            lblTargetS32.Location = new Point(20, yOffset);
-            lblTargetS32.Size = new Size(120, 20);
-
-            cmbTargetS32 = new ComboBox();
-            cmbTargetS32.Location = new Point(150, yOffset - 2);
-            cmbTargetS32.Size = new Size(230, 23);
-            cmbTargetS32.DropDownStyle = ComboBoxStyle.DropDownList;
-
+            // 建立控制項
+            cmbTargetS32 = new DropDown { Width = 220 };
             foreach (var s32 in availableS32s)
             {
                 string displayName = System.IO.Path.GetFileName(s32.FilePath);
-                cmbTargetS32.Items.Add(new S32ComboItem { S32 = s32, DisplayName = displayName });
+                var item = new S32ComboItem { S32 = s32, DisplayName = displayName };
+                cmbTargetS32.Items.Add(new ListItem { Text = displayName, Tag = item });
                 if (s32 == currentS32)
                 {
                     cmbTargetS32.SelectedIndex = cmbTargetS32.Items.Count - 1;
                 }
             }
-
             cmbTargetS32.SelectedIndexChanged += (s, e) =>
             {
-                var selectedItem = cmbTargetS32.SelectedItem as S32ComboItem;
-                S32Changed = (selectedItem?.S32 != _originalS32);
+                var item = (cmbTargetS32.SelectedValue as ListItem)?.Tag as S32ComboItem;
+                S32Changed = (item?.S32 != _originalS32);
                 RecalculateCoordinates();
             };
 
-            Controls.Add(lblTargetS32);
-            Controls.Add(cmbTargetS32);
-            yOffset += 30;
+            lblCoordInfo = new Label { TextColor = Colors.Blue };
 
-            // 座標資訊標籤
-            lblCoordInfo = new Label();
-            lblCoordInfo.Location = new Point(20, yOffset);
-            lblCoordInfo.Size = new Size(360, 20);
-            lblCoordInfo.ForeColor = Color.Blue;
-            UpdateCoordInfo();
-            Controls.Add(lblCoordInfo);
-            yOffset += 30;
+            numX = new NumericStepper { MinValue = 0, MaxValue = 255, Value = obj.X, Width = 100 };
+            numY = new NumericStepper { MinValue = 0, MaxValue = 255, Value = obj.Y, Width = 100 };
+            numGroupId = new NumericStepper { MinValue = 0, MaxValue = 65535, Value = obj.GroupId, Width = 100 };
+            numLayer = new NumericStepper { MinValue = 0, MaxValue = 255, Value = obj.Layer, Width = 100 };
+            numTileId = new NumericStepper { MinValue = 0, MaxValue = 65535, Value = obj.TileId, Width = 100 };
+            numIndexId = new NumericStepper { MinValue = 0, MaxValue = 255, Value = obj.IndexId, Width = 100 };
 
-            // 分隔線
-            Label separator1 = new Label();
-            separator1.BorderStyle = BorderStyle.Fixed3D;
-            separator1.Location = new Point(20, yOffset);
-            separator1.Size = new Size(360, 2);
-            Controls.Add(separator1);
-            yOffset += 15;
-
-            // X 座標
-            Label lblX = new Label();
-            lblX.Text = "X (L1座標 0-255):";
-            lblX.Location = new Point(20, yOffset);
-            lblX.Size = new Size(120, 20);
-
-            numX = new NumericUpDown();
-            numX.Location = new Point(150, yOffset - 2);
-            numX.Size = new Size(100, 23);
-            numX.Minimum = 0;
-            numX.Maximum = 255;
-            numX.Value = obj.X;
             numX.ValueChanged += (s, e) => UpdateCoordInfo();
-
-            Controls.Add(lblX);
-            Controls.Add(numX);
-            yOffset += 30;
-
-            // Y 座標
-            Label lblY = new Label();
-            lblY.Text = "Y (L1座標 0-255):";
-            lblY.Location = new Point(20, yOffset);
-            lblY.Size = new Size(120, 20);
-
-            numY = new NumericUpDown();
-            numY.Location = new Point(150, yOffset - 2);
-            numY.Size = new Size(100, 23);
-            numY.Minimum = 0;
-            numY.Maximum = 255;
-            numY.Value = obj.Y;
             numY.ValueChanged += (s, e) => UpdateCoordInfo();
 
-            Controls.Add(lblY);
-            Controls.Add(numY);
-            yOffset += 30;
+            btnOK = new Button { Text = "確定" };
+            btnOK.Click += (s, e) =>
+            {
+                Result = DialogResult.Ok;
+                Close();
+            };
 
-            // 分隔線
-            Label separator2 = new Label();
-            separator2.BorderStyle = BorderStyle.Fixed3D;
-            separator2.Location = new Point(20, yOffset);
-            separator2.Size = new Size(360, 2);
-            Controls.Add(separator2);
-            yOffset += 15;
+            btnCancel = new Button { Text = "取消" };
+            btnCancel.Click += (s, e) =>
+            {
+                Result = DialogResult.Cancel;
+                Close();
+            };
 
-            // GroupId
-            Label lblGroupId = new Label();
-            lblGroupId.Text = "GroupId:";
-            lblGroupId.Location = new Point(20, yOffset);
-            lblGroupId.Size = new Size(120, 20);
+            // 使用 DynamicLayout 建立布局
+            var layout = new DynamicLayout { DefaultSpacing = new Size(8, 6), Padding = new Padding(15) };
 
-            numGroupId = new NumericUpDown();
-            numGroupId.Location = new Point(150, yOffset - 2);
-            numGroupId.Size = new Size(100, 23);
-            numGroupId.Minimum = 0;
-            numGroupId.Maximum = 65535;
-            numGroupId.Value = obj.GroupId;
+            // S32 選擇區
+            var s32Group = new GroupBox { Text = "所屬區塊" };
+            var s32Layout = new DynamicLayout { DefaultSpacing = new Size(8, 6), Padding = new Padding(10) };
+            s32Layout.AddRow(new Label { Text = "S32 檔案:", VerticalAlignment = VerticalAlignment.Center }, cmbTargetS32);
+            s32Layout.AddRow(lblCoordInfo);
+            s32Group.Content = s32Layout;
+            layout.AddRow(s32Group);
 
-            Controls.Add(lblGroupId);
-            Controls.Add(numGroupId);
-            yOffset += 30;
+            // 座標區
+            var coordGroup = new GroupBox { Text = "座標 (S32 內部 L1 座標)" };
+            var coordLayout = new TableLayout
+            {
+                Spacing = new Size(15, 6),
+                Padding = new Padding(10),
+                Rows =
+                {
+                    new TableRow(
+                        new Label { Text = "X (0-255):", VerticalAlignment = VerticalAlignment.Center },
+                        numX,
+                        new Label { Text = "Y (0-255):", VerticalAlignment = VerticalAlignment.Center },
+                        numY
+                    )
+                }
+            };
+            coordGroup.Content = coordLayout;
+            layout.AddRow(coordGroup);
 
-            // Layer
-            Label lblLayer = new Label();
-            lblLayer.Text = "Layer (渲染層):";
-            lblLayer.Location = new Point(20, yOffset);
-            lblLayer.Size = new Size(120, 20);
+            // 物件屬性區
+            var attrGroup = new GroupBox { Text = "物件屬性" };
+            var attrLayout = new TableLayout
+            {
+                Spacing = new Size(15, 6),
+                Padding = new Padding(10),
+                Rows =
+                {
+                    new TableRow(
+                        new Label { Text = "GroupId:", VerticalAlignment = VerticalAlignment.Center },
+                        numGroupId,
+                        new Label { Text = "Layer (高度):", VerticalAlignment = VerticalAlignment.Center },
+                        numLayer
+                    ),
+                    new TableRow(
+                        new Label { Text = "TileId:", VerticalAlignment = VerticalAlignment.Center },
+                        numTileId,
+                        new Label { Text = "IndexId:", VerticalAlignment = VerticalAlignment.Center },
+                        numIndexId
+                    )
+                }
+            };
+            attrGroup.Content = attrLayout;
+            layout.AddRow(attrGroup);
 
-            numLayer = new NumericUpDown();
-            numLayer.Location = new Point(150, yOffset - 2);
-            numLayer.Size = new Size(100, 23);
-            numLayer.Minimum = 0;
-            numLayer.Maximum = 255;
-            numLayer.Value = obj.Layer;
+            // 按鈕區
+            layout.AddRow(new Panel { Height = 5 });
+            layout.AddRow(new TableLayout
+            {
+                Spacing = new Size(10, 0),
+                Rows = { new TableRow(null, btnOK, btnCancel, null) }
+            });
 
-            Controls.Add(lblLayer);
-            Controls.Add(numLayer);
-            yOffset += 30;
+            Content = layout;
 
-            // TileId
-            Label lblTileId = new Label();
-            lblTileId.Text = "TileId:";
-            lblTileId.Location = new Point(20, yOffset);
-            lblTileId.Size = new Size(120, 20);
+            DefaultButton = btnOK;
+            AbortButton = btnCancel;
 
-            numTileId = new NumericUpDown();
-            numTileId.Location = new Point(150, yOffset - 2);
-            numTileId.Size = new Size(100, 23);
-            numTileId.Minimum = 0;
-            numTileId.Maximum = 65535;
-            numTileId.Value = obj.TileId;
+            UpdateCoordInfo();
+        }
 
-            Controls.Add(lblTileId);
-            Controls.Add(numTileId);
-            yOffset += 30;
-
-            // IndexId
-            Label lblIndexId = new Label();
-            lblIndexId.Text = "IndexId:";
-            lblIndexId.Location = new Point(20, yOffset);
-            lblIndexId.Size = new Size(120, 20);
-
-            numIndexId = new NumericUpDown();
-            numIndexId.Location = new Point(150, yOffset - 2);
-            numIndexId.Size = new Size(100, 23);
-            numIndexId.Minimum = 0;
-            numIndexId.Maximum = 255;
-            numIndexId.Value = obj.IndexId;
-
-            Controls.Add(lblIndexId);
-            Controls.Add(numIndexId);
-            yOffset += 40;
-
-            // 按鈕
-            btnOK = new Button();
-            btnOK.Text = "確定";
-            btnOK.DialogResult = DialogResult.OK;
-            btnOK.Location = new Point(150, yOffset);
-            btnOK.Size = new Size(80, 30);
-
-            btnCancel = new Button();
-            btnCancel.Text = "取消";
-            btnCancel.DialogResult = DialogResult.Cancel;
-            btnCancel.Location = new Point(250, yOffset);
-            btnCancel.Size = new Size(80, 30);
-
-            AcceptButton = btnOK;
-            CancelButton = btnCancel;
-
-            Controls.Add(btnOK);
-            Controls.Add(btnCancel);
+        /// <summary>
+        /// 顯示對話框 (WinForms 相容)
+        /// </summary>
+        public DialogResult ShowDialog(Control parent)
+        {
+            ShowModal(parent);
+            return Result;
         }
 
         private void UpdateCoordInfo()
         {
             if (lblCoordInfo == null) return;
 
-            var selectedItem = cmbTargetS32?.SelectedItem as S32ComboItem;
-            var s32 = selectedItem?.S32 ?? _originalS32;
+            var item = (cmbTargetS32?.SelectedValue as ListItem)?.Tag as S32ComboItem;
+            var s32 = item?.S32 ?? _originalS32;
             if (s32 == null) return;
 
             int localX = (int)(numX?.Value ?? _originalObject.X);
@@ -257,10 +197,10 @@ namespace L1MapViewer.Forms
         {
             if (numX == null || numY == null || _originalS32 == null) return;
 
-            var selectedItem = cmbTargetS32.SelectedItem as S32ComboItem;
-            if (selectedItem == null) return;
+            var item = (cmbTargetS32.SelectedValue as ListItem)?.Tag as S32ComboItem;
+            if (item == null) return;
 
-            var targetS32 = selectedItem.S32;
+            var targetS32 = item.S32;
 
             // 計算原始的全域座標
             int globalX = _originalS32.SegInfo.nLinBeginX * 2 + _originalObject.X;
@@ -279,7 +219,7 @@ namespace L1MapViewer.Forms
                 numY.Value = newLocalY;
                 numX.Enabled = true;
                 numY.Enabled = true;
-                lblCoordInfo.ForeColor = Color.Blue;
+                lblCoordInfo.TextColor = Colors.Blue;
                 btnOK.Enabled = true;
             }
             else
@@ -288,7 +228,7 @@ namespace L1MapViewer.Forms
                 numX.Enabled = false;
                 numY.Enabled = false;
                 lblCoordInfo.Text = $"座標超出範圍! ({newLocalX}, {newLocalY}) - 無法移動到此 S32";
-                lblCoordInfo.ForeColor = Color.Red;
+                lblCoordInfo.TextColor = Colors.Red;
                 btnOK.Enabled = false;
             }
 

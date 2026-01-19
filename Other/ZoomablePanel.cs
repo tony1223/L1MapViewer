@@ -1,22 +1,28 @@
-using System.Windows.Forms;
+using Eto.Forms;
+using Eto.Drawing;
 
 namespace L1MapViewer.Other
 {
     /// <summary>
     /// 支援縮放功能的自訂 Panel，可阻止滾輪事件在縮放時觸發滾動
+    /// Cross-platform version using Eto.Forms
     /// </summary>
-    public class ZoomablePanel : Panel
+    public class ZoomablePanel : Drawable
     {
+        // BorderStyle for WinForms compatibility
+        public BorderStyle BorderStyle { get; set; } = BorderStyle.None;
+
         public ZoomablePanel()
         {
-            // 啟用滑鼠滾輪事件
-            this.SetStyle(ControlStyles.Selectable, true);
+            // Eto.Forms Drawable supports double buffering by default
+            CanFocus = true;
+        }
 
-            // 啟用雙緩衝和優化渲染
-            this.SetStyle(ControlStyles.AllPaintingInWmPaint |
-                         ControlStyles.UserPaint |
-                         ControlStyles.OptimizedDoubleBuffer, true);
-            this.UpdateStyles();
+        // PointToClient for WinForms compatibility
+        public Point PointToClient(Point screenPoint)
+        {
+            var screenLoc = PointToScreen(new PointF(0, 0));
+            return new Point(screenPoint.X - (int)screenLoc.X, screenPoint.Y - (int)screenLoc.Y);
         }
 
         protected override void OnMouseWheel(MouseEventArgs e)
@@ -25,20 +31,17 @@ namespace L1MapViewer.Other
             base.OnMouseWheel(e);
 
             // 如果按住 Ctrl 鍵，標記為已處理，阻止滾動
-            if (Control.ModifierKeys == Keys.Control)
+            if (e.Modifiers.HasFlag(Keys.Control))
             {
-                if (e is HandledMouseEventArgs handledArgs)
-                {
-                    handledArgs.Handled = true;
-                }
+                e.Handled = true;
             }
         }
 
-        protected override void OnEnter(System.EventArgs e)
+        protected override void OnMouseEnter(MouseEventArgs e)
         {
             // 當滑鼠進入時取得焦點，確保可以接收滾輪事件
             this.Focus();
-            base.OnEnter(e);
+            base.OnMouseEnter(e);
         }
     }
 }

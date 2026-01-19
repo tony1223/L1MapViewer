@@ -10,20 +10,56 @@ namespace L1MapViewer.Localization
         public static Dictionary<string, string> GetStrings() => new()
         {
             // === Menu Items ===
-            { "Menu_File", "檔案" },
+            { "Menu_File", "檔案(&F)" },
             { "Menu_File_OpenClient", "開啟天堂客戶端讀取地圖" },
             { "Menu_File_Export", "匯出地圖通行資料" },
+            { "Menu_File_Save", "儲存 S32" },
+            { "Menu_File_ExportFs32", "匯出 FS32 地圖包..." },
+            { "Menu_File_Exit", "結束" },
             { "Menu_Import", "匯入" },
             { "Menu_Import_Material", "匯入素材..." },
             { "Menu_Import_Fs32ToNewMap", "匯入地圖包到新地圖..." },
-            { "Menu_Database", "資料庫設定" },
+            { "Menu_Edit", "編輯(&E)" },
+            { "Menu_Edit_Undo", "復原" },
+            { "Menu_Edit_Redo", "重做" },
+            { "Menu_Edit_Copy", "複製" },
+            { "Menu_Edit_Paste", "貼上" },
+            { "Menu_Edit_Delete", "刪除" },
+            { "Menu_Edit_BatchDeleteTile", "批次刪除 Tile..." },
+            { "Menu_Edit_BatchReplaceTile", "批次取代 Tile..." },
+            { "Menu_View", "檢視(&V)" },
+            { "Menu_View_Reload", "重新載入地圖" },
+            { "Menu_View_Layers", "圖層" },
+            { "Menu_View_Layer1", "Layer 1 地板" },
+            { "Menu_View_Layer2", "Layer 2 裝飾" },
+            { "Menu_View_Layer4", "Layer 4 物件" },
+            { "Menu_View_Layer5", "Layer 5 事件" },
+            { "Menu_View_Layer8", "Layer 8 SPR" },
+            { "Menu_View_Passable", "通行性" },
+            { "Menu_View_SafeZone", "安全區域" },
+            { "Menu_View_CombatZone", "戰鬥區域" },
+            { "Menu_View_Grid", "格線" },
+            { "Menu_View_S32Border", "S32 邊界" },
+            { "Menu_View_Zoom", "縮放" },
+            { "Menu_View_ZoomIn", "放大" },
+            { "Menu_View_ZoomOut", "縮小" },
+            { "Menu_View_Zoom100", "100%" },
+            { "Menu_Tools", "工具(&T)" },
+            { "Menu_Tools_PassableEdit", "通行編輯模式" },
+            { "Menu_Tools_RegionEdit", "區域編輯模式" },
+            { "Menu_Tools_Layer5Edit", "透明編輯模式" },
+            { "Menu_Tools_ValidateMap", "驗證地圖完整性" },
+            { "Menu_Tools_AnalyzeAttr", "分析屬性分布" },
             { "Menu_MapEditor", "地圖編輯器" },
+            { "Menu_Help", "說明(&H)" },
             { "Menu_Help_Discord", "到 Discord 討論" },
-            { "Menu_Help_About", "關於" },
+            { "Menu_Help_About", "關於..." },
             { "Menu_Language", "語言" },
             { "Menu_Export_ServerPassability", "輸出伺服器通行txt" },
             { "Menu_Export_L1JFormat", "L1J 格式" },
             { "Menu_Export_DIRFormat", "DIR 格式" },
+            { "Menu_Export_AllMapsL1J", "輸出所有地圖 (L1J)" },
+            { "Menu_Export_AllMapsDIR", "輸出所有地圖 (DIR)" },
 
             // === Tab Pages ===
             { "Tab_MapPreview", "地圖預覽" },
@@ -100,16 +136,6 @@ namespace L1MapViewer.Localization
             { "Placeholder_SearchTileId", "搜尋 TileId..." },
             { "Label_SearchResult", "搜尋結果" },
 
-            // === Buttons - Form1 (Monster Tool) ===
-            { "Button_Connect", "連線" },
-            { "Button_AddToDatabase", "加入資料庫" },
-            { "Button_ReloadMap", "重新載入當前地圖" },
-            { "Button_ShowAllMonsters", "顯示所有怪物位置" },
-            { "Button_AddSpawn", "新增" },
-            { "Button_CopySpawn", "複製" },
-            { "Button_DeleteSpawn", "刪除" },
-            { "Button_TestConnection", "測試連線" },
-
             // === Labels - Common ===
             { "Label_Name", "名稱" },
             { "Label_ID", "ID" },
@@ -123,29 +149,6 @@ namespace L1MapViewer.Localization
             { "Label_Layer1Coord", "Layer1 座標" },
             { "Label_Zoom", "縮放" },
             { "Label_S32Files", "S32 檔案" },
-
-            // === Labels - Form1 (Monster Tool) ===
-            { "Label_ExpectedAdd", "預計新增" },
-            { "Label_CenterX", "X心座標" },
-            { "Label_CenterY", "Y心座標" },
-            { "Label_Radius", "半径" },
-            { "Label_RespawnMin", "重生時間(Min)" },
-            { "Label_RespawnMax", "重生時間(Max)" },
-            { "Label_SpawnInScreen", "畫面內是否生怪" },
-            { "Label_TeleportDistance", "瞬移回原地(距離)" },
-            { "Label_MonsterID", "怪物ID" },
-            { "Label_MonsterNote", "怪物備註" },
-            { "Label_MonsterCount", "怪物數量" },
-
-            // === Labels - Database ===
-            { "Label_SavedConnections", "已儲存的連線:" },
-            { "Label_ConnectionName", "連線名稱:" },
-            { "Label_ServerAddress", "伺服器位址:" },
-            { "Label_Port", "埠號:" },
-            { "Label_Database", "資料庫:" },
-            { "Label_Username", "使用者名稱:" },
-            { "Label_Password", "密碼:" },
-            { "Group_ConnectionInfo", "連線資訊" },
 
             // === Layer Names ===
             { "Layer_1", "第1層 (地板)" },
@@ -173,6 +176,8 @@ namespace L1MapViewer.Localization
             { "Layer_FloatS32Border", "S32邊界" },
             { "Layer_FloatSafeZones", "安全區" },
             { "Layer_FloatCombatZones", "戰鬥區" },
+            { "Layer_L8Spr", "L8 圖片" },
+            { "Layer_L8Marker", "L8 輔助" },
 
             // === Hints ===
             { "Hint_MouseControls", "滑鼠中鍵拖移 | Ctrl+滾輪縮放 | 左鍵選取格子" },
@@ -232,24 +237,6 @@ namespace L1MapViewer.Localization
             { "ImportNewMap_Success", "地圖包已成功匯入到新地圖 {0}" },
             { "ImportNewMap_Failed", "匯入失敗: {0}" },
             { "ImportNewMap_PleaseOpenClient", "請先開啟天堂客戶端" },
-
-            // === Messages - Database ===
-            { "Message_PleaseConnectDB", "請先連線到資料庫" },
-            { "Message_ConnectionSuccess", "連線成功！" },
-            { "Message_ConnectionFailed", "連線失敗: {0}" },
-            { "Message_PleaseEnterConnName", "請輸入連線名稱" },
-            { "Message_PleaseEnterServer", "請輸入伺服器位址" },
-            { "Message_PleaseEnterDatabase", "請輸入資料庫名稱" },
-            { "Message_ConnectionSaved", "連線已儲存" },
-            { "Message_ConfirmDeleteConnection", "確定要刪除此連線？" },
-
-            // === Messages - Monster Tool ===
-            { "Message_PleaseEnterMonsterID", "請輸入怪物 ID" },
-            { "Message_InvalidMonsterID", "無效的怪物 ID" },
-            { "Message_MonsterAddedToQueue", "已加入待新增佇列" },
-            { "Message_SpawnAdded", "重生點已新增" },
-            { "Message_SpawnDeleted", "重生點已刪除" },
-            { "Message_NoSpawnSelected", "請先選擇重生點" },
 
             // === Messages - MapForm ===
             { "Message_S32Saved", "S32 已儲存" },
@@ -349,10 +336,8 @@ namespace L1MapViewer.Localization
 
             // === Form Titles ===
             { "Form_MapEditor_Title", "地圖編輯器" },
-            { "Form_MonsterTool_Title", "怪物設定工具" },
-            { "Form_DatabaseConnection_Title", "資料庫連線管理" },
-            { "Form_MonsterSearch_Title", "搜尋怪物" },
             { "Form_ExportOptions_Title", "匯出選項" },
+            { "Form_ExportFs32_Title", "匯出 FS32 地圖包" },
             { "Form_CopySettings_Title", "複製設定" },
             { "Form_MaterialBrowser_Title", "素材庫瀏覽器" },
 

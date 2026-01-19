@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
-using System.Windows.Forms;
+using Eto.Forms;
+using Eto.Drawing;
+using L1MapViewer.Compatibility;
 using L1MapViewer.Models;
 
 namespace L1MapViewer
@@ -8,7 +10,7 @@ namespace L1MapViewer
     /// <summary>
     /// L5 新增/編輯對話框
     /// </summary>
-    public class L5EditDialog : Form
+    public class L5EditDialog : WinFormsDialog
     {
         private NumericUpDown numObjectIndex;
         private NumericUpDown numType;
@@ -50,7 +52,7 @@ namespace L1MapViewer
             Text = isNew ? "新增 L5" : "編輯 L5";
             bool showS32Selector = !isNew && availableS32s != null;
             int dialogHeight = showS32Selector ? 340 : 210;
-            Size = new System.Drawing.Size(380, dialogHeight);
+            Size = new Size(380, dialogHeight);
             FormBorderStyle = FormBorderStyle.FixedDialog;
             StartPosition = FormStartPosition.CenterParent;
             MaximizeBox = false;
@@ -63,12 +65,12 @@ namespace L1MapViewer
             {
                 Label lblTargetS32 = new Label();
                 lblTargetS32.Text = "目標 S32:";
-                lblTargetS32.Location = new System.Drawing.Point(20, 20);
-                lblTargetS32.Size = new System.Drawing.Size(150, 20);
+                lblTargetS32.SetLocation(new Point(20, 20));
+                lblTargetS32.Size = new Size(150, 20);
 
                 cmbTargetS32 = new ComboBox();
-                cmbTargetS32.Location = new System.Drawing.Point(180, 18);
-                cmbTargetS32.Size = new System.Drawing.Size(160, 23);
+                cmbTargetS32.SetLocation(new Point(180, 18));
+                cmbTargetS32.Size = new Size(160, 23);
                 cmbTargetS32.DropDownStyle = ComboBoxStyle.DropDownList;
 
                 foreach (var s32 in availableS32s)
@@ -83,9 +85,9 @@ namespace L1MapViewer
 
                 // 座標資訊標籤
                 lblCoordInfo = new Label();
-                lblCoordInfo.Location = new System.Drawing.Point(20, 48);
-                lblCoordInfo.Size = new System.Drawing.Size(330, 20);
-                lblCoordInfo.ForeColor = System.Drawing.Color.Blue;
+                lblCoordInfo.SetLocation(new Point(20, 48));
+                lblCoordInfo.Size = new Size(330, 20);
+                lblCoordInfo.TextColor = Eto.Drawing.Colors.Blue;
                 UpdateCoordInfo();
 
                 cmbTargetS32.SelectedIndexChanged += (s, e) =>
@@ -103,12 +105,12 @@ namespace L1MapViewer
                 // L1 X 座標（可超出 S32 邊界）
                 Label lblX = new Label();
                 lblX.Text = "L1 X (0-255):";
-                lblX.Location = new System.Drawing.Point(20, 20 + yOffset);
-                lblX.Size = new System.Drawing.Size(150, 20);
+                lblX.SetLocation(new Point(20, 20 + yOffset));
+                lblX.Size = new Size(150, 20);
 
                 numX = new NumericUpDown();
-                numX.Location = new System.Drawing.Point(180, 18 + yOffset);
-                numX.Size = new System.Drawing.Size(160, 23);
+                numX.SetLocation(new Point(180, 18 + yOffset));
+                numX.Size = new Size(160, 23);
                 numX.Minimum = 0;
                 numX.Maximum = 255;
                 numX.Value = x;
@@ -116,12 +118,12 @@ namespace L1MapViewer
                 // L1 Y 座標（可超出 S32 邊界）
                 Label lblY = new Label();
                 lblY.Text = "L1 Y (0-255):";
-                lblY.Location = new System.Drawing.Point(20, 55 + yOffset);
-                lblY.Size = new System.Drawing.Size(150, 20);
+                lblY.SetLocation(new Point(20, 55 + yOffset));
+                lblY.Size = new Size(150, 20);
 
                 numY = new NumericUpDown();
-                numY.Location = new System.Drawing.Point(180, 53 + yOffset);
-                numY.Size = new System.Drawing.Size(160, 23);
+                numY.SetLocation(new Point(180, 53 + yOffset));
+                numY.Size = new Size(160, 23);
                 numY.Minimum = 0;
                 numY.Maximum = 255;
                 numY.Value = y;
@@ -133,12 +135,12 @@ namespace L1MapViewer
             // L4群組 (ObjectIndex)
             Label lblObjectIndex = new Label();
             lblObjectIndex.Text = "L4群組 (ObjectIndex):";
-            lblObjectIndex.Location = new System.Drawing.Point(20, 20 + yOffset);
-            lblObjectIndex.Size = new System.Drawing.Size(150, 20);
+            lblObjectIndex.SetLocation(new Point(20, 20 + yOffset));
+            lblObjectIndex.Size = new Size(150, 20);
 
             numObjectIndex = new NumericUpDown();
-            numObjectIndex.Location = new System.Drawing.Point(180, 18 + yOffset);
-            numObjectIndex.Size = new System.Drawing.Size(160, 23);
+            numObjectIndex.SetLocation(new Point(180, 18 + yOffset));
+            numObjectIndex.Size = new Size(160, 23);
             numObjectIndex.Minimum = 0;
             numObjectIndex.Maximum = 65535;
             numObjectIndex.Value = objectIndex;
@@ -146,12 +148,12 @@ namespace L1MapViewer
             // Type
             Label lblType = new Label();
             lblType.Text = "Type:";
-            lblType.Location = new System.Drawing.Point(20, 55 + yOffset);
-            lblType.Size = new System.Drawing.Size(150, 20);
+            lblType.SetLocation(new Point(20, 55 + yOffset));
+            lblType.Size = new Size(150, 20);
 
             numType = new NumericUpDown();
-            numType.Location = new System.Drawing.Point(180, 53 + yOffset);
-            numType.Size = new System.Drawing.Size(160, 23);
+            numType.SetLocation(new Point(180, 53 + yOffset));
+            numType.Size = new Size(160, 23);
             numType.Minimum = 0;
             numType.Maximum = 255;
             numType.Value = type;
@@ -159,22 +161,22 @@ namespace L1MapViewer
             // 說明
             Label lblHint = new Label();
             lblHint.Text = "Type: 0=半透明, 1=消失";
-            lblHint.Location = new System.Drawing.Point(20, 85 + yOffset);
-            lblHint.Size = new System.Drawing.Size(330, 20);
-            lblHint.ForeColor = System.Drawing.Color.Gray;
+            lblHint.SetLocation(new Point(20, 85 + yOffset));
+            lblHint.Size = new Size(330, 20);
+            lblHint.TextColor = Eto.Drawing.Colors.Gray;
 
             // 按鈕
             btnOK = new Button();
             btnOK.Text = "確定";
-            btnOK.DialogResult = DialogResult.OK;
-            btnOK.Location = new System.Drawing.Point(120, 115 + yOffset);
-            btnOK.Size = new System.Drawing.Size(75, 28);
+            btnOK.DialogResult = DialogResult.Ok;
+            btnOK.SetLocation(new Point(120, 115 + yOffset));
+            btnOK.Size = new Size(75, 28);
 
             btnCancel = new Button();
             btnCancel.Text = "取消";
             btnCancel.DialogResult = DialogResult.Cancel;
-            btnCancel.Location = new System.Drawing.Point(210, 115 + yOffset);
-            btnCancel.Size = new System.Drawing.Size(75, 28);
+            btnCancel.SetLocation(new Point(210, 115 + yOffset));
+            btnCancel.Size = new Size(75, 28);
 
             AcceptButton = btnOK;
             CancelButton = btnCancel;
@@ -222,7 +224,7 @@ namespace L1MapViewer
                 numX.Enabled = true;
                 numY.Enabled = true;
                 lblCoordInfo.Text = $"全域座標: ({globalX}, {globalY}) → 新本地座標: ({newLocalX}, {newLocalY})";
-                lblCoordInfo.ForeColor = System.Drawing.Color.Blue;
+                lblCoordInfo.TextColor = Eto.Drawing.Colors.Blue;
                 btnOK.Enabled = true;
             }
             else
@@ -231,7 +233,7 @@ namespace L1MapViewer
                 numX.Enabled = false;
                 numY.Enabled = false;
                 lblCoordInfo.Text = $"座標為負數! ({newLocalX}, {newLocalY}) - 無法移動到此 S32";
-                lblCoordInfo.ForeColor = System.Drawing.Color.Red;
+                lblCoordInfo.TextColor = Eto.Drawing.Colors.Red;
                 btnOK.Enabled = false;
             }
         }

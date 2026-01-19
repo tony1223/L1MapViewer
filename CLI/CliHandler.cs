@@ -1,8 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Drawing;
-using System.Drawing.Imaging;
+// using System.Drawing; // Replaced with Eto.Drawing
+// using System.Drawing.Imaging; // Replaced with SkiaSharp
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
@@ -144,6 +144,8 @@ namespace L1MapViewer.CLI
                         return Commands.ExportCommands.BatchExport(cmdArgs);
                     case "test-load":
                         return CmdTestLoad(cmdArgs);
+                    case "test-thumbnails":
+                        return CmdTestThumbnails(cmdArgs);
                     case "help":
                     case "-h":
                     case "--help":
@@ -273,6 +275,324 @@ L1MapViewer CLI - S32 檔案解析工具
                 DebugLog.Log($"[test-load] StackTrace: {ex.StackTrace}");
                 return 1;
             }
+        }
+
+        /// <summary>
+        /// test-thumbnails 命令 - 測試縮圖生成並保存到檔案
+        /// </summary>
+        private static int CmdTestThumbnails(string[] args)
+        {
+            if (args.Length < 1)
+            {
+                Console.WriteLine("用法: -cli test-thumbnails <map_path> [--output <dir>] [--count N]");
+                Console.WriteLine("範例: -cli test-thumbnails C:\\client\\2 --output tests\\thumbnails --count 20");
+                Console.WriteLine();
+                Console.WriteLine("測試縮圖生成並保存到檔案，檢查像素值");
+                return 1;
+            }
+
+            string mapPath = args[0];
+            string outputDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "tests", "thumbnails");
+            int maxCount = 20;
+
+            for (int i = 1; i < args.Length; i++)
+            {
+                if (args[i] == "--output" && i + 1 < args.Length)
+                    outputDir = args[++i];
+                else if (args[i] == "--count" && i + 1 < args.Length)
+                    int.TryParse(args[++i], out maxCount);
+            }
+
+            Console.WriteLine($"=== Test Thumbnails ===");
+            Console.WriteLine($"Map Path: {mapPath}");
+            Console.WriteLine($"Output: {outputDir}");
+            Console.WriteLine($"Max Count: {maxCount}");
+            Console.WriteLine();
+
+            // 初始化 Eto 平台 (CLI 模式下需要手動初始化)
+            if (Eto.Platform.Instance == null)
+            {
+                Console.Write("Initializing Eto platform... ");
+                try
+                {
+                    new Eto.Forms.Application(Eto.Platforms.Wpf).Attach();
+                    Console.WriteLine("OK (WPF)");
+                }
+                catch
+                {
+                    try
+                    {
+                        new Eto.Forms.Application(Eto.Platforms.Gtk).Attach();
+                        Console.WriteLine("OK (GTK)");
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"FAILED: {ex.Message}");
+                        Console.WriteLine("Cannot initialize Eto platform for bitmap operations");
+                        return 1;
+                    }
+                }
+            }
+
+            // 載入地圖
+            var loadResult = MapLoader.Load(mapPath);
+            if (!loadResult.Success)
+            {
+                Console.WriteLine("ERROR: Failed to load map");
+                return 1;
+            }
+
+            // 建立空間索引
+            Console.Write("Building spatial index...");
+            var spatialIndex = new Layer4SpatialIndex();
+            spatialIndex.Build(loadResult.S32Files.Values);
+            Console.WriteLine($" {spatialIndex.GroupCount:N0} groups");
+
+            // 確保輸出目錄存在
+            if (!Directory.Exists(outputDir))
+                Directory.CreateDirectory(outputDir);
+
+            // 清空舊檔案
+            foreach (var file in Directory.GetFiles(outputDir, "G*.png"))
+                File.Delete(file);
+
+            // 取得群組
+            var allGroups = spatialIndex.GetAllGroups();
+            var groupList = allGroups.OrderBy(k => k.Key).Take(maxCount).ToList();
+
+            Console.WriteLine($"\nGenerating {groupList.Count} thumbnails...\n");
+
+            int success = 0, failed = 0;
+            var sw = new System.Diagnostics.Stopwatch();
+            sw.Start();
+
+            foreach (var kvp in groupList)
+            {
+                int groupId = kvp.Key;
+                var objects = kvp.Value;
+
+                Console.Write($"  G{groupId} ({objects.Count} obj): ");
+
+                try
+                {
+                    // 使用與 MapForm 相同的縮圖生成邏輯
+                    var thumbnail = GenerateThumbnailForTest(objects, 80);
+                    if (thumbnail != null)
+                    {
+                        string filename = Path.Combine(outputDir, $"G{groupId}.png");
+                        thumbnail.Save(filename, ImageFormat.Png);
+
+                        // 檢查像素
+                        var pixel00 = thumbnail.GetPixel(0, 0);
+                        var center = thumbnail.GetPixel(40, 40);
+                        Console.WriteLine($"OK - RGBA[0,0]=({pixel00.Rb},{pixel00.Gb},{pixel00.Bb},{pixel00.Ab}), center=({center.Rb},{center.Gb},{center.Bb},{center.Ab})");
+                        success++;
+
+                        thumbnail.Dispose();
+                    }
+                    else
+                    {
+                        Console.WriteLine("FAILED - thumbnail is null");
+                        failed++;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"FAILED - {ex.Message}");
+                    failed++;
+                }
+            }
+
+            sw.Stop();
+            Console.WriteLine();
+            Console.WriteLine($"=== Result ===");
+            Console.WriteLine($"Success: {success}, Failed: {failed}");
+            Console.WriteLine($"Time: {sw.ElapsedMilliseconds} ms");
+            Console.WriteLine($"Output: {outputDir}");
+
+            // 開啟測試視窗顯示縮圖
+            if (success > 0)
+            {
+                Console.WriteLine("\nOpening test window...");
+                ShowThumbnailTestWindow(outputDir);
+            }
+
+            return failed > 0 ? 1 : 0;
+        }
+
+        /// <summary>
+        /// 顯示縮圖測試視窗
+        /// </summary>
+        private static void ShowThumbnailTestWindow(string thumbnailDir)
+        {
+            var app = Eto.Forms.Application.Instance;
+            if (app == null) return;
+
+            var form = new Eto.Forms.Form
+            {
+                Title = "Thumbnail Test",
+                Size = new Eto.Drawing.Size(400, 500)
+            };
+
+            // 創建 GridView (模擬 WinFormsListView)
+            var gridView = new L1MapViewer.Compatibility.WinFormsListView
+            {
+                View = L1MapViewer.Compatibility.View.LargeIcon
+            };
+
+            // 載入縮圖檔案
+            var pngFiles = Directory.GetFiles(thumbnailDir, "G*.png").OrderBy(f => f).Take(20).ToList();
+            Console.WriteLine($"Loading {pngFiles.Count} thumbnails into GridView...");
+
+            var imageList = new L1MapViewer.Compatibility.ImageList();
+            imageList.ImageSize = new Size(40, 40);  // 縮小縮圖大小
+
+            foreach (var file in pngFiles)
+            {
+                string name = Path.GetFileNameWithoutExtension(file);
+                try
+                {
+                    var bitmap = new Eto.Drawing.Bitmap(file);
+                    imageList.Images.Add(bitmap);
+
+                    var item = new L1MapViewer.Compatibility.ListViewItem(name);
+                    item.ImageIndex = imageList.Images.Count - 1;
+                    item.Image = bitmap;  // 直接設置圖片
+                    gridView.Items.Add(item);
+
+                    Console.WriteLine($"  Added: {name}, size={bitmap.Width}x{bitmap.Height}");
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"  Failed: {name} - {ex.Message}");
+                }
+            }
+
+            gridView.LargeImageList = imageList;
+            form.Content = gridView;
+
+            Console.WriteLine("Showing window... (close window to exit)");
+            form.Closed += (s, e) => Eto.Forms.Application.Instance.Quit();
+            form.Show();
+            Eto.Forms.Application.Instance.Run();
+        }
+
+        /// <summary>
+        /// 測試用的縮圖生成（與 MapForm.GenerateGroupThumbnail 相同邏輯）
+        /// </summary>
+        private static Bitmap GenerateThumbnailForTest(List<(S32Data s32, ObjectTile obj)> objects, int thumbnailSize)
+        {
+            if (objects == null || objects.Count == 0) return null;
+
+            // 計算像素邊界
+            int pixelMinX = int.MaxValue, pixelMaxX = int.MinValue;
+            int pixelMinY = int.MaxValue, pixelMaxY = int.MinValue;
+            var objectPixels = new List<(ObjectTile obj, int px, int py)>(objects.Count);
+
+            foreach (var item in objects)
+            {
+                var obj = item.obj;
+                int halfX = obj.X / 2;
+                int baseX = -24 * halfX;
+                int baseY = 63 * 12 - 12 * halfX;
+                int px = baseX + obj.X * 24 + obj.Y * 24;
+                int py = baseY + obj.Y * 12;
+
+                objectPixels.Add((obj, px, py));
+
+                pixelMinX = Math.Min(pixelMinX, px);
+                pixelMaxX = Math.Max(pixelMaxX, px + 48);
+                pixelMinY = Math.Min(pixelMinY, py);
+                pixelMaxY = Math.Max(pixelMaxY, py + 48);
+            }
+
+            int margin = 8;
+            int actualWidth = pixelMaxX - pixelMinX + margin * 2;
+            int actualHeight = pixelMaxY - pixelMinY + margin * 2;
+            int maxTempSize = 512;
+            int tempWidth = Math.Min(Math.Max(actualWidth, 64), maxTempSize);
+            int tempHeight = Math.Min(Math.Max(actualHeight, 64), maxTempSize);
+
+            float preScale = 1.0f;
+            if (actualWidth > maxTempSize || actualHeight > maxTempSize)
+            {
+                preScale = Math.Min((float)maxTempSize / actualWidth, (float)maxTempSize / actualHeight);
+                tempWidth = (int)(actualWidth * preScale);
+                tempHeight = (int)(actualHeight * preScale);
+            }
+
+            // 建立暫存 Bitmap (RGB555 與主程式相同)
+            var tempBitmap = new Bitmap(tempWidth, tempHeight, PixelFormat.Format16bppRgb555);
+            var rect = new Rectangle(0, 0, tempBitmap.Width, tempBitmap.Height);
+            var bmpData = tempBitmap.LockBits(rect, ImageLockMode.ReadWrite, tempBitmap.PixelFormat);
+            int rowpix = bmpData.Stride;
+
+            unsafe
+            {
+                byte* ptr = (byte*)bmpData.Scan0;
+
+                // 填充白色背景 (RGB555: 0x7FFF)
+                byte[] whiteLine = new byte[rowpix];
+                for (int x = 0; x < tempWidth; x++)
+                {
+                    whiteLine[x * 2] = 0xFF;
+                    whiteLine[x * 2 + 1] = 0x7F;
+                }
+                for (int y = 0; y < tempHeight; y++)
+                {
+                    System.Runtime.InteropServices.Marshal.Copy(whiteLine, 0, (IntPtr)(ptr + y * rowpix), rowpix);
+                }
+
+                // 繪製每個物件的實際 tile
+                foreach (var item in objectPixels)
+                {
+                    int pixelX = (int)((item.px - pixelMinX + margin) * preScale);
+                    int pixelY = (int)((item.py - pixelMinY + margin) * preScale);
+
+                    // 使用 TileProvider 取得 til 資料
+                    try
+                    {
+                        int tileId = item.obj.TileId;
+                        int indexId = item.obj.IndexId;
+                        var tilArray = L1MapViewer.Helper.TileProvider.Instance.GetTilArrayWithFallback(tileId, indexId, pixelX, out indexId);
+                        if (tilArray != null && indexId >= 0 && indexId < tilArray.Count)
+                        {
+                            byte[] tilData = tilArray[indexId];
+                            if (tilData != null)
+                            {
+                                // 使用 Lin.Helper.Core.L1Til 渲染
+                                Lin.Helper.Core.Tile.L1Til.RenderBlockDirect(tilData, pixelX, pixelY, ptr, rowpix, tempWidth, tempHeight, applyTypeAlpha: true);
+                            }
+                        }
+                    }
+                    catch { }
+                }
+            }
+
+            tempBitmap.UnlockBits(bmpData);
+
+            // 建立最終縮圖 (32bpp ARGB)
+            var result = new Bitmap(thumbnailSize, thumbnailSize, PixelFormat.Format32bppArgb);
+            using (var g = L1MapViewer.Compatibility.GraphicsHelper.FromImage(result))
+            {
+                g.Clear(Eto.Drawing.Colors.White);
+
+                float scaleX = (float)(thumbnailSize - 4) / tempWidth;
+                float scaleY = (float)(thumbnailSize - 4) / tempHeight;
+                float scale = Math.Min(scaleX, scaleY);
+                int scaledWidth = (int)(tempWidth * scale);
+                int scaledHeight = (int)(tempHeight * scale);
+                int drawX = (thumbnailSize - scaledWidth) / 2;
+                int drawY = (thumbnailSize - scaledHeight) / 2;
+
+                g.DrawImage(tempBitmap, drawX, drawY, scaledWidth, scaledHeight);
+
+                // 畫邊框
+                g.DrawRectangle(new Pen(Eto.Drawing.Colors.Gray), 0, 0, thumbnailSize - 1, thumbnailSize - 1);
+            }
+
+            tempBitmap.Dispose();
+            return result;
         }
 
         /// <summary>
@@ -5000,10 +5320,10 @@ L1MapViewer CLI - S32 檔案解析工具
             Console.WriteLine($"產生圖示: {outputPath}");
 
             using (var bmp = new Bitmap(256, 256))
-            using (var g = Graphics.FromImage(bmp))
+            using (var g = GraphicsHelper.FromImage(bmp))
             {
-                g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-                g.Clear(Color.Transparent);
+                g.SetSmoothingMode(SmoothingMode.AntiAlias);
+                g.Clear(Colors.Transparent);
 
                 int cx = 128, cy = 128;
                 int r = 50;  // 菱形半徑（高度）
@@ -5016,7 +5336,7 @@ L1MapViewer CLI - S32 檔案解析工具
                 DrawDiamond(g, cx, cy + r * 2, r, Color.FromArgb(100, 110, 100));   // 下 - 石灰
 
                 // 中間菱形加白框表示選中
-                DrawDiamondBorder(g, cx, cy, r, Color.White, 4);
+                DrawDiamondBorder(g, cx, cy, r, Colors.White, 4);
 
                 // 儲存 PNG
                 bmp.Save(outputPath, ImageFormat.Png);
@@ -5492,7 +5812,7 @@ L1MapViewer CLI - S32 檔案解析工具
                         string outputPath = Path.Combine(mapPath, $"minimap_test.png");
                         using (var bmp24 = new Bitmap(bitmap.Width, bitmap.Height, PixelFormat.Format24bppRgb))
                         {
-                            using (var g = Graphics.FromImage(bmp24))
+                            using (var g = GraphicsHelper.FromImage(bmp24))
                             {
                                 g.DrawImage(bitmap, 0, 0);
                             }
@@ -6280,11 +6600,11 @@ L1MapViewer CLI - S32 檔案解析工具
                 var worldRect = new Rectangle(centerX - testWidth / 2, centerY - testHeight / 2, testWidth, testHeight);
                 Console.WriteLine($"測試渲染區域: {worldRect}");
 
-                using (var bitmap = new Bitmap(testWidth, testHeight, System.Drawing.Imaging.PixelFormat.Format32bppArgb))
-                using (var g = Graphics.FromImage(bitmap))
+                using (var bitmap = new Bitmap(testWidth, testHeight, PixelFormat.Format32bppArgb))
+                using (var g = GraphicsHelper.FromImage(bitmap))
                 {
-                    g.Clear(Color.DarkGray);
-                    g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+                    g.Clear(Colors.DarkGrey);
+                    g.SetSmoothingMode(SmoothingMode.AntiAlias);
 
                     int drawnCount = 0;
                     foreach (var item in targetS32.Layer8)
@@ -6322,7 +6642,7 @@ L1MapViewer CLI - S32 檔案解析工具
 
                     string outputPath = Path.Combine(Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location), "tests", "layer8_test.png");
                     Directory.CreateDirectory(Path.GetDirectoryName(outputPath));
-                    bitmap.Save(outputPath);
+                    bitmap.Save(outputPath, ImageFormat.Png);
                     Console.WriteLine($"輸出: {outputPath}");
                 }
             }

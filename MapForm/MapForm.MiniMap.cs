@@ -1,6 +1,7 @@
 using System;
-using System.Drawing;
-using System.Windows.Forms;
+// using System.Drawing; // Replaced with Eto.Drawing
+using Eto.Forms;
+using Eto.Drawing;
 using L1MapViewer.Controls;
 
 namespace L1FlyMapViewer
@@ -25,10 +26,9 @@ namespace L1FlyMapViewer
                 ViewState = _viewState
             };
 
-            // 隱藏原本的 PictureBox，加入新控制項
+            // 隱藏原本的 PictureBox（新的 _miniMapControl 會在 BuildEtoLayout 中添加到佈局）
             miniMapPictureBox.Visible = false;
-            miniMapPictureBox.Parent.Controls.Add(_miniMapControl);
-            _miniMapControl.BringToFront();
+            // 註：不再需要手動添加到 parent，BuildEtoLayout 會直接使用 _miniMapControl
 
             // 訂閱導航事件
             _miniMapControl.NavigateRequested += MiniMapControl_NavigateRequested;
@@ -38,7 +38,7 @@ namespace L1FlyMapViewer
             _miniMapControl.MouseDown += (s, e) =>
             {
                 _interaction.IsMiniMapFocused = true;
-                if (e.Button == MouseButtons.Left)
+                if (e.GetButton() == MouseButtons.Left)
                 {
                     _interaction.StartMiniMapDrag();
                 }

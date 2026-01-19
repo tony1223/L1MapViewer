@@ -1,6 +1,7 @@
 using System;
-using System.Drawing;
-using System.Windows.Forms;
+// using System.Drawing; // Replaced with Eto.Drawing
+using Eto.Forms;
+using Eto.Drawing;
 
 namespace L1MapViewer.Controls
 {
@@ -11,6 +12,9 @@ namespace L1MapViewer.Controls
     {
         /// <summary>滑鼠按鍵</summary>
         public MouseButtons Button { get; }
+
+        /// <summary>滑鼠按鍵 (Eto.Forms compatibility alias)</summary>
+        public Eto.Forms.MouseButtons Buttons => L1MapViewer.Compatibility.MouseButtonsHelper.ToEto(Button);
 
         /// <summary>螢幕座標</summary>
         public Point ScreenLocation { get; }

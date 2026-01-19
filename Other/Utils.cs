@@ -37,7 +37,7 @@ namespace L1MapViewer.Other {
             return WritePrivateProfileString(lpAppName, lpKeyName, lpString, lpFileName);
         }
 
-        //進度條 搭配Application.DoEvents(); 系統就會暫時把頁面還給你
+        //進度條 搭配ApplicationHelper.DoEvents(); 系統就會暫時把頁面還給你
         public static void ShowProgressBar(bool b, IMapViewer viewer) {
             viewer.toolStripProgressBar1.Visible = b;
         }

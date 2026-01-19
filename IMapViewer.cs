@@ -1,4 +1,5 @@
-using System.Windows.Forms;
+using Eto.Forms;
+using Eto.Drawing;
 
 namespace L1FlyMapViewer
 {
@@ -18,12 +19,16 @@ namespace L1FlyMapViewer
         ToolStripStatusLabel toolStripStatusLabel1 { get; }
         ToolStripStatusLabel toolStripStatusLabel2 { get; }
         ToolStripStatusLabel toolStripStatusLabel3 { get; }
-        Panel panel1 { get; }
+        Eto.Forms.Control panel1 { get; }
         double zoomLevel { get; set; }
 
-        void vScrollBar1_Scroll(object sender, ScrollEventArgs e);
-        void hScrollBar1_Scroll(object sender, ScrollEventArgs e);
-        void Refresh();
-        void Invalidate();
+        void vScrollBar1_Scroll(object sender, EventArgs e);
+        void hScrollBar1_Scroll(object sender, EventArgs e);
+
+        /// <summary>
+        /// Invalidates the control causing a repaint.
+        /// In WinForms this was Refresh(), in Eto use Invalidate().
+        /// </summary>
+        new void Invalidate();
     }
 }

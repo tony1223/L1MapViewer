@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
-using System.Drawing;
-using System.Drawing.Imaging;
+// using System.Drawing; // Replaced with Eto.Drawing
+// using System.Drawing.Imaging; // Replaced with SkiaSharp
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -185,6 +185,21 @@ namespace L1MapViewer.Rendering
 
                 return RenderMiniMap(document, targetSize);
             }, cancellationToken);
+        }
+
+        /// <summary>
+        /// 使用 MapDocument 渲染小地圖（SkiaSharp 版本）
+        /// </summary>
+        public SkiaSharp.SKBitmap RenderMiniMapSK(MapDocument document, int targetSize, out MiniMapRenderer.MiniMapBounds bounds)
+        {
+            return _miniMapRenderer.RenderMiniMapSK(
+                document.MapPixelWidth,
+                document.MapPixelHeight,
+                targetSize,
+                document.S32Files,
+                document.CheckedS32Files,
+                out _,
+                out bounds);
         }
 
         /// <summary>

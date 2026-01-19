@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
-using System.Drawing;
-using System.Drawing.Drawing2D;
+using Eto.Drawing;
+using L1MapViewer.Compatibility;
 using L1MapViewer.Models;
 
 namespace L1MapViewer.Rendering
@@ -62,9 +62,9 @@ namespace L1MapViewer.Rendering
         /// </summary>
         public void DrawLayer3Attributes(Bitmap bitmap, Rectangle worldRect, IEnumerable<S32Data> s32Files)
         {
-            using (Graphics g = Graphics.FromImage(bitmap))
+            using (Graphics g = GraphicsHelper.FromImage(bitmap))
             {
-                g.SmoothingMode = SmoothingMode.AntiAlias;
+                g.SetSmoothingMode(SmoothingMode.AntiAlias);
 
                 foreach (var s32Data in s32Files)
                 {
@@ -123,9 +123,9 @@ namespace L1MapViewer.Rendering
         /// </summary>
         public void DrawPassability(Bitmap bitmap, Rectangle worldRect, IEnumerable<S32Data> s32Files)
         {
-            using (Graphics g = Graphics.FromImage(bitmap))
+            using (Graphics g = GraphicsHelper.FromImage(bitmap))
             {
-                g.SmoothingMode = SmoothingMode.AntiAlias;
+                g.SetSmoothingMode(SmoothingMode.AntiAlias);
 
                 using (Pen penImpassable = new Pen(Color.FromArgb(255, 128, 0, 128), 3))
                 using (Pen penPassable = new Pen(Color.FromArgb(255, 50, 200, 255), 2))
@@ -175,7 +175,7 @@ namespace L1MapViewer.Rendering
         /// </summary>
         public void DrawRegions(Bitmap bitmap, Rectangle worldRect, IEnumerable<S32Data> s32Files, bool showSafeZones, bool showCombatZones)
         {
-            using (Graphics g = Graphics.FromImage(bitmap))
+            using (Graphics g = GraphicsHelper.FromImage(bitmap))
             {
                 // 定義區域顏色（半透明）
                 using (Brush safeBrush = new SolidBrush(Color.FromArgb(80, 0, 150, 255)))       // 藍色
@@ -240,9 +240,9 @@ namespace L1MapViewer.Rendering
         /// </summary>
         public void DrawGrid(Bitmap bitmap, Rectangle worldRect, IEnumerable<S32Data> s32Files)
         {
-            using (Graphics g = Graphics.FromImage(bitmap))
+            using (Graphics g = GraphicsHelper.FromImage(bitmap))
             {
-                using (Pen gridPen = new Pen(Color.FromArgb(100, Color.Red), 1))
+                using (Pen gridPen = new Pen(ColorExtensions.FromArgb(100, Eto.Drawing.Colors.Red), 1))
                 {
                     foreach (var s32Data in s32Files)
                     {
@@ -287,13 +287,13 @@ namespace L1MapViewer.Rendering
         /// </summary>
         public void DrawS32Boundary(Bitmap bitmap, Rectangle worldRect, IEnumerable<S32Data> s32Files)
         {
-            using (Graphics g = Graphics.FromImage(bitmap))
+            using (Graphics g = GraphicsHelper.FromImage(bitmap))
             {
-                g.SmoothingMode = SmoothingMode.AntiAlias;
-                g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
+                g.SetSmoothingMode(SmoothingMode.AntiAlias);
+                // TextRenderingHint not supported in Eto.Drawing
 
                 using (Font font = new Font("Arial", 9, FontStyle.Bold))
-                using (Pen boundaryPen = new Pen(Color.Cyan, 2))
+                using (Pen boundaryPen = new Pen(Eto.Drawing.Colors.Cyan, 2))
                 {
                     foreach (var s32Data in s32Files)
                     {
@@ -332,8 +332,8 @@ namespace L1MapViewer.Rendering
                         int centerY = (corners[0].Y + corners[2].Y) / 2;
                         string centerText = $"GetLoc({mx},{my})\n{s32Data.SegInfo.nLinBeginX},{s32Data.SegInfo.nLinBeginY}~{s32Data.SegInfo.nLinEndX},{s32Data.SegInfo.nLinEndY}";
 
-                        using (SolidBrush cb = new SolidBrush(Color.FromArgb(200, Color.Black)))
-                        using (SolidBrush ct = new SolidBrush(Color.Lime))
+                        using (SolidBrush cb = new SolidBrush(ColorExtensions.FromArgb(200, Eto.Drawing.Colors.Black)))
+                        using (SolidBrush ct = new SolidBrush(Eto.Drawing.Colors.Lime))
                         {
                             SizeF cs = g.MeasureString(centerText, font);
                             g.FillRectangle(cb, centerX - cs.Width / 2 - 2, centerY - cs.Height / 2 - 1, cs.Width + 4, cs.Height + 2);
@@ -349,9 +349,9 @@ namespace L1MapViewer.Rendering
         /// </summary>
         public void DrawLayer5(Bitmap bitmap, Rectangle worldRect, IEnumerable<S32Data> s32Files, bool isEditMode)
         {
-            using (Graphics g = Graphics.FromImage(bitmap))
+            using (Graphics g = GraphicsHelper.FromImage(bitmap))
             {
-                g.SmoothingMode = SmoothingMode.AntiAlias;
+                g.SetSmoothingMode(SmoothingMode.AntiAlias);
 
                 // 收集所有 Layer5 位置（去重）
                 var drawnPositions = new HashSet<(int mx, int my, int x, int y)>();
@@ -434,9 +434,9 @@ namespace L1MapViewer.Rendering
             // 建立快速查找的 HashSet
             var highlightSet = new HashSet<(int, int)>(highlightCells);
 
-            using (Graphics g = Graphics.FromImage(bitmap))
+            using (Graphics g = GraphicsHelper.FromImage(bitmap))
             {
-                g.SmoothingMode = SmoothingMode.AntiAlias;
+                g.SetSmoothingMode(SmoothingMode.AntiAlias);
 
                 // 綠色半透明填充
                 using (SolidBrush fillBrush = new SolidBrush(Color.FromArgb(100, 50, 200, 50)))
@@ -497,10 +497,10 @@ namespace L1MapViewer.Rendering
         /// </summary>
         public void DrawCoordinateLabels(Bitmap bitmap, Rectangle worldRect, IEnumerable<S32Data> s32Files)
         {
-            using (Graphics g = Graphics.FromImage(bitmap))
+            using (Graphics g = GraphicsHelper.FromImage(bitmap))
             {
-                g.SmoothingMode = SmoothingMode.AntiAlias;
-                g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
+                g.SetSmoothingMode(SmoothingMode.AntiAlias);
+                // TextRenderingHint not available in Eto.Drawing
 
                 using (Font font = new Font("Arial", 8, FontStyle.Bold))
                 {
@@ -535,12 +535,12 @@ namespace L1MapViewer.Rendering
                                 int textX = X + 12 - (int)textSize.Width / 2;
                                 int textY = Y + 12 - (int)textSize.Height / 2;
 
-                                using (SolidBrush bgBrush = new SolidBrush(Color.FromArgb(180, Color.White)))
+                                using (SolidBrush bgBrush = new SolidBrush(ColorExtensions.FromArgb(180, Eto.Drawing.Colors.White)))
                                 {
                                     g.FillRectangle(bgBrush, textX - 2, textY - 1, textSize.Width + 4, textSize.Height + 2);
                                 }
 
-                                using (SolidBrush textBrush = new SolidBrush(Color.Blue))
+                                using (SolidBrush textBrush = new SolidBrush(Eto.Drawing.Colors.Blue))
                                 {
                                     g.DrawString(coordText, font, textBrush, textX, textY);
                                 }
@@ -558,9 +558,9 @@ namespace L1MapViewer.Rendering
         {
             if (s32Data == null) return;
 
-            using (Graphics g = Graphics.FromImage(bitmap))
+            using (Graphics g = GraphicsHelper.FromImage(bitmap))
             {
-                g.SmoothingMode = SmoothingMode.AntiAlias;
+                g.SetSmoothingMode(SmoothingMode.AntiAlias);
 
                 int[] loc = s32Data.SegInfo.GetLoc(1.0);
                 int mx = loc[0];

@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Drawing;
+// using System.Drawing; // Replaced with Eto.Drawing
 using L1MapViewer.Models;
 
 namespace L1MapViewer.Helper
@@ -172,18 +172,40 @@ namespace L1MapViewer.Helper
         }
 
         /// <summary>
-        /// 檢查點是否在菱形內（使用 GDI+ Region，相容舊版）
+        /// 檢查點是否在菱形內（使用數學方法，跨平台相容）
         /// </summary>
         public static bool IsPointInDiamondGdi(Point p, Point p1, Point p2, Point p3, Point p4)
         {
-            using (var path = new System.Drawing.Drawing2D.GraphicsPath())
+            // Use cross-product based point-in-polygon test
+            return IsPointInPolygon(p, new[] { p1, p2, p3, p4 });
+        }
+
+        /// <summary>
+        /// 檢查點是否在多邊形內（使用向量叉積方法）
+        /// </summary>
+        private static bool IsPointInPolygon(Point test, Point[] polygon)
+        {
+            if (polygon.Length < 3) return false;
+
+            int positive = 0;
+            int negative = 0;
+
+            for (int i = 0; i < polygon.Length; i++)
             {
-                path.AddPolygon(new Point[] { p1, p2, p3, p4 });
-                using (var region = new System.Drawing.Region(path))
-                {
-                    return region.IsVisible(p);
-                }
+                Point p1 = polygon[i];
+                Point p2 = polygon[(i + 1) % polygon.Length];
+
+                // Cross product to determine which side of the edge the point is on
+                int cross = (p2.X - p1.X) * (test.Y - p1.Y) - (p2.Y - p1.Y) * (test.X - p1.X);
+
+                if (cross > 0) positive++;
+                else if (cross < 0) negative++;
+
+                // If we have both positive and negative, point is outside
+                if (positive > 0 && negative > 0) return false;
             }
+
+            return true;
         }
     }
 }

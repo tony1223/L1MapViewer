@@ -98,6 +98,26 @@ namespace L1MapViewer.Helper
                 }
             }
 
+            // 還原 Layer3 修改（通行性）
+            foreach (var layer3Info in action.ModifiedLayer3)
+            {
+                if (allS32DataDict.TryGetValue(layer3Info.S32FilePath, out S32Data? targetS32))
+                {
+                    if (layer3Info.LocalX >= 0 && layer3Info.LocalX < 64 &&
+                        layer3Info.LocalY >= 0 && layer3Info.LocalY < 64)
+                    {
+                        if (targetS32.Layer3[layer3Info.LocalY, layer3Info.LocalX] == null)
+                        {
+                            targetS32.Layer3[layer3Info.LocalY, layer3Info.LocalX] = new MapAttribute();
+                        }
+                        var attr = targetS32.Layer3[layer3Info.LocalY, layer3Info.LocalX];
+                        attr.Attribute1 = layer3Info.OldAttribute1;
+                        attr.Attribute2 = layer3Info.OldAttribute2;
+                        targetS32.IsModified = true;
+                    }
+                }
+            }
+
             redoHistory.Push(action);
 
             result.Success = true;
@@ -157,6 +177,26 @@ namespace L1MapViewer.Helper
                     if (objToRemove != null)
                     {
                         targetS32.Layer4.Remove(objToRemove);
+                        targetS32.IsModified = true;
+                    }
+                }
+            }
+
+            // 重做 Layer3 修改（通行性）
+            foreach (var layer3Info in action.ModifiedLayer3)
+            {
+                if (allS32DataDict.TryGetValue(layer3Info.S32FilePath, out S32Data? targetS32))
+                {
+                    if (layer3Info.LocalX >= 0 && layer3Info.LocalX < 64 &&
+                        layer3Info.LocalY >= 0 && layer3Info.LocalY < 64)
+                    {
+                        if (targetS32.Layer3[layer3Info.LocalY, layer3Info.LocalX] == null)
+                        {
+                            targetS32.Layer3[layer3Info.LocalY, layer3Info.LocalX] = new MapAttribute();
+                        }
+                        var attr = targetS32.Layer3[layer3Info.LocalY, layer3Info.LocalX];
+                        attr.Attribute1 = layer3Info.NewAttribute1;
+                        attr.Attribute2 = layer3Info.NewAttribute2;
                         targetS32.IsModified = true;
                     }
                 }

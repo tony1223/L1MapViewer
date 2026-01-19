@@ -2,8 +2,8 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Drawing;
-using System.Drawing.Imaging;
+// using System.Drawing; // Replaced with Eto.Drawing
+// using System.Drawing.Imaging; // Replaced with SkiaSharp
 using System.IO;
 using System.Linq;
 using L1FlyMapViewer;
@@ -12,6 +12,7 @@ using L1MapViewer.Helper;
 using L1MapViewer.Models;
 using L1MapViewer.Reader;
 using static L1MapViewer.Other.Struct;
+using L1MapViewer.Compatibility;
 
 namespace L1MapViewer.CLI.Commands
 {
@@ -717,11 +718,11 @@ namespace L1MapViewer.CLI.Commands
                         localSw.Restart();
                         using (var result = new Bitmap(thumbnailSize, thumbnailSize, PixelFormat.Format32bppArgb))
                         {
-                            using (var g = Graphics.FromImage(result))
+                            using (var g = GraphicsHelper.FromImage(result))
                             {
-                                g.Clear(Color.White);
-                                g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.NearestNeighbor;
-                                g.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.HighSpeed;
+                                g.Clear(Colors.White);
+                                g.SetInterpolationMode(InterpolationMode.NearestNeighbor);
+                                g.SetPixelOffsetMode(PixelOffsetMode.HighSpeed);
 
                                 float scaleX = (float)(thumbnailSize - 4) / tempWidth;
                                 float scaleY = (float)(thumbnailSize - 4) / tempHeight;
@@ -1091,7 +1092,7 @@ namespace L1MapViewer.CLI.Commands
                 Console.WriteLine($"  Total render time: {swTotal.ElapsedMilliseconds} ms");
 
                 // 標記目標位置
-                using (var g = Graphics.FromImage(combinedBitmap))
+                using (var g = GraphicsHelper.FromImage(combinedBitmap))
                 {
                     // 使用世界座標計算目標位置
                     var (centerWorldX, centerWorldY) = s32WorldPositions[centerS32];
@@ -1114,14 +1115,14 @@ namespace L1MapViewer.CLI.Commands
                     int finalY = centerOffsetY + pixelY;
 
                     // 畫紅色十字標記
-                    using (var pen = new Pen(Color.Red, 3))
+                    using (var pen = new Pen(Colors.Red, 3))
                     {
                         g.DrawLine(pen, finalX - 20, finalY, finalX + 20, finalY);
                         g.DrawLine(pen, finalX, finalY - 20, finalX, finalY + 20);
                     }
 
                     // 畫目標區域的圓圈
-                    using (var pen = new Pen(Color.Red, 2))
+                    using (var pen = new Pen(Colors.Red, 2))
                     {
                         g.DrawEllipse(pen, finalX - 50, finalY - 50, 100, 100);
                     }

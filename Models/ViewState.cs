@@ -1,5 +1,5 @@
 using System;
-using System.Drawing;
+// using System.Drawing; // Replaced with Eto.Drawing
 using L1MapViewer.Helper;
 
 namespace L1MapViewer.Models
@@ -311,15 +311,35 @@ namespace L1MapViewer.Models
             set { if (_showS32Boundary != value) { _showS32Boundary = value; DisplayOptionsChanged?.Invoke(this, EventArgs.Empty); } }
         }
 
-        private bool _showLayer8 = true;
+        private bool _showLayer8Spr = true;
 
         /// <summary>
-        /// 顯示 Layer8 (SPR 特效標記)
+        /// 顯示 Layer8 SPR 圖片
+        /// </summary>
+        public bool ShowLayer8Spr
+        {
+            get => _showLayer8Spr;
+            set { if (_showLayer8Spr != value) { _showLayer8Spr = value; DisplayOptionsChanged?.Invoke(this, EventArgs.Empty); } }
+        }
+
+        private bool _showLayer8Marker = true;
+
+        /// <summary>
+        /// 顯示 Layer8 輔助標記
+        /// </summary>
+        public bool ShowLayer8Marker
+        {
+            get => _showLayer8Marker;
+            set { if (_showLayer8Marker != value) { _showLayer8Marker = value; DisplayOptionsChanged?.Invoke(this, EventArgs.Empty); } }
+        }
+
+        /// <summary>
+        /// 保留舊的 ShowLayer8 屬性以便相容（同時控制 SPR 和 Marker）
         /// </summary>
         public bool ShowLayer8
         {
-            get => _showLayer8;
-            set { if (_showLayer8 != value) { _showLayer8 = value; DisplayOptionsChanged?.Invoke(this, EventArgs.Empty); } }
+            get => _showLayer8Spr || _showLayer8Marker;
+            set { ShowLayer8Spr = value; ShowLayer8Marker = value; }
         }
 
         /// <summary>

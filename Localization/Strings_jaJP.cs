@@ -10,20 +10,56 @@ namespace L1MapViewer.Localization
         public static Dictionary<string, string> GetStrings() => new()
         {
             // === Menu Items ===
-            { "Menu_File", "ファイル" },
+            { "Menu_File", "ファイル(&F)" },
             { "Menu_File_OpenClient", "リネージュクライアントを開いてマップを読み込む" },
             { "Menu_File_Export", "マップ通行データをエクスポート" },
+            { "Menu_File_Save", "S32を保存" },
+            { "Menu_File_ExportFs32", "FS32パッケージをエクスポート..." },
+            { "Menu_File_Exit", "終了" },
             { "Menu_Import", "インポート" },
             { "Menu_Import_Material", "素材をインポート..." },
             { "Menu_Import_Fs32ToNewMap", "マップパッケージを新規マップにインポート..." },
-            { "Menu_Database", "データベース設定" },
+            { "Menu_Edit", "編集(&E)" },
+            { "Menu_Edit_Undo", "元に戻す" },
+            { "Menu_Edit_Redo", "やり直し" },
+            { "Menu_Edit_Copy", "コピー" },
+            { "Menu_Edit_Paste", "貼り付け" },
+            { "Menu_Edit_Delete", "削除" },
+            { "Menu_Edit_BatchDeleteTile", "タイル一括削除..." },
+            { "Menu_Edit_BatchReplaceTile", "タイル一括置換..." },
+            { "Menu_View", "表示(&V)" },
+            { "Menu_View_Reload", "マップを再読み込み" },
+            { "Menu_View_Layers", "レイヤー" },
+            { "Menu_View_Layer1", "Layer 1 地面" },
+            { "Menu_View_Layer2", "Layer 2 装飾" },
+            { "Menu_View_Layer4", "Layer 4 オブジェクト" },
+            { "Menu_View_Layer5", "Layer 5 イベント" },
+            { "Menu_View_Layer8", "Layer 8 SPR" },
+            { "Menu_View_Passable", "通行性" },
+            { "Menu_View_SafeZone", "安全区域" },
+            { "Menu_View_CombatZone", "戦闘区域" },
+            { "Menu_View_Grid", "グリッド" },
+            { "Menu_View_S32Border", "S32境界" },
+            { "Menu_View_Zoom", "ズーム" },
+            { "Menu_View_ZoomIn", "拡大" },
+            { "Menu_View_ZoomOut", "縮小" },
+            { "Menu_View_Zoom100", "100%" },
+            { "Menu_Tools", "ツール(&T)" },
+            { "Menu_Tools_PassableEdit", "通行編集モード" },
+            { "Menu_Tools_RegionEdit", "区域編集モード" },
+            { "Menu_Tools_Layer5Edit", "透明編集モード" },
+            { "Menu_Tools_ValidateMap", "マップの整合性を検証" },
+            { "Menu_Tools_AnalyzeAttr", "属性を分析" },
             { "Menu_MapEditor", "マップエディタ" },
+            { "Menu_Help", "ヘルプ(&H)" },
             { "Menu_Help_Discord", "Discordで議論する" },
-            { "Menu_Help_About", "バージョン情報" },
+            { "Menu_Help_About", "バージョン情報..." },
             { "Menu_Language", "言語" },
             { "Menu_Export_ServerPassability", "サーバー通行データ出力" },
             { "Menu_Export_L1JFormat", "L1J 形式" },
             { "Menu_Export_DIRFormat", "DIR 形式" },
+            { "Menu_Export_AllMapsL1J", "全マップ出力 (L1J)" },
+            { "Menu_Export_AllMapsDIR", "全マップ出力 (DIR)" },
 
             // === Tab Pages ===
             { "Tab_MapPreview", "マッププレビュー" },
@@ -100,16 +136,6 @@ namespace L1MapViewer.Localization
             { "Placeholder_SearchTileId", "タイルID検索..." },
             { "Label_SearchResult", "検索結果" },
 
-            // === Buttons - Form1 (Monster Tool) ===
-            { "Button_Connect", "接続" },
-            { "Button_AddToDatabase", "データベースに追加" },
-            { "Button_ReloadMap", "現在のマップを再読み込み" },
-            { "Button_ShowAllMonsters", "すべてのモンスター位置を表示" },
-            { "Button_AddSpawn", "追加" },
-            { "Button_CopySpawn", "コピー" },
-            { "Button_DeleteSpawn", "削除" },
-            { "Button_TestConnection", "接続テスト" },
-
             // === Labels - Common ===
             { "Label_Name", "名前" },
             { "Label_ID", "ID" },
@@ -123,29 +149,6 @@ namespace L1MapViewer.Localization
             { "Label_Layer1Coord", "Layer1座標" },
             { "Label_Zoom", "ズーム" },
             { "Label_S32Files", "S32ファイル" },
-
-            // === Labels - Form1 (Monster Tool) ===
-            { "Label_ExpectedAdd", "追加予定" },
-            { "Label_CenterX", "中心X座標" },
-            { "Label_CenterY", "中心Y座標" },
-            { "Label_Radius", "半径" },
-            { "Label_RespawnMin", "リスポーン時間(最小)" },
-            { "Label_RespawnMax", "リスポーン時間(最大)" },
-            { "Label_SpawnInScreen", "画面内でスポーン" },
-            { "Label_TeleportDistance", "テレポート距離" },
-            { "Label_MonsterID", "モンスターID" },
-            { "Label_MonsterNote", "モンスターメモ" },
-            { "Label_MonsterCount", "モンスター数" },
-
-            // === Labels - Database ===
-            { "Label_SavedConnections", "保存された接続:" },
-            { "Label_ConnectionName", "接続名:" },
-            { "Label_ServerAddress", "サーバーアドレス:" },
-            { "Label_Port", "ポート:" },
-            { "Label_Database", "データベース:" },
-            { "Label_Username", "ユーザー名:" },
-            { "Label_Password", "パスワード:" },
-            { "Group_ConnectionInfo", "接続情報" },
 
             // === Layer Names ===
             { "Layer_1", "レイヤー1 (床)" },
@@ -173,6 +176,8 @@ namespace L1MapViewer.Localization
             { "Layer_FloatS32Border", "S32境界" },
             { "Layer_FloatSafeZones", "安全地帯" },
             { "Layer_FloatCombatZones", "戦闘地帯" },
+            { "Layer_L8Spr", "L8 画像" },
+            { "Layer_L8Marker", "L8 補助" },
 
             // === Hints ===
             { "Hint_MouseControls", "中クリックでドラッグ | Ctrl+スクロールでズーム | 左クリックで選択" },
@@ -232,24 +237,6 @@ namespace L1MapViewer.Localization
             { "ImportNewMap_Success", "マップパッケージを新規マップ {0} に正常にインポートしました" },
             { "ImportNewMap_Failed", "インポートに失敗しました: {0}" },
             { "ImportNewMap_PleaseOpenClient", "先にリネージュクライアントを開いてください" },
-
-            // === Messages - Database ===
-            { "Message_PleaseConnectDB", "先にデータベースに接続してください" },
-            { "Message_ConnectionSuccess", "接続に成功しました！" },
-            { "Message_ConnectionFailed", "接続に失敗しました: {0}" },
-            { "Message_PleaseEnterConnName", "接続名を入力してください" },
-            { "Message_PleaseEnterServer", "サーバーアドレスを入力してください" },
-            { "Message_PleaseEnterDatabase", "データベース名を入力してください" },
-            { "Message_ConnectionSaved", "接続を保存しました" },
-            { "Message_ConfirmDeleteConnection", "この接続を削除してもよろしいですか？" },
-
-            // === Messages - Monster Tool ===
-            { "Message_PleaseEnterMonsterID", "モンスターIDを入力してください" },
-            { "Message_InvalidMonsterID", "無効なモンスターIDです" },
-            { "Message_MonsterAddedToQueue", "追加キューに追加しました" },
-            { "Message_SpawnAdded", "スポーンポイントを追加しました" },
-            { "Message_SpawnDeleted", "スポーンポイントを削除しました" },
-            { "Message_NoSpawnSelected", "先にスポーンポイントを選択してください" },
 
             // === Messages - MapForm ===
             { "Message_S32Saved", "S32を保存しました" },
@@ -349,10 +336,8 @@ namespace L1MapViewer.Localization
 
             // === Form Titles ===
             { "Form_MapEditor_Title", "マップエディタ" },
-            { "Form_MonsterTool_Title", "モンスター設定ツール" },
-            { "Form_DatabaseConnection_Title", "データベース接続管理" },
-            { "Form_MonsterSearch_Title", "モンスター検索" },
             { "Form_ExportOptions_Title", "エクスポートオプション" },
+            { "Form_ExportFs32_Title", "FS32マップパッケージをエクスポート" },
             { "Form_CopySettings_Title", "設定をコピー" },
             { "Form_MaterialBrowser_Title", "素材ブラウザ" },
 

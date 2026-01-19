@@ -1,13 +1,18 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
         <OutputType>WinExe</OutputType>
-        <TargetFramework>net10.0-windows</TargetFramework>
+        <!-- Use Windows TFM on Windows for WPF support, plain net10.0 on other platforms -->
+        <TargetFramework Condition="$([MSBuild]::IsOSPlatform('Windows'))">net10.0-windows</TargetFramework>
+        <TargetFramework Condition="!$([MSBuild]::IsOSPlatform('Windows'))">net10.0</TargetFramework>
+        <UseWPF Condition="$([MSBuild]::IsOSPlatform('Windows'))">true</UseWPF>
+        <!-- Allow running on newer .NET versions if net8.0 runtime isn't available -->
+        <RollForward>Major</RollForward>
+        <!-- Use workloads when available, otherwise fall back to manual reference -->
+        <UseWorkloads Condition="'$(UseWorkloads)' == ''">false</UseWorkloads>
         <Nullable>enable</Nullable>
-        <UseWindowsForms>true</UseWindowsForms>
         <ImplicitUsings>enable</ImplicitUsings>
         <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-        <EnableWindowsTargeting>true</EnableWindowsTargeting>
         <ApplicationIcon>icon.ico</ApplicationIcon>
         <!-- 抑制部分 nullable 和過時 API 警告 -->
         <NoWarn>CS8600;CS8601;CS8602;CS8603;CS8604;CS8605;CS8618;CS8619;CS8622;CS8625;CS0162;CS0168;CS0169;CS0219;CS0414;CA2022;SYSLIB0021</NoWarn>
@@ -21,6 +26,8 @@
 
         <!-- 版本號設定 (可透過 /p:Version=1.yy.MMddHHmm 覆蓋) -->
         <Version>1.0.0</Version>
+        <!-- Runtime identifiers for cross-platform builds -->
+        <RuntimeIdentifiers>osx-x64;osx-arm64;win-x64;linux-x64</RuntimeIdentifiers>
         <!-- 避免與 AssemblyInfo.cs 衝突，只生成版本相關屬性 -->
         <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
         <GenerateAssemblyVersionAttribute>true</GenerateAssemblyVersionAttribute>
@@ -29,9 +36,29 @@
     </PropertyGroup>
 
     <ItemGroup>
-      <PackageReference Include="Lin.Helper.Core" Version="1.3.7" />
-      <PackageReference Include="MySql.Data" Version="9.5.0" />
-      <PackageReference Include="System.Text.Encoding.CodePages" Version="10.0.0" />
+      <!-- Cross-platform UI framework -->
+      <PackageReference Include="Eto.Forms" Version="2.10.2" />
+      <!-- GTK works on both Linux and macOS (as a fallback when macOS workload isn't available) -->
+      <PackageReference Include="Eto.Platform.Gtk" Version="2.10.2" Condition="$([MSBuild]::IsOSPlatform('Linux')) OR $([MSBuild]::IsOSPlatform('OSX'))" />
+      <!-- On macOS, reference the platform package for NuGet restore but assets come from manual copy -->
+      <PackageReference Include="Eto.Platform.macOS" Version="2.10.2" Condition="$([MSBuild]::IsOSPlatform('OSX'))" GeneratePathProperty="true" />
+      <PackageReference Include="Eto.Platform.Wpf" Version="2.10.2" Condition="$([MSBuild]::IsOSPlatform('Windows'))" />
+      <PackageReference Include="Eto.SkiaDraw" Version="0.2.0" />
+      <PackageReference Include="NLog" Version="6.0.7" />
+
+      <!-- Cross-platform graphics -->
+      <PackageReference Include="SkiaSharp" Version="3.119.1" />
+      <PackageReference Include="SkiaSharp.NativeAssets.Linux" Version="3.119.1" Condition="$([MSBuild]::IsOSPlatform('Linux'))" />
+      <PackageReference Include="SkiaSharp.NativeAssets.macOS" Version="3.119.1" Condition="$([MSBuild]::IsOSPlatform('OSX'))" />
+
+      <!-- Existing dependencies -->
+      <PackageReference Include="Lin.Helper.Core" Version="1.3.11" />
+      <PackageReference Include="System.Text.Encoding.CodePages" Version="9.0.0" />
+    </ItemGroup>
+
+    <!-- NLog 配置檔複製到輸出目錄 -->
+    <ItemGroup>
+      <None Include="nlog.config" CopyToOutputDirectory="PreserveNewest" />
     </ItemGroup>
 
     <!-- 排除 tests 資料夾不發布 -->
@@ -41,5 +68,18 @@
       <None Remove="tests\**" />
       <Compile Remove="tests\**" />
     </ItemGroup>
+
+    <!-- macOS/Linux: Copy platform assemblies from NuGet cache since TFM doesn't match -->
+    <Target Name="CopyEtoPlatformAssemblies" AfterTargets="Build" Condition="$([MSBuild]::IsOSPlatform('OSX')) OR $([MSBuild]::IsOSPlatform('Linux'))">
+      <PropertyGroup>
+        <!-- Eto packages may not have net10.0 yet, fallback to net8.0 assemblies -->
+        <EtoMacOSSource>$(NuGetPackageRoot)eto.platform.macos/2.10.2/lib/net8.0-macos14.0/Eto.macOS.dll</EtoMacOSSource>
+        <EtoGtkSource>$(NuGetPackageRoot)eto.platform.gtk/2.10.2/lib/net6.0/Eto.Gtk.dll</EtoGtkSource>
+      </PropertyGroup>
+      <Copy SourceFiles="$(EtoMacOSSource)" DestinationFolder="$(OutputPath)" SkipUnchangedFiles="true" Condition="$([MSBuild]::IsOSPlatform('OSX')) AND Exists('$(EtoMacOSSource)')" />
+      <Copy SourceFiles="$(EtoGtkSource)" DestinationFolder="$(OutputPath)" SkipUnchangedFiles="true" Condition="Exists('$(EtoGtkSource)')" />
+      <Message Text="Copied Eto.macOS.dll to $(OutputPath)" Importance="high" Condition="$([MSBuild]::IsOSPlatform('OSX')) AND Exists('$(EtoMacOSSource)')" />
+      <Message Text="Copied Eto.Gtk.dll to $(OutputPath)" Importance="high" Condition="Exists('$(EtoGtkSource)')" />
+    </Target>
 
 </Project>

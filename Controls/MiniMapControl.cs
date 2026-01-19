@@ -1,11 +1,16 @@
 using System;
 using System.ComponentModel;
-using System.Drawing;
+using System.Diagnostics;
 using System.Threading.Tasks;
-using System.Windows.Forms;
+using Eto.Forms;
+using Eto.Drawing;
+using Eto.SkiaDraw;
+using SkiaSharp;
+using L1MapViewer.Compatibility;
 using L1MapViewer.Helper;
 using L1MapViewer.Models;
 using L1MapViewer.Rendering;
+using NLog;
 
 namespace L1MapViewer.Controls
 {
@@ -16,9 +21,11 @@ namespace L1MapViewer.Controls
     {
         #region 私有欄位
 
-        private PictureBox _pictureBox;
+        private static readonly Logger _logger = LogManager.GetCurrentClassLogger();
+
+        private MiniMapSkiaDrawable _skiaDrawable;
         private readonly MapRenderingCore _renderingCore;
-        private Bitmap _miniMapBitmap;
+        private SKBitmap _skMiniMapBitmap;
         private MiniMapRenderer.MiniMapBounds _bounds;
 
         private bool _isDragging;
@@ -53,7 +60,7 @@ namespace L1MapViewer.Controls
         /// 視窗框顏色
         /// </summary>
         [DefaultValue(typeof(Color), "Red")]
-        public Color ViewportRectColor { get; set; } = Color.Red;
+        public Color ViewportRectColor { get; set; } = Colors.Red;
 
         /// <summary>
         /// 視窗框寬度
@@ -139,23 +146,26 @@ namespace L1MapViewer.Controls
         private void InitializeComponents()
         {
             this.Size = new Size(MiniMapSize, MiniMapSize);
-            this.BackColor = Color.Black;
-            this.TabStop = false; // 不搶奪鍵盤焦點
+            this.BackgroundColor = Colors.Black;
+            this.SetTabStop(false); // 不搶奪鍵盤焦點
 
-            _pictureBox = new PictureBox
+            // 使用 SkiaDrawable 取代 PictureBox
+            _skiaDrawable = new MiniMapSkiaDrawable(this);
+
+            _skiaDrawable.MouseDown += SkiaDrawable_MouseDown;
+            _skiaDrawable.MouseMove += SkiaDrawable_MouseMove;
+            _skiaDrawable.MouseUp += SkiaDrawable_MouseUp;
+
+            // Eto.Forms doesn't support DockStyle.Fill, so we need to manually resize
+            this.Resize += (s, e) =>
             {
-                Dock = DockStyle.Fill,
-                SizeMode = PictureBoxSizeMode.Zoom,
-                BackColor = Color.Black,
-                TabStop = false // 不搶奪鍵盤焦點
+                _skiaDrawable.Size = new Size(this.Width, this.Height);
             };
 
-            _pictureBox.MouseDown += PictureBox_MouseDown;
-            _pictureBox.MouseMove += PictureBox_MouseMove;
-            _pictureBox.MouseUp += PictureBox_MouseUp;
-            _pictureBox.Paint += PictureBox_Paint;
+            this.GetControls().Add(_skiaDrawable);
 
-            this.Controls.Add(_pictureBox);
+            // Set initial size
+            _skiaDrawable.Size = new Size(MiniMapSize, MiniMapSize);
         }
 
         #endregion
@@ -170,12 +180,14 @@ namespace L1MapViewer.Controls
             _document = document;
             if (document == null) return;
 
-            var bitmap = _renderingCore.RenderMiniMap(document, MiniMapSize, out var bounds);
+            var sw = Stopwatch.StartNew();
+            var skBitmap = _renderingCore.RenderMiniMapSK(document, MiniMapSize, out var bounds);
             _bounds = bounds;
 
-            _miniMapBitmap?.Dispose();
-            _miniMapBitmap = bitmap;
-            _pictureBox.Invalidate();
+            _skMiniMapBitmap?.Dispose();
+            _skMiniMapBitmap = skBitmap;
+            _skiaDrawable.Invalidate();
+            _logger.Debug($"[MiniMap] UpdateMiniMap completed in {sw.ElapsedMilliseconds}ms");
         }
 
         /// <summary>
@@ -198,20 +210,23 @@ namespace L1MapViewer.Controls
             {
                 try
                 {
-                    var bitmap = _renderingCore.RenderMiniMap(document, MiniMapSize, out var bounds);
+                    var sw = Stopwatch.StartNew();
+                    var skBitmap = _renderingCore.RenderMiniMapSK(document, MiniMapSize, out var bounds);
 
                     this.BeginInvoke((MethodInvoker)delegate
                     {
-                        _miniMapBitmap?.Dispose();
-                        _miniMapBitmap = bitmap;
+                        _skMiniMapBitmap?.Dispose();
+                        _skMiniMapBitmap = skBitmap;
                         _bounds = bounds;
                         _isRendering = false;
-                        _pictureBox.Invalidate();
+                        _skiaDrawable.Invalidate();
+                        _logger.Debug($"[MiniMap] UpdateMiniMapAsync completed in {sw.ElapsedMilliseconds}ms");
                         RenderCompleted?.Invoke(this, EventArgs.Empty);
                     });
                 }
-                catch
+                catch (Exception ex)
                 {
+                    _logger.Error(ex, "[MiniMap] UpdateMiniMapAsync failed");
                     _isRendering = false;
                 }
             });
@@ -222,23 +237,30 @@ namespace L1MapViewer.Controls
         /// </summary>
         public void ShowPlaceholder(string text = "小地圖繪製中...")
         {
-            var placeholder = new Bitmap(MiniMapSize, MiniMapSize);
-            using (var g = Graphics.FromImage(placeholder))
+            // 使用 SKBitmap 繪製佔位圖
+            var placeholder = new SKBitmap(MiniMapSize, MiniMapSize, SKColorType.Rgb565, SKAlphaType.Opaque);
+            using (var canvas = new SKCanvas(placeholder))
             {
-                g.Clear(Color.FromArgb(30, 30, 30));
-                using (var font = new Font("Microsoft JhengHei", 12))
-                using (var brush = new SolidBrush(Color.Gray))
+                canvas.Clear(new SKColor(30, 30, 30));
+                using (var paint = new SKPaint
                 {
-                    var size = g.MeasureString(text, font);
-                    g.DrawString(text, font, brush,
-                        (MiniMapSize - size.Width) / 2,
-                        (MiniMapSize - size.Height) / 2);
+                    IsAntialias = true,
+                    Color = SKColors.Gray,
+                    TextSize = 14,
+                    Typeface = SKTypeface.FromFamilyName("Microsoft JhengHei")
+                })
+                {
+                    var bounds = new SKRect();
+                    paint.MeasureText(text, ref bounds);
+                    float x = (MiniMapSize - bounds.Width) / 2;
+                    float y = (MiniMapSize + bounds.Height) / 2;
+                    canvas.DrawText(text, x, y, paint);
                 }
             }
 
-            _miniMapBitmap?.Dispose();
-            _miniMapBitmap = placeholder;
-            _pictureBox.Invalidate();
+            _skMiniMapBitmap?.Dispose();
+            _skMiniMapBitmap = placeholder;
+            _skiaDrawable.Invalidate();
         }
 
         /// <summary>
@@ -246,7 +268,7 @@ namespace L1MapViewer.Controls
         /// </summary>
         public void RefreshViewportRect()
         {
-            _pictureBox.Invalidate();
+            _skiaDrawable.Invalidate();
         }
 
         /// <summary>
@@ -254,40 +276,40 @@ namespace L1MapViewer.Controls
         /// </summary>
         public void Clear()
         {
-            _miniMapBitmap?.Dispose();
-            _miniMapBitmap = null;
+            _skMiniMapBitmap?.Dispose();
+            _skMiniMapBitmap = null;
             _document = null;
-            _pictureBox.Invalidate();
+            _skiaDrawable.Invalidate();
         }
 
         #endregion
 
         #region 滑鼠事件
 
-        private void PictureBox_MouseDown(object sender, MouseEventArgs e)
+        private void SkiaDrawable_MouseDown(object sender, Eto.Forms.MouseEventArgs e)
         {
-            if (e.Button == MouseButtons.Left)
+            if (e.Buttons == Eto.Forms.MouseButtons.Primary)
             {
                 _isDragging = true;
-                NavigateToPosition(e.Location);
+                NavigateToPosition(new Point((int)e.Location.X, (int)e.Location.Y));
             }
-            else if (e.Button == MouseButtons.Right)
+            else if (e.Buttons == Eto.Forms.MouseButtons.Alternate)
             {
-                HandleRightClick(e.Location);
+                HandleRightClick(new Point((int)e.Location.X, (int)e.Location.Y));
             }
         }
 
-        private void PictureBox_MouseMove(object sender, MouseEventArgs e)
+        private void SkiaDrawable_MouseMove(object sender, Eto.Forms.MouseEventArgs e)
         {
             if (_isDragging)
             {
-                NavigateToPosition(e.Location);
+                NavigateToPosition(new Point((int)e.Location.X, (int)e.Location.Y));
             }
         }
 
-        private void PictureBox_MouseUp(object sender, MouseEventArgs e)
+        private void SkiaDrawable_MouseUp(object sender, Eto.Forms.MouseEventArgs e)
         {
-            if (e.Button == MouseButtons.Left)
+            if (e.Buttons == Eto.Forms.MouseButtons.Primary)
             {
                 _isDragging = false;
             }
@@ -295,16 +317,16 @@ namespace L1MapViewer.Controls
 
         private void NavigateToPosition(Point mouseLocation)
         {
-            if (ViewState == null || _document == null || _miniMapBitmap == null) return;
+            if (ViewState == null || _document == null || _skMiniMapBitmap == null) return;
             if (_bounds == null || _bounds.ContentWidth <= 0 || _bounds.ContentHeight <= 0) return;
 
             // 計算 minimap bitmap 在控制項上的顯示區域
-            float scaleX = (float)this.Width / _miniMapBitmap.Width;
-            float scaleY = (float)this.Height / _miniMapBitmap.Height;
+            float scaleX = (float)this.Width / _skMiniMapBitmap.Width;
+            float scaleY = (float)this.Height / _skMiniMapBitmap.Height;
             float displayScale = Math.Min(scaleX, scaleY);
 
-            int drawWidth = (int)(_miniMapBitmap.Width * displayScale);
-            int drawHeight = (int)(_miniMapBitmap.Height * displayScale);
+            int drawWidth = (int)(_skMiniMapBitmap.Width * displayScale);
+            int drawHeight = (int)(_skMiniMapBitmap.Height * displayScale);
             int offsetX = (this.Width - drawWidth) / 2;
             int offsetY = (this.Height - drawHeight) / 2;
 
@@ -328,16 +350,16 @@ namespace L1MapViewer.Controls
 
         private void HandleRightClick(Point mouseLocation)
         {
-            if (ViewState == null || _document == null || _miniMapBitmap == null) return;
+            if (ViewState == null || _document == null || _skMiniMapBitmap == null) return;
             if (ViewState.MapWidth <= 0 || ViewState.MapHeight <= 0) return;
 
             // 計算 minimap bitmap 在控制項上的顯示區域
-            float scaleX = (float)this.Width / _miniMapBitmap.Width;
-            float scaleY = (float)this.Height / _miniMapBitmap.Height;
+            float scaleX = (float)this.Width / _skMiniMapBitmap.Width;
+            float scaleY = (float)this.Height / _skMiniMapBitmap.Height;
             float displayScale = Math.Min(scaleX, scaleY);
 
-            int drawWidth = (int)(_miniMapBitmap.Width * displayScale);
-            int drawHeight = (int)(_miniMapBitmap.Height * displayScale);
+            int drawWidth = (int)(_skMiniMapBitmap.Width * displayScale);
+            int drawHeight = (int)(_skMiniMapBitmap.Height * displayScale);
             int offsetX = (this.Width - drawWidth) / 2;
             int offsetY = (this.Height - drawHeight) / 2;
 
@@ -372,68 +394,103 @@ namespace L1MapViewer.Controls
 
         #endregion
 
-        #region 繪製
+        #region 內部 SkiaDrawable 類
 
-        private void PictureBox_Paint(object sender, PaintEventArgs e)
+        /// <summary>
+        /// 小地圖繪製控件 - 使用 SkiaSharp 直接繪製
+        /// </summary>
+        private class MiniMapSkiaDrawable : SkiaDrawable
         {
-            if (_miniMapBitmap != null)
+            private readonly MiniMapControl _parent;
+
+            public MiniMapSkiaDrawable(MiniMapControl parent)
             {
-                // 計算置中繪製位置
-                float scaleX = (float)this.Width / _miniMapBitmap.Width;
-                float scaleY = (float)this.Height / _miniMapBitmap.Height;
-                float scale = Math.Min(scaleX, scaleY);
-
-                int drawWidth = (int)(_miniMapBitmap.Width * scale);
-                int drawHeight = (int)(_miniMapBitmap.Height * scale);
-                int drawX = (this.Width - drawWidth) / 2;
-                int drawY = (this.Height - drawHeight) / 2;
-
-                e.Graphics.DrawImage(_miniMapBitmap, drawX, drawY, drawWidth, drawHeight);
+                _parent = parent;
+                BackgroundColor = Eto.Drawing.Colors.Black;
             }
 
-            // 繪製視窗位置紅框（渲染中不顯示紅框）
-            if (!_isRendering && ViewState != null && ViewState.MapWidth > 0)
+            protected override void OnPaint(SKPaintEventArgs e)
             {
-                DrawViewportRect(e.Graphics);
+                var canvas = e.Surface.Canvas;
+                canvas.Clear(SKColors.Black);
+
+                var skBitmap = _parent._skMiniMapBitmap;
+                if (skBitmap != null)
+                {
+                    // 計算置中繪製位置
+                    float scaleX = (float)Width / skBitmap.Width;
+                    float scaleY = (float)Height / skBitmap.Height;
+                    float scale = Math.Min(scaleX, scaleY);
+
+                    float drawWidth = skBitmap.Width * scale;
+                    float drawHeight = skBitmap.Height * scale;
+                    float drawX = (Width - drawWidth) / 2;
+                    float drawY = (Height - drawHeight) / 2;
+
+                    // 使用 NearestNeighbor 保持像素清晰
+                    var destRect = new SKRect(drawX, drawY, drawX + drawWidth, drawY + drawHeight);
+                    using (var paint = new SKPaint { FilterQuality = SKFilterQuality.Low })
+                    {
+                        canvas.DrawBitmap(skBitmap, destRect, paint);
+                    }
+                }
+
+                // 繪製視窗位置紅框（渲染中不顯示紅框）
+                if (!_parent._isRendering && _parent.ViewState != null && _parent.ViewState.MapWidth > 0)
+                {
+                    DrawViewportRectSK(canvas);
+                }
             }
-        }
 
-        private void DrawViewportRect(Graphics g)
-        {
-            if (_miniMapBitmap == null || _bounds == null) return;
-            if (_bounds.ContentWidth <= 0 || _bounds.ContentHeight <= 0) return;
-
-            // 計算 minimap bitmap 在控制項上的顯示區域
-            float scaleX = (float)this.Width / _miniMapBitmap.Width;
-            float scaleY = (float)this.Height / _miniMapBitmap.Height;
-            float displayScale = Math.Min(scaleX, scaleY);
-
-            int drawWidth = (int)(_miniMapBitmap.Width * displayScale);
-            int drawHeight = (int)(_miniMapBitmap.Height * displayScale);
-            int offsetX = (this.Width - drawWidth) / 2;
-            int offsetY = (this.Height - drawHeight) / 2;
-
-            // 計算 viewport 在世界座標中的位置和大小
-            int viewportWorldX = ViewState.ScrollX;
-            int viewportWorldY = ViewState.ScrollY;
-            int viewportWorldW = (int)(ViewState.ViewportWidth / ViewState.ZoomLevel);
-            int viewportWorldH = (int)(ViewState.ViewportHeight / ViewState.ZoomLevel);
-
-            // 使用 MiniMapBounds 的座標轉換公式
-            var (miniX, miniY) = _bounds.WorldToMiniMap(viewportWorldX, viewportWorldY);
-            float ratioW = (float)viewportWorldW / _bounds.ContentWidth;
-            float ratioH = (float)viewportWorldH / _bounds.ContentHeight;
-
-            // 映射到顯示區域
-            float rectX = offsetX + miniX * displayScale;
-            float rectY = offsetY + miniY * displayScale;
-            float rectW = ratioW * drawWidth;
-            float rectH = ratioH * drawHeight;
-
-            // 畫矩形
-            using (var pen = new Pen(ViewportRectColor, ViewportRectWidth))
+            private void DrawViewportRectSK(SKCanvas canvas)
             {
-                g.DrawRectangle(pen, rectX, rectY, rectW, rectH);
+                var skBitmap = _parent._skMiniMapBitmap;
+                var bounds = _parent._bounds;
+                if (skBitmap == null || bounds == null) return;
+                if (bounds.ContentWidth <= 0 || bounds.ContentHeight <= 0) return;
+
+                // 計算 minimap bitmap 在控制項上的顯示區域
+                float scaleX = (float)Width / skBitmap.Width;
+                float scaleY = (float)Height / skBitmap.Height;
+                float displayScale = Math.Min(scaleX, scaleY);
+
+                float drawWidth = skBitmap.Width * displayScale;
+                float drawHeight = skBitmap.Height * displayScale;
+                float offsetX = (Width - drawWidth) / 2;
+                float offsetY = (Height - drawHeight) / 2;
+
+                // 計算 viewport 在世界座標中的位置和大小
+                int viewportWorldX = _parent.ViewState.ScrollX;
+                int viewportWorldY = _parent.ViewState.ScrollY;
+                int viewportWorldW = (int)(_parent.ViewState.ViewportWidth / _parent.ViewState.ZoomLevel);
+                int viewportWorldH = (int)(_parent.ViewState.ViewportHeight / _parent.ViewState.ZoomLevel);
+
+                // 使用 MiniMapBounds 的座標轉換公式
+                var (miniX, miniY) = bounds.WorldToMiniMap(viewportWorldX, viewportWorldY);
+                float ratioW = (float)viewportWorldW / bounds.ContentWidth;
+                float ratioH = (float)viewportWorldH / bounds.ContentHeight;
+
+                // 映射到顯示區域
+                float rectX = offsetX + miniX * displayScale;
+                float rectY = offsetY + miniY * displayScale;
+                float rectW = ratioW * drawWidth;
+                float rectH = ratioH * drawHeight;
+
+                // 畫矩形
+                using (var paint = new SKPaint
+                {
+                    IsAntialias = true,
+                    Style = SKPaintStyle.Stroke,
+                    StrokeWidth = _parent.ViewportRectWidth,
+                    Color = new SKColor(
+                        (byte)(_parent.ViewportRectColor.R * 255),
+                        (byte)(_parent.ViewportRectColor.G * 255),
+                        (byte)(_parent.ViewportRectColor.B * 255),
+                        (byte)(_parent.ViewportRectColor.A * 255))
+                })
+                {
+                    canvas.DrawRect(rectX, rectY, rectW, rectH, paint);
+                }
             }
         }
 
@@ -452,18 +509,11 @@ namespace L1MapViewer.Controls
             // 如果有 document，重新渲染小地圖
             if (_document != null)
             {
-                // 使用 BeginInvoke 確保在 UI 執行緒上執行
-                if (this.InvokeRequired)
-                {
-                    this.BeginInvoke((MethodInvoker)delegate
-                    {
-                        UpdateMiniMap(_document);
-                    });
-                }
-                else
+                // 使用 Application.Instance.Invoke 確保在 UI 執行緒上執行
+                Eto.Forms.Application.Instance.Invoke(() =>
                 {
                     UpdateMiniMap(_document);
-                }
+                });
             }
         }
 
@@ -477,7 +527,7 @@ namespace L1MapViewer.Controls
             {
                 // 取消訂閱事件
                 TileProvider.Instance.TileChanged -= TileProvider_TileChanged;
-                _miniMapBitmap?.Dispose();
+                _skMiniMapBitmap?.Dispose();
             }
             base.Dispose(disposing);
         }

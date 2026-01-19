@@ -1,6 +1,8 @@
 using System;
-using System.Drawing;
-using System.Windows.Forms;
+// using System.Drawing; // Replaced with Eto.Drawing
+using Eto.Forms;
+using Eto.Drawing;
+using L1MapViewer.Compatibility;
 using L1MapViewer.Localization;
 
 namespace L1MapViewer.Forms
@@ -8,7 +10,7 @@ namespace L1MapViewer.Forms
     /// <summary>
     /// 批次刪除 Tile 對話框
     /// </summary>
-    public class BatchDeleteTileDialog : Form
+    public class BatchDeleteTileDialog : WinFormsDialog
     {
         /// <summary>
         /// TileId 起始值
@@ -68,8 +70,8 @@ namespace L1MapViewer.Forms
 
         private void OnLanguageChanged(object? sender, EventArgs e)
         {
-            if (InvokeRequired)
-                Invoke(new Action(() => UpdateLocalization()));
+            if (this.GetInvokeRequired())
+                this.Invoke(new Action(() => UpdateLocalization()));
             else
                 UpdateLocalization();
         }
@@ -109,7 +111,7 @@ namespace L1MapViewer.Forms
                 Location = new Point(15, 25),
                 Size = new Size(40, 20)
             };
-            grpTileId.Controls.Add(lblTileIdStart);
+            grpTileId.GetControls().Add(lblTileIdStart);
 
             nudTileIdStart = new NumericUpDown
             {
@@ -119,7 +121,7 @@ namespace L1MapViewer.Forms
                 Maximum = 65535,
                 Value = 0
             };
-            grpTileId.Controls.Add(nudTileIdStart);
+            grpTileId.GetControls().Add(nudTileIdStart);
 
             lblTileIdEnd = new Label
             {
@@ -127,7 +129,7 @@ namespace L1MapViewer.Forms
                 Location = new Point(150, 25),
                 Size = new Size(40, 20)
             };
-            grpTileId.Controls.Add(lblTileIdEnd);
+            grpTileId.GetControls().Add(lblTileIdEnd);
 
             nudTileIdEnd = new NumericUpDown
             {
@@ -137,7 +139,7 @@ namespace L1MapViewer.Forms
                 Maximum = 65535,
                 Value = 65535
             };
-            grpTileId.Controls.Add(nudTileIdEnd);
+            grpTileId.GetControls().Add(nudTileIdEnd);
 
             y += 70;
 
@@ -156,7 +158,7 @@ namespace L1MapViewer.Forms
                 Location = new Point(15, 25),
                 Size = new Size(40, 20)
             };
-            grpIndexId.Controls.Add(lblIndexIdStart);
+            grpIndexId.GetControls().Add(lblIndexIdStart);
 
             nudIndexIdStart = new NumericUpDown
             {
@@ -166,7 +168,7 @@ namespace L1MapViewer.Forms
                 Maximum = 255,
                 Value = 0
             };
-            grpIndexId.Controls.Add(nudIndexIdStart);
+            grpIndexId.GetControls().Add(nudIndexIdStart);
 
             lblIndexIdEnd = new Label
             {
@@ -174,7 +176,7 @@ namespace L1MapViewer.Forms
                 Location = new Point(150, 25),
                 Size = new Size(40, 20)
             };
-            grpIndexId.Controls.Add(lblIndexIdEnd);
+            grpIndexId.GetControls().Add(lblIndexIdEnd);
 
             nudIndexIdEnd = new NumericUpDown
             {
@@ -184,7 +186,7 @@ namespace L1MapViewer.Forms
                 Maximum = 255,
                 Value = 255
             };
-            grpIndexId.Controls.Add(nudIndexIdEnd);
+            grpIndexId.GetControls().Add(nudIndexIdEnd);
 
             y += 70;
 
@@ -205,7 +207,7 @@ namespace L1MapViewer.Forms
                 Checked = _hasCurrentMap,
                 Enabled = _hasCurrentMap
             };
-            grpScope.Controls.Add(rbCurrentMap);
+            grpScope.GetControls().Add(rbCurrentMap);
 
             rbAllMaps = new RadioButton
             {
@@ -214,7 +216,7 @@ namespace L1MapViewer.Forms
                 Size = new Size(260, 20),
                 Checked = !_hasCurrentMap
             };
-            grpScope.Controls.Add(rbAllMaps);
+            grpScope.GetControls().Add(rbAllMaps);
 
             y += 85;
 
@@ -224,7 +226,7 @@ namespace L1MapViewer.Forms
                 Text = "此操作會直接修改 S32 檔案，請先備份！",
                 Location = new Point(15, y),
                 Size = new Size(295, 20),
-                ForeColor = Color.Red
+                ForeColor = Colors.Red
             };
             Controls.Add(lblWarning);
 
@@ -236,7 +238,7 @@ namespace L1MapViewer.Forms
                 Text = "刪除",
                 Location = new Point(130, y),
                 Size = new Size(80, 28),
-                DialogResult = DialogResult.OK
+                DialogResult = DialogResult.Ok
             };
             btnDelete.Click += BtnDelete_Click;
             Controls.Add(btnDelete);
@@ -259,7 +261,7 @@ namespace L1MapViewer.Forms
             // 驗證範圍
             if (nudTileIdStart.Value > nudTileIdEnd.Value)
             {
-                MessageBox.Show(
+                WinFormsMessageBox.Show(
                     LocalizationManager.L("BatchDeleteTile_InvalidTileIdRange"),
                     LocalizationManager.L("Error"),
                     MessageBoxButtons.OK,
@@ -270,7 +272,7 @@ namespace L1MapViewer.Forms
 
             if (nudIndexIdStart.Value > nudIndexIdEnd.Value)
             {
-                MessageBox.Show(
+                WinFormsMessageBox.Show(
                     LocalizationManager.L("BatchDeleteTile_InvalidIndexIdRange"),
                     LocalizationManager.L("Error"),
                     MessageBoxButtons.OK,
@@ -287,7 +289,7 @@ namespace L1MapViewer.Forms
                 LocalizationManager.L("BatchDeleteTile_ConfirmMessage"),
                 TileIdStart, TileIdEnd, IndexIdStart, IndexIdEnd, scope);
 
-            var result = MessageBox.Show(
+            var result = WinFormsMessageBox.Show(
                 message,
                 LocalizationManager.L("BatchDeleteTile_Confirm"),
                 MessageBoxButtons.YesNo,

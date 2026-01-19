@@ -1,19 +1,21 @@
 ﻿using L1MapViewer.Converter;
 using L1MapViewer.Other;
 using L1MapViewer.Reader;
+using L1MapViewer.Compatibility;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Drawing;
-using System.Drawing.Drawing2D;
-using System.Drawing.Imaging;
+// using System.Drawing; // Replaced with Eto.Drawing
+// using System.Drawing.Drawing2D; // Replaced with L1MapViewer.Compatibility
+// using System.Drawing.Imaging; // Replaced with SkiaSharp
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
-using System.Windows.Forms;
+using Eto.Forms;
+using Eto.Drawing;
 using System.Xml;
 using L1FlyMapViewer;
 using static L1MapViewer.Other.Struct;
@@ -62,7 +64,7 @@ namespace L1MapViewer.Helper {
 
             if (!Directory.Exists(szMapPath)) {
                 DebugLog.Log($"[L1MapHelper.Read] ERROR: Map path does not exist!");
-                MessageBox.Show("錯誤的天堂路徑");
+                WinFormsMessageBox.Show("錯誤的天堂路徑");
                 return Share.MapDataList;
             }
 
@@ -216,7 +218,7 @@ namespace L1MapViewer.Helper {
                         DebugLog.Log($"[L1MapHelper.Read] Dir {di.Name} done, files={pMap.FullFileNameList.Count}, calling DoEvents...");
                     }
                     //系統就會暫時把頁面還給你
-                    Application.DoEvents();
+                    ApplicationHelper.DoEvents();
                     if (dirIndex <= 5 || dirIndex % 50 == 0) {
                         DebugLog.Log($"[L1MapHelper.Read] DoEvents returned for dir {di.Name}");
                     }
@@ -574,8 +576,8 @@ namespace L1MapViewer.Helper {
             }
             // 調整座標以考慮縮放
             double zoomLevel = viewer.zoomLevel;
-            int ex = (int)(e.X / zoomLevel);
-            int ey = (int)(e.Y / zoomLevel);
+            int ex = (int)(e.Location.X / zoomLevel);
+            int ey = (int)(e.Location.Y / zoomLevel);
 
             LinLocation location = GetLinLoc(ex, ey);
 
@@ -595,14 +597,14 @@ namespace L1MapViewer.Helper {
             }
             // 調整座標以考慮縮放
             double zoomLevel = viewer.zoomLevel;
-            int ex = (int)(e.X / zoomLevel);
-            int ey = (int)(e.Y / zoomLevel);
+            int ex = (int)(e.Location.X / zoomLevel);
+            int ey = (int)(e.Location.Y / zoomLevel);
 
             //目前滑鼠指到的座標
             LinLocation location = GetLinLoc(ex, ey);
 
-            using (Graphics g = Graphics.FromImage(img)) {
-                //  g.Clear(Color.Transparent);
+            using (Graphics g = GraphicsHelper.FromImage(img as Bitmap ?? new Bitmap(img))) {
+                //  g.Clear(Colors.Transparent);
 
                 //目前滑鼠指到的座標 畫座標+小格子
                 if (location != null) {
@@ -646,15 +648,15 @@ namespace L1MapViewer.Helper {
             return null;
         }
         public static void DrawLocation(Graphics g, int ex, int ey, string locString, bool isArrow) {
-            SolidBrush sb = new SolidBrush(Color.Gold);
-            Font font = new Font("微軟正黑體", 10, FontStyle.Regular);
+            SolidBrush sb = new SolidBrush(WinFormsColors.Gold);
+            Font font = new Font("微軟正黑體", 10, FontStyle.None);
             SizeF s = g.MeasureString(locString, font);
-            g.FillRectangle(new SolidBrush(Color.Gray), ex + 24, ey - 24, (int)s.Width, (int)s.Height);
-            g.DrawString(locString, font, sb, ex + 24, ey - 24, new StringFormat());
-            Pen pen = new Pen(Color.Red, 1);
-            pen.DashStyle = DashStyle.Solid;
+            g.FillRectangle(new SolidBrush(Colors.Gray), ex + 24, ey - 24, (int)s.Width, (int)s.Height);
+            g.DrawString(locString, font, sb, ex + 24, ey - 24);
+            Pen pen = new Pen(Colors.Red, 1);
+            // pen.DashStyle is solid by default in Eto.Drawing
             if (isArrow) {
-                pen.EndCap = LineCap.ArrowAnchor;
+                pen.SetEndCap(LineCap.ArrowAnchor);
             }
             g.DrawLine(pen, ex + 24, ey - 24, ex, ey);
         }
@@ -680,7 +682,7 @@ namespace L1MapViewer.Helper {
                 mWidth = (int)(BMP_W * rate);
                 mHeight = (int)(BMP_H * rate);
             }
-            //    using (Graphics g = Graphics.FromImage(tmpBmp)) {
+            //    using (Graphics g = GraphicsHelper.FromImage(tmpBmp)) {
             Point p1 = new Point(mx + 0, my + mHeight / 2);
             Point p2 = new Point(mx + mWidth / 2, my + 0);
             Point p3 = new Point(mx + mWidth, my + mHeight / 2);
@@ -693,7 +695,7 @@ namespace L1MapViewer.Helper {
             Region region = new Region();
             region.MakeEmpty();
             region.Union(gp);
-            //g.DrawPolygon(new Pen(Color.Green, 3), new Point[] { p1, p2, p3, p4 });
+            //g.DrawPolygon(new Pen(Colors.Green, 3), new Point[] { p1, p2, p3, p4 });
 
             int r = (int)(24 * rate);
             if (isRemastered) {
@@ -725,7 +727,7 @@ namespace L1MapViewer.Helper {
                     int nLinY = pMapSeg.nLinBeginY + y;
                     LinLocation iLinLoc = new LinLocation(nLinX, nLinY, sRegion);
                     rList.Add(sRegion, iLinLoc);
-                    // g.DrawPolygon(new Pen(Color.Red, 1), new Point[] { p1, p2, p3, p4 });  
+                    // g.DrawPolygon(new Pen(Colors.Red, 1), new Point[] { p1, p2, p3, p4 });  
                     if (nPage == PAGE_1) {
                         Share.LinLocList.Add(string.Format("{0}-{1}", nLinX, nLinY), iLinLoc);
                     } else if (nPage == PAGE_2) {
@@ -742,7 +744,7 @@ namespace L1MapViewer.Helper {
             }
 
             //  }
-            Application.DoEvents(); //系統就會暫時把頁面還給你
+            ApplicationHelper.DoEvents(); //系統就會暫時把頁面還給你
         }
 
         //畫地圖
@@ -751,8 +753,8 @@ namespace L1MapViewer.Helper {
             ((Form)viewer).Cursor = Cursors.WaitCursor;//漏斗指標
 
             //panel1底色須跟pictureBox1相同...為了美觀
-            if (viewer.panel1.BackColor != Color.Black) {
-                viewer.panel1.BackColor = Color.Black;
+            if (viewer.panel1.BackgroundColor != Colors.Black) {
+                viewer.panel1.BackgroundColor = Colors.Black;
             }
 
             viewer.comboBox1.Enabled = false;
@@ -767,7 +769,7 @@ namespace L1MapViewer.Helper {
                 viewer.pictureBox1.Image = new Bitmap(1, 1);
                 viewer.pictureBox1.Width = 1;
                 viewer.pictureBox1.Height = 1;
-                viewer.pictureBox1.Location = new Point(3, 3);
+                viewer.pictureBox1.SetLocation(new Point(3, 3));
                 viewer.pictureBox1.Refresh();
             }
 
@@ -781,7 +783,7 @@ namespace L1MapViewer.Helper {
                 L1Map pMap = Share.MapDataList[szSelectName];
 
                 if (pMap == null) {
-                    MessageBox.Show(string.Format("選擇的地圖編號:{0} 不存在", szSelectName));
+                    WinFormsMessageBox.Show(string.Format("選擇的地圖編號:{0} 不存在", szSelectName));
                     return;
                 }
                 //計算縮小倍率                
@@ -902,63 +904,67 @@ namespace L1MapViewer.Helper {
                         bmp = segFileToBmp(data);
                     }
 
-                    //合併+縮圖+透明                 
-                    using (Graphics g = Graphics.FromImage(bitmap)) {
+                    //合併+縮圖+透明
+                    using (Graphics g = GraphicsHelper.FromImage(bitmap)) {
                         int mWidth = (int)(bmp.Width * rate);
                         int mHeight = (int)(bmp.Height * rate);
-                        g.DrawImage(bmp, new Rectangle(mx, my, mWidth, mHeight), 0, 0, bmp.Width, bmp.Height, GraphicsUnit.Pixel, vAttr);
+                        // Simplified DrawImage - Eto doesn't support ImageAttributes directly
+                        g.DrawImage(bmp, new RectangleF(0, 0, bmp.Width, bmp.Height), new RectangleF(mx, my, mWidth, mHeight));
 
                         //填入座標
                         FillLinLoc(bitmap, pMapSeg, rate, PAGE_1);
                     }
 
                     bmp.Dispose();
-                    Application.DoEvents(); //系統就會暫時把頁面還給你
+                    ApplicationHelper.DoEvents(); //系統就會暫時把頁面還給你
 
                     viewer.pictureBox1.Refresh();
                 }
 
                 //大地圖的暫存檔
                 if (szTmpBmpName != null) {
-                    bitmap.Save(string.Format(@"{0}\{1}.bmp", Path.GetTempPath(), szTmpBmpName));
+                    bitmap.Save(string.Format(@"{0}\{1}.bmp", Path.GetTempPath(), szTmpBmpName), ImageFormat.Bmp);
                 }
             } finally {
                 //在地圖上再加一層用來畫範圍的圈圈
                 Image img = viewer.pictureBox1.Image;
                 if (img != null) {
                     //怪物分布的標記
-                    viewer.pictureBox4.Parent = viewer.pictureBox1;
+                    // Note: Eto doesn't support Parent assignment, use Controls.Add instead
+                    // viewer.pictureBox4.Parent = viewer.pictureBox1;
                     viewer.pictureBox4.Image = new Bitmap(img.Width, img.Height);
                     viewer.pictureBox4.Width = img.Width;
                     viewer.pictureBox4.Height = img.Height;
-                    viewer.pictureBox4.Location = new Point(0, 0);
+                    viewer.pictureBox4.SetLocation(new Point(0, 0));
                     viewer.pictureBox4.Visible = true;
                     viewer.pictureBox4.Refresh();
 
                     //畫額外的圖
-                    viewer.pictureBox3.Parent = viewer.pictureBox4;
+                    // Note: Eto doesn't support Parent assignment
+                    // viewer.pictureBox3.Parent = viewer.pictureBox4;
                     viewer.pictureBox3.Image = new Bitmap(img.Width, img.Height);
                     viewer.pictureBox3.Width = img.Width;
                     viewer.pictureBox3.Height = img.Height;
-                    viewer.pictureBox3.Location = new Point(0, 0);
+                    viewer.pictureBox3.SetLocation(new Point(0, 0));
                     viewer.pictureBox3.Visible = true;
                     viewer.pictureBox3.Refresh();
 
                     //座標顯示
-                    viewer.pictureBox2.Parent = viewer.pictureBox3;
+                    // Note: Eto doesn't support Parent assignment
+                    // viewer.pictureBox2.Parent = viewer.pictureBox3;
                     viewer.pictureBox2.Image = new Bitmap(img.Width, img.Height);
                     viewer.pictureBox2.Width = img.Width;
                     viewer.pictureBox2.Height = img.Height;
-                    viewer.pictureBox2.Location = new Point(0, 0);
+                    viewer.pictureBox2.SetLocation(new Point(0, 0));
                     viewer.pictureBox2.Visible = true;
                     viewer.pictureBox2.Refresh();
 
-                    /*using (Graphics g = Graphics.FromImage(viewer.pictureBox2.Image)) {
+                    /*using (Graphics g = GraphicsHelper.FromImage(viewer.pictureBox2.Image)) {
                         Point p1 = new Point(0, 0);
                         Point p2 = new Point(0, viewer.pictureBox2.Height - 1);
                         Point p3 = new Point(viewer.pictureBox2.Width - 1, viewer.pictureBox2.Height - 1);
                         Point p4 = new Point(viewer.pictureBox2.Width - 1, 0);
-                        g.DrawPolygon(new Pen(Color.Red, 1), new Point[] { p1, p2, p3, p4 });
+                        g.DrawPolygon(new Pen(Colors.Red, 1), new Point[] { p1, p2, p3, p4 });
                     }*/
 
                 }
@@ -1540,7 +1546,7 @@ namespace L1MapViewer.Helper {
 
             }
 
-            Application.DoEvents(); //系統就會暫時把頁面還給你
+            ApplicationHelper.DoEvents(); //系統就會暫時把頁面還給你
         }
         //--------------------------------------------------------------------------------------------------------------------//
     }

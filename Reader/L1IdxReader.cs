@@ -2,7 +2,8 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
-using System.Windows.Forms;
+using Eto.Forms;
+using Eto.Drawing;
 using L1FlyMapViewer;
 using static L1MapViewer.Other.Struct;
 
@@ -130,7 +131,7 @@ namespace L1MapViewer.Reader {
                         }
                     } catch (EndOfStreamException) {
                         DebugLog.Log($"[L1IdxReader.Load] ERROR: EndOfStreamException in {szIdxType}");
-                        MessageBox.Show("idx檔案長度錯誤");
+                        WinFormsMessageBox.Show("idx檔案長度錯誤");
                     }
                 }
                 DebugLog.Log($"[L1IdxReader.Load] Parsed {result.Count} entries from {szIdxType}");

@@ -2,14 +2,17 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Drawing;
-using System.Drawing.Imaging;
+// using System.Drawing; // Replaced with Eto.Drawing
+// using System.Drawing.Imaging; // Replaced with SkiaSharp
 using System.Linq;
+using SkiaSharp;
+using NLog;
 using L1FlyMapViewer;
 using L1MapViewer.Converter;
 using L1MapViewer.Models;
 using L1MapViewer.Other;
 using L1MapViewer.Reader;
+using L1MapViewer.Compatibility;
 
 namespace L1MapViewer.Helper
 {
@@ -18,6 +21,30 @@ namespace L1MapViewer.Helper
     /// </summary>
     public class MiniMapRenderer
     {
+        private static readonly Logger _logger = LogManager.GetCurrentClassLogger();
+
+        /// <summary>
+        /// RGB555 轉換為 RGB565
+        /// RGB555: 0RRRRRGGGGGBBBBB (bit15 unused, 5R, 5G, 5B)
+        /// RGB565: RRRRRGGGGGGBBBBB (5R, 6G, 5B)
+        /// </summary>
+        /// <param name="rgb555">RGB555 格式的顏色值</param>
+        /// <returns>RGB565 格式的顏色值</returns>
+        public static ushort Rgb555ToRgb565(ushort rgb555)
+        {
+            // 從 RGB555 解析各通道 (5-5-5)
+            int r = (rgb555 >> 10) & 0x1F;  // 5 bits red
+            int g = (rgb555 >> 5) & 0x1F;   // 5 bits green
+            int b = rgb555 & 0x1F;          // 5 bits blue
+
+            // 轉換為 RGB565 (5-6-5)
+            // Green 從 5 bits 擴展到 6 bits: 將 5-bit 值左移 1 bit，並複製最高位到最低位
+            int g6 = (g << 1) | (g >> 4);
+
+            // 組合成 RGB565: RRRRRGGGGGGBBBBB
+            return (ushort)((r << 11) | (g6 << 5) | b);
+        }
+
         /// <summary>
         /// 渲染統計資訊
         /// </summary>
@@ -182,13 +209,13 @@ namespace L1MapViewer.Helper
             long totalDrawImageMs = 0;
             int blockCount = 0;
 
-            using (Graphics g = Graphics.FromImage(miniBitmap))
+            using (Graphics g = GraphicsHelper.FromImage(miniBitmap))
             {
                 // 使用最快的縮放模式
-                g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.NearestNeighbor;
-                g.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.HighSpeed;
-                g.CompositingQuality = System.Drawing.Drawing2D.CompositingQuality.HighSpeed;
-                g.Clear(Color.Black);
+                g.SetInterpolationMode(InterpolationMode.NearestNeighbor);
+                g.SetPixelOffsetMode(PixelOffsetMode.HighSpeed);
+                g.SetCompositingQuality(CompositingQuality.HighSpeed);
+                g.Clear(Colors.Black);
 
                 if (useSimplifiedRendering)
                 {
@@ -351,7 +378,7 @@ namespace L1MapViewer.Helper
                         fullBitmap.UnlockBits(bmpData);
 
                         // 用高品質插值縮小到 minimap 大小（保留更多細節）
-                        g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+                        g.SetInterpolationMode(InterpolationMode.HighQualityBicubic);
                         g.DrawImage(fullBitmap, 0, 0, scaledWidth, scaledHeight);
                     }
                     drawSw.Stop();
@@ -373,6 +400,343 @@ namespace L1MapViewer.Helper
         }
 
         /// <summary>
+        /// 渲染 MiniMap（SkiaSharp 版本）- 直接輸出 SKBitmap，無需格式轉換
+        /// </summary>
+        public SKBitmap RenderMiniMapSK(
+            int mapWidth,
+            int mapHeight,
+            int targetSize,
+            Dictionary<string, S32Data> s32Files,
+            HashSet<string> checkedFiles,
+            out RenderStats stats,
+            out MiniMapBounds bounds)
+        {
+            stats = new RenderStats();
+            bounds = new MiniMapBounds();
+            var totalSw = Stopwatch.StartNew();
+
+            // 先計算所有區塊的世界座標邊界（使用所有 S32，不只是勾選的）
+            int worldMinX = int.MaxValue, worldMinY = int.MaxValue;
+            int worldMaxX = int.MinValue, worldMaxY = int.MinValue;
+            var sortedFilePaths = Utils.SortDesc(s32Files.Keys);
+
+            foreach (object filePathObj in sortedFilePaths)
+            {
+                string filePath = filePathObj as string;
+                if (filePath == null || !s32Files.ContainsKey(filePath)) continue;
+
+                var s32Data = s32Files[filePath];
+                int[] loc = s32Data.SegInfo.GetLoc(1.0);
+                int blockX = loc[0];
+                int blockY = loc[1];
+
+                worldMinX = Math.Min(worldMinX, blockX);
+                worldMinY = Math.Min(worldMinY, blockY);
+                worldMaxX = Math.Max(worldMaxX, blockX + BlockWidth);
+                worldMaxY = Math.Max(worldMaxY, blockY + BlockHeight);
+            }
+
+            // 如果沒有有效區塊，使用預設值
+            if (worldMinX == int.MaxValue)
+            {
+                worldMinX = worldMinY = 0;
+                worldMaxX = mapWidth;
+                worldMaxY = mapHeight;
+            }
+
+            // 加入 padding
+            worldMinX -= Padding;
+            worldMinY -= Padding;
+            worldMaxX += Padding;
+            worldMaxY += Padding;
+
+            int contentWidth = worldMaxX - worldMinX;
+            int contentHeight = worldMaxY - worldMinY;
+
+            // 計算縮放比例
+            float scale = Math.Min((float)targetSize / contentWidth, (float)targetSize / contentHeight);
+            int scaledWidth = (int)(contentWidth * scale);
+            int scaledHeight = (int)(contentHeight * scale);
+
+            if (scaledWidth < 1) scaledWidth = 1;
+            if (scaledHeight < 1) scaledHeight = 1;
+
+            stats.Scale = scale;
+            stats.ScaledWidth = scaledWidth;
+            stats.ScaledHeight = scaledHeight;
+
+            bounds.WorldMinX = worldMinX;
+            bounds.WorldMinY = worldMinY;
+            bounds.ContentWidth = contentWidth;
+            bounds.ContentHeight = contentHeight;
+            bounds.BitmapWidth = scaledWidth;
+            bounds.BitmapHeight = scaledHeight;
+
+            // 決定渲染模式
+            int s32Count = checkedFiles.Count;
+            bool useSimplifiedRendering = s32Count > 100;
+            stats.IsSimplified = useSimplifiedRendering;
+
+            // 建立 SKBitmap（使用 RGB565 格式與 Tile 資料相同）
+            var skBitmap = new SKBitmap(scaledWidth, scaledHeight, SKColorType.Rgb565, SKAlphaType.Opaque);
+            _logger.Debug($"[MiniMapSK] Creating SKBitmap: {scaledWidth}x{scaledHeight}, scale={scale:F4}");
+
+            long totalGetBlockMs = 0;
+            long totalDrawImageMs = 0;
+            int blockCount = 0;
+
+            if (useSimplifiedRendering)
+            {
+                // 簡化渲染：直接取樣到 mini map
+                var getBlockSw = Stopwatch.StartNew();
+                var blocksToRender = new List<(S32Data s32Data, int blockX, int blockY)>();
+                foreach (object filePathObj in sortedFilePaths)
+                {
+                    string filePath = filePathObj as string;
+                    if (filePath == null || !s32Files.ContainsKey(filePath)) continue;
+                    if (!checkedFiles.Contains(filePath)) continue;
+
+                    var s32Data = s32Files[filePath];
+                    int[] loc = s32Data.SegInfo.GetLoc(1.0);
+                    blocksToRender.Add((s32Data, loc[0] - worldMinX, loc[1] - worldMinY));
+                }
+                blockCount = blocksToRender.Count;
+
+                var pixelData = new ConcurrentDictionary<(int x, int y), ushort>();
+                System.Threading.Tasks.Parallel.ForEach(blocksToRender, block =>
+                {
+                    RenderBlockToMiniMapDirect(block.s32Data, block.blockX, block.blockY, scale, scaledWidth, scaledHeight, pixelData);
+                });
+                getBlockSw.Stop();
+                totalGetBlockMs = getBlockSw.ElapsedMilliseconds;
+
+                // 寫入 SKBitmap（RGB555 → RGB565 轉換）
+                var drawSw = Stopwatch.StartNew();
+                unsafe
+                {
+                    byte* ptr = (byte*)skBitmap.GetPixels().ToPointer();
+                    int rowBytes = skBitmap.RowBytes;
+                    foreach (var kvp in pixelData)
+                    {
+                        int x = kvp.Key.x;
+                        int y = kvp.Key.y;
+                        if (x >= 0 && x < scaledWidth && y >= 0 && y < scaledHeight)
+                        {
+                            // pixelData 存的是 RGB555，需轉換為 RGB565
+                            ushort rgb565 = Rgb555ToRgb565(kvp.Value);
+                            int offset = y * rowBytes + x * 2;
+                            *(ptr + offset) = (byte)(rgb565 & 0xFF);
+                            *(ptr + offset + 1) = (byte)((rgb565 >> 8) & 0xFF);
+                        }
+                    }
+                }
+                drawSw.Stop();
+                totalDrawImageMs = drawSw.ElapsedMilliseconds;
+            }
+            else
+            {
+                // 完整渲染：全域 Layer 排序
+                var getBlockSw = Stopwatch.StartNew();
+                var blocksToRender = new List<(S32Data s32Data, int offsetX, int offsetY)>();
+
+                foreach (object filePathObj in sortedFilePaths)
+                {
+                    string filePath = filePathObj as string;
+                    if (filePath == null || !s32Files.ContainsKey(filePath)) continue;
+                    if (!checkedFiles.Contains(filePath)) continue;
+
+                    var s32Data = s32Files[filePath];
+                    int[] loc = s32Data.SegInfo.GetLoc(1.0);
+                    blocksToRender.Add((s32Data, loc[0] - worldMinX, loc[1] - worldMinY));
+                }
+                blockCount = blocksToRender.Count;
+
+                // 收集所有 Layer 物件
+                var allTiles = new List<(int pixelX, int pixelY, int layer, int tileId, int indexId)>();
+                foreach (var (s32Data, offsetX, offsetY) in blocksToRender)
+                {
+                    // Layer 1
+                    for (int y = 0; y < 64; y++)
+                    {
+                        for (int x = 0; x < 128; x++)
+                        {
+                            var cell = s32Data.Layer1[y, x];
+                            if (cell != null && cell.TileId >= 0)
+                            {
+                                int halfX = x / 2;
+                                int baseX = -24 * halfX;
+                                int baseY = 63 * 12 - 12 * halfX;
+                                int pixelX = offsetX + baseX + x * 24 + y * 24;
+                                int pixelY = offsetY + baseY + y * 12;
+                                allTiles.Add((pixelX, pixelY, -2, cell.TileId, cell.IndexId));
+                            }
+                        }
+                    }
+
+                    // Layer 2
+                    foreach (var item in s32Data.Layer2)
+                    {
+                        if (item.TileId >= 0)
+                        {
+                            int x = item.X;
+                            int y = item.Y;
+                            int halfX = x / 2;
+                            int baseX = -24 * halfX;
+                            int baseY = 63 * 12 - 12 * halfX;
+                            int pixelX = offsetX + baseX + x * 24 + y * 24;
+                            int pixelY = offsetY + baseY + y * 12;
+                            allTiles.Add((pixelX, pixelY, -1, item.TileId, item.IndexId));
+                        }
+                    }
+
+                    // Layer 4
+                    foreach (var obj in s32Data.Layer4)
+                    {
+                        int halfX = obj.X / 2;
+                        int baseX = -24 * halfX;
+                        int baseY = 63 * 12 - 12 * halfX;
+                        int pixelX = offsetX + baseX + obj.X * 24 + obj.Y * 24;
+                        int pixelY = offsetY + baseY + obj.Y * 12;
+                        allTiles.Add((pixelX, pixelY, obj.Layer, obj.TileId, obj.IndexId));
+                    }
+                }
+
+                var sortedTiles = allTiles.OrderBy(t => t.layer).ToList();
+                getBlockSw.Stop();
+                totalGetBlockMs = getBlockSw.ElapsedMilliseconds;
+
+                // 渲染到完整大小的 SKBitmap，再縮小
+                var drawSw = Stopwatch.StartNew();
+                using (var fullBitmap = new SKBitmap(contentWidth, contentHeight, SKColorType.Rgb565, SKAlphaType.Opaque))
+                {
+                    int rowBytes = fullBitmap.RowBytes;
+                    unsafe
+                    {
+                        byte* ptr = (byte*)fullBitmap.GetPixels().ToPointer();
+                        foreach (var tile in sortedTiles)
+                        {
+                            DrawTilToBufferDirectSK(tile.pixelX, tile.pixelY, tile.tileId, tile.indexId,
+                                rowBytes, ptr, contentWidth, contentHeight);
+                        }
+                    }
+
+                    // 縮小到 minimap 大小
+                    using (var canvas = new SKCanvas(skBitmap))
+                    {
+                        canvas.Clear(SKColors.Black);
+                        var destRect = new SKRect(0, 0, scaledWidth, scaledHeight);
+                        using (var paint = new SKPaint { FilterQuality = SKFilterQuality.High })
+                        {
+                            canvas.DrawBitmap(fullBitmap, destRect, paint);
+                        }
+                    }
+                }
+                drawSw.Stop();
+                totalDrawImageMs = drawSw.ElapsedMilliseconds;
+            }
+
+            // 繪製未勾選區塊的虛線邊框
+            using (var canvas = new SKCanvas(skBitmap))
+            {
+                DrawUncheckedBlockBordersSK(canvas, s32Files, checkedFiles, sortedFilePaths,
+                    worldMinX, worldMinY, scale, scaledWidth, scaledHeight);
+            }
+
+            totalSw.Stop();
+            stats.TotalMs = totalSw.ElapsedMilliseconds;
+            stats.GetBlockMs = totalGetBlockMs;
+            stats.DrawImageMs = totalDrawImageMs;
+            stats.BlockCount = blockCount;
+
+            _logger.Debug($"[MiniMapSK] Render completed: {stats.TotalMs}ms total, {stats.BlockCount} blocks, simplified={stats.IsSimplified}");
+            return skBitmap;
+        }
+
+        /// <summary>
+        /// 繪製 Tile 到緩衝區（SKBitmap RGB565 版本）
+        /// 使用 Lin.Helper.Core.L1Til.RenderBlockDirectRgb565 處理：
+        /// 1. RGB555 → RGB565 轉換
+        /// 2. type bit 1,2,4,5 特效（煙霧、血跡等）
+        /// </summary>
+        private unsafe void DrawTilToBufferDirectSK(int pixelX, int pixelY, int tileId, int indexId, int rowBytes, byte* ptr, int maxWidth, int maxHeight)
+        {
+            try
+            {
+                // 使用 TileProvider 取得 til 資料
+                var tilArray = TileProvider.Instance.GetTilArrayWithFallback(tileId, indexId, pixelX, out indexId);
+                if (tilArray == null || indexId < 0 || indexId >= tilArray.Count) return;
+                byte[] tilData = tilArray[indexId];
+                if (tilData == null) return;
+
+                // 使用 Lin.Helper.Core.L1Til 渲染 RGB565，支援 type 6/7 半透明效果
+                Lin.Helper.Core.Tile.L1Til.RenderBlockDirectRgb565(tilData, pixelX, pixelY, ptr, rowBytes, maxWidth, maxHeight, applyTypeAlpha: true);
+            }
+            catch (Exception ex)
+            {
+                _logger.Error(ex, $"[MiniMapSK] DrawTilToBufferDirectSK failed: tileId={tileId}, indexId={indexId}");
+            }
+        }
+
+        /// <summary>
+        /// 繪製未勾選區塊的虛線邊框（SkiaSharp 版本）
+        /// </summary>
+        private void DrawUncheckedBlockBordersSK(
+            SKCanvas canvas,
+            Dictionary<string, S32Data> s32Files,
+            HashSet<string> checkedFiles,
+            System.Collections.ICollection sortedFilePaths,
+            int worldMinX,
+            int worldMinY,
+            float scale,
+            int scaledWidth,
+            int scaledHeight)
+        {
+            using (var paint = new SKPaint
+            {
+                IsAntialias = true,
+                Style = SKPaintStyle.Stroke,
+                StrokeWidth = 1f,
+                Color = new SKColor(128, 128, 128, 180),
+                PathEffect = SKPathEffect.CreateDash(new float[] { 4, 4 }, 0)
+            })
+            {
+                foreach (object filePathObj in sortedFilePaths)
+                {
+                    string filePath = filePathObj as string;
+                    if (filePath == null || !s32Files.ContainsKey(filePath)) continue;
+                    if (checkedFiles.Contains(filePath)) continue;
+
+                    var s32Data = s32Files[filePath];
+                    int[] loc = s32Data.SegInfo.GetLoc(1.0);
+                    int blockX = loc[0] - worldMinX;
+                    int blockY = loc[1] - worldMinY;
+
+                    float destX = blockX * scale;
+                    float destY = blockY * scale;
+                    float destW = BlockWidth * scale;
+                    float destH = BlockHeight * scale;
+
+                    if (destX + destW < 0 || destY + destH < 0 || destX > scaledWidth || destY > scaledHeight)
+                        continue;
+
+                    // 繪製菱形邊框
+                    float centerX = destX + destW / 2;
+                    float centerY = destY + destH / 2;
+
+                    using (var path = new SKPath())
+                    {
+                        path.MoveTo(centerX, destY);           // 上
+                        path.LineTo(destX + destW, centerY);   // 右
+                        path.LineTo(centerX, destY + destH);   // 下
+                        path.LineTo(destX, centerY);           // 左
+                        path.Close();
+                        canvas.DrawPath(path, paint);
+                    }
+                }
+            }
+        }
+
+        /// <summary>
         /// 繪製未勾選區塊的虛線邊框（菱形，比照 S32 區塊形狀）
         /// </summary>
         private void DrawUncheckedBlockBorders(
@@ -388,8 +752,8 @@ namespace L1MapViewer.Helper
         {
             using (var pen = new Pen(Color.FromArgb(180, 128, 128, 128), 1f))
             {
-                pen.DashStyle = System.Drawing.Drawing2D.DashStyle.Dash;
-                pen.DashPattern = new float[] { 4, 4 };
+                pen.SetDashStyle(DashStyle.Dash);
+                pen.SetDashPattern(new float[] { 4, 4 });
 
                 foreach (object filePathObj in sortedFilePaths)
                 {

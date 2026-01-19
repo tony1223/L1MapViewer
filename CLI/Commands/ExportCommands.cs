@@ -1,8 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Drawing;
-using System.Drawing.Imaging;
+// using System.Drawing; // Replaced with Eto.Drawing
+// using System.Drawing.Imaging; // Replaced with SkiaSharp
 using System.IO;
 using System.Linq;
 using L1FlyMapViewer;
@@ -10,6 +10,7 @@ using L1MapViewer.Converter;
 using L1MapViewer.Helper;
 using L1MapViewer.Models;
 using L1MapViewer.Reader;
+using L1MapViewer.Compatibility;
 
 namespace L1MapViewer.CLI.Commands
 {
@@ -329,11 +330,11 @@ namespace L1MapViewer.CLI.Commands
                     {
                         // 縮放
                         var result = new Bitmap(scaledWidth, scaledHeight, PixelFormat.Format16bppRgb555);
-                        using (var g = Graphics.FromImage(result))
+                        using (var g = GraphicsHelper.FromImage(result))
                         {
-                            g.InterpolationMode = quality >= 2
-                                ? System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic
-                                : System.Drawing.Drawing2D.InterpolationMode.Bilinear;
+                            g.SetInterpolationMode(quality >= 2
+                                ? InterpolationMode.HighQualityBicubic
+                                : InterpolationMode.Bilinear);
                             g.DrawImage(fullBitmap, 0, 0, scaledWidth, scaledHeight);
                         }
                         return result;

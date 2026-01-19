@@ -10,20 +10,56 @@ namespace L1MapViewer.Localization
         public static Dictionary<string, string> GetStrings() => new()
         {
             // === Menu Items ===
-            { "Menu_File", "File" },
+            { "Menu_File", "File(&F)" },
             { "Menu_File_OpenClient", "Open Lineage Client to Read Map" },
             { "Menu_File_Export", "Export Map Passability Data" },
+            { "Menu_File_Save", "Save S32" },
+            { "Menu_File_ExportFs32", "Export FS32 Package..." },
+            { "Menu_File_Exit", "Exit" },
             { "Menu_Import", "Import" },
             { "Menu_Import_Material", "Import Material..." },
             { "Menu_Import_Fs32ToNewMap", "Import Map Package to New Map..." },
-            { "Menu_Database", "Database Settings" },
+            { "Menu_Edit", "Edit(&E)" },
+            { "Menu_Edit_Undo", "Undo" },
+            { "Menu_Edit_Redo", "Redo" },
+            { "Menu_Edit_Copy", "Copy" },
+            { "Menu_Edit_Paste", "Paste" },
+            { "Menu_Edit_Delete", "Delete" },
+            { "Menu_Edit_BatchDeleteTile", "Batch Delete Tile..." },
+            { "Menu_Edit_BatchReplaceTile", "Batch Replace Tile..." },
+            { "Menu_View", "View(&V)" },
+            { "Menu_View_Reload", "Reload Map" },
+            { "Menu_View_Layers", "Layers" },
+            { "Menu_View_Layer1", "Layer 1 Floor" },
+            { "Menu_View_Layer2", "Layer 2 Decoration" },
+            { "Menu_View_Layer4", "Layer 4 Objects" },
+            { "Menu_View_Layer5", "Layer 5 Events" },
+            { "Menu_View_Layer8", "Layer 8 SPR" },
+            { "Menu_View_Passable", "Passability" },
+            { "Menu_View_SafeZone", "Safe Zones" },
+            { "Menu_View_CombatZone", "Combat Zones" },
+            { "Menu_View_Grid", "Grid" },
+            { "Menu_View_S32Border", "S32 Border" },
+            { "Menu_View_Zoom", "Zoom" },
+            { "Menu_View_ZoomIn", "Zoom In" },
+            { "Menu_View_ZoomOut", "Zoom Out" },
+            { "Menu_View_Zoom100", "100%" },
+            { "Menu_Tools", "Tools(&T)" },
+            { "Menu_Tools_PassableEdit", "Passability Edit Mode" },
+            { "Menu_Tools_RegionEdit", "Region Edit Mode" },
+            { "Menu_Tools_Layer5Edit", "Transparency Edit Mode" },
+            { "Menu_Tools_ValidateMap", "Validate Map Integrity" },
+            { "Menu_Tools_AnalyzeAttr", "Analyze Attributes" },
             { "Menu_MapEditor", "Map Editor" },
+            { "Menu_Help", "Help(&H)" },
             { "Menu_Help_Discord", "Discuss on Discord" },
-            { "Menu_Help_About", "About" },
+            { "Menu_Help_About", "About..." },
             { "Menu_Language", "Language" },
             { "Menu_Export_ServerPassability", "Export Server Passability" },
             { "Menu_Export_L1JFormat", "L1J Format" },
             { "Menu_Export_DIRFormat", "DIR Format" },
+            { "Menu_Export_AllMapsL1J", "Export All Maps (L1J)" },
+            { "Menu_Export_AllMapsDIR", "Export All Maps (DIR)" },
 
             // === Tab Pages ===
             { "Tab_MapPreview", "Map Preview" },
@@ -100,16 +136,6 @@ namespace L1MapViewer.Localization
             { "Placeholder_SearchTileId", "Search TileId..." },
             { "Label_SearchResult", "Search Results" },
 
-            // === Buttons - Form1 (Monster Tool) ===
-            { "Button_Connect", "Connect" },
-            { "Button_AddToDatabase", "Add to Database" },
-            { "Button_ReloadMap", "Reload Current Map" },
-            { "Button_ShowAllMonsters", "Show All Monster Positions" },
-            { "Button_AddSpawn", "Add" },
-            { "Button_CopySpawn", "Copy" },
-            { "Button_DeleteSpawn", "Delete" },
-            { "Button_TestConnection", "Test Connection" },
-
             // === Labels - Common ===
             { "Label_Name", "Name" },
             { "Label_ID", "ID" },
@@ -123,29 +149,6 @@ namespace L1MapViewer.Localization
             { "Label_Layer1Coord", "Layer1 Coordinates" },
             { "Label_Zoom", "Zoom" },
             { "Label_S32Files", "S32 Files" },
-
-            // === Labels - Form1 (Monster Tool) ===
-            { "Label_ExpectedAdd", "Expected Add" },
-            { "Label_CenterX", "Center X" },
-            { "Label_CenterY", "Center Y" },
-            { "Label_Radius", "Radius" },
-            { "Label_RespawnMin", "Respawn Time (Min)" },
-            { "Label_RespawnMax", "Respawn Time (Max)" },
-            { "Label_SpawnInScreen", "Spawn In Screen" },
-            { "Label_TeleportDistance", "Teleport Distance" },
-            { "Label_MonsterID", "Monster ID" },
-            { "Label_MonsterNote", "Monster Note" },
-            { "Label_MonsterCount", "Monster Count" },
-
-            // === Labels - Database ===
-            { "Label_SavedConnections", "Saved Connections:" },
-            { "Label_ConnectionName", "Connection Name:" },
-            { "Label_ServerAddress", "Server Address:" },
-            { "Label_Port", "Port:" },
-            { "Label_Database", "Database:" },
-            { "Label_Username", "Username:" },
-            { "Label_Password", "Password:" },
-            { "Group_ConnectionInfo", "Connection Info" },
 
             // === Layer Names ===
             { "Layer_1", "Layer 1 (Floor)" },
@@ -173,6 +176,8 @@ namespace L1MapViewer.Localization
             { "Layer_FloatS32Border", "S32 Border" },
             { "Layer_FloatSafeZones", "Safe Zone" },
             { "Layer_FloatCombatZones", "Combat" },
+            { "Layer_L8Spr", "L8 SPR" },
+            { "Layer_L8Marker", "L8 Marker" },
 
             // === Hints ===
             { "Hint_MouseControls", "Middle-click to drag | Ctrl+Scroll to zoom | Left-click to select" },
@@ -232,24 +237,6 @@ namespace L1MapViewer.Localization
             { "ImportNewMap_Success", "Map package successfully imported to new map {0}" },
             { "ImportNewMap_Failed", "Import failed: {0}" },
             { "ImportNewMap_PleaseOpenClient", "Please open a Lineage client first" },
-
-            // === Messages - Database ===
-            { "Message_PleaseConnectDB", "Please connect to the database first" },
-            { "Message_ConnectionSuccess", "Connection successful!" },
-            { "Message_ConnectionFailed", "Connection failed: {0}" },
-            { "Message_PleaseEnterConnName", "Please enter a connection name" },
-            { "Message_PleaseEnterServer", "Please enter a server address" },
-            { "Message_PleaseEnterDatabase", "Please enter a database name" },
-            { "Message_ConnectionSaved", "Connection saved" },
-            { "Message_ConfirmDeleteConnection", "Are you sure you want to delete this connection?" },
-
-            // === Messages - Monster Tool ===
-            { "Message_PleaseEnterMonsterID", "Please enter a Monster ID" },
-            { "Message_InvalidMonsterID", "Invalid Monster ID" },
-            { "Message_MonsterAddedToQueue", "Added to pending queue" },
-            { "Message_SpawnAdded", "Spawn point added" },
-            { "Message_SpawnDeleted", "Spawn point deleted" },
-            { "Message_NoSpawnSelected", "Please select a spawn point first" },
 
             // === Messages - MapForm ===
             { "Message_S32Saved", "S32 saved" },
@@ -349,10 +336,8 @@ namespace L1MapViewer.Localization
 
             // === Form Titles ===
             { "Form_MapEditor_Title", "Map Editor" },
-            { "Form_MonsterTool_Title", "Monster Configuration Tool" },
-            { "Form_DatabaseConnection_Title", "Database Connection Manager" },
-            { "Form_MonsterSearch_Title", "Search Monster" },
             { "Form_ExportOptions_Title", "Export Options" },
+            { "Form_ExportFs32_Title", "Export FS32 Map Package" },
             { "Form_CopySettings_Title", "Copy Settings" },
             { "Form_MaterialBrowser_Title", "Material Browser" },
 

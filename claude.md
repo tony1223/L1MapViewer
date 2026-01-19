@@ -1,5 +1,49 @@
 # L1MapViewer 開發指南
 
+## 錯誤處理與日誌
+
+### 日誌記錄規範
+
+- **所有日誌必須使用 NLog**，不可使用 `Console.WriteLine`
+- **所有 exception 都必須被記錄**，絕不可靜默吞掉錯誤
+
+```csharp
+// 在類別中加入 logger
+using NLog;
+
+private static readonly Logger _logger = LogManager.GetCurrentClassLogger();
+
+// 記錄錯誤（包含完整 exception）
+catch (Exception ex)
+{
+    _logger.Error(ex, "描述發生了什麼事");
+    // 處理錯誤...
+}
+
+// 其他日誌等級
+_logger.Debug("除錯訊息");
+_logger.Info("一般資訊");
+_logger.Warn("警告訊息");
+_logger.Error("錯誤訊息");
+```
+
+### 禁止的做法
+
+```csharp
+// ❌ 錯誤：靜默吞掉 exception
+catch { }
+
+// ❌ 錯誤：只 catch 不記錄
+catch (Exception ex)
+{
+    // 沒有 log
+    return null;
+}
+
+// ❌ 錯誤：使用 Console.WriteLine
+Console.WriteLine($"Error: {ex.Message}");
+```
+
 ## 建置設定
 
 ### 避免 IDE 與 CLI 建置衝突
@@ -103,3 +147,35 @@ int gameY = layer1Y;
 ## S32 區塊
 
 每個區塊大小：3072 x 1536 像素 (64*24*2 x 64*12*2)
+
+## 測試工具
+
+### 視窗截圖工具
+
+`tests/capture_window.py` 可以抓取指定視窗的截圖，用於自動化驗證 UI 渲染。
+
+```bash
+# 基本用法（等待 10 秒後抓取標題含 "L1" 的視窗）
+python tests/capture_window.py
+
+# 指定參數
+python tests/capture_window.py "L1MapViewer" screenshot.bmp 10
+```
+
+**參數：**
+- `title` - 視窗標題關鍵字（預設: "L1"）
+- `output` - 輸出檔案路徑（預設: "screenshot.bmp"）
+- `delay` - 等待秒數（預設: 10）
+
+**自動化測試流程：**
+```bash
+# 1. 建置並啟動程式（背景執行）
+dotnet run -o bin/Debug/cli &
+
+# 2. 等待並截圖
+python tests/capture_window.py "L1MapViewer" tests/result.bmp 10
+
+# 3. 檢查截圖確認渲染正常
+```
+
+注意：`tests/` 資料夾已加入 `.gitignore`，不會被提交。

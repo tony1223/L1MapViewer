@@ -1,7 +1,8 @@
 using System;
-using System.Drawing;
+// using System.Drawing; // Replaced with Eto.Drawing
 using System.Linq;
-using System.Windows.Forms;
+using Eto.Forms;
+using Eto.Drawing;
 using L1MapViewer.CLI;
 using L1MapViewer.Helper;
 using L1MapViewer.Models;

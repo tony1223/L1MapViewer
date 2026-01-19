@@ -269,7 +269,7 @@ namespace L1MapViewer.Models
     {
         public int TileId { get; set; }
         public int IndexId { get; set; }
-        public System.Drawing.Bitmap? Thumbnail { get; set; }
+        public Bitmap? Thumbnail { get; set; }
         public int UsageCount { get; set; }
     }
 
@@ -281,6 +281,79 @@ namespace L1MapViewer.Models
         public S32Data S32Data { get; set; } = null!;
         public int LocalX { get; set; }
         public int LocalY { get; set; }
+
+        /// <summary>
+        /// 取得此格子對應的 Layer3 資訊（正確的 S32 和本地座標）
+        /// </summary>
+        /// <param name="allS32Files">所有 S32 檔案的字典</param>
+        /// <returns>包含正確 S32 和本地座標的 Layer3Info，如果找不到則返回 null</returns>
+        public Layer3Info? GetLayer3Info(Dictionary<string, S32Data> allS32Files)
+        {
+            if (S32Data == null) return null;
+
+            // 計算相對於來源 S32 的 Layer3 座標
+            int layer3X = LocalX / 2;
+            int layer3Y = LocalY;
+
+            // 計算遊戲座標
+            int gameX = S32Data.SegInfo.nLinBeginX + layer3X;
+            int gameY = S32Data.SegInfo.nLinBeginY + layer3Y;
+
+            // 找到包含此遊戲座標的正確 S32
+            S32Data? targetS32 = null;
+
+            // 先檢查當前 S32 是否包含此座標
+            if (gameX >= S32Data.SegInfo.nLinBeginX && gameX < S32Data.SegInfo.nLinBeginX + 64 &&
+                gameY >= S32Data.SegInfo.nLinBeginY && gameY < S32Data.SegInfo.nLinBeginY + 64)
+            {
+                targetS32 = S32Data;
+            }
+            else
+            {
+                // 查找其他 S32
+                foreach (var s32 in allS32Files.Values)
+                {
+                    if (gameX >= s32.SegInfo.nLinBeginX && gameX < s32.SegInfo.nLinBeginX + 64 &&
+                        gameY >= s32.SegInfo.nLinBeginY && gameY < s32.SegInfo.nLinBeginY + 64)
+                    {
+                        targetS32 = s32;
+                        break;
+                    }
+                }
+            }
+
+            if (targetS32 == null) return null;
+
+            // 計算在目標 S32 中的本地座標
+            int targetLocalX = gameX - targetS32.SegInfo.nLinBeginX;
+            int targetLocalY = gameY - targetS32.SegInfo.nLinBeginY;
+
+            return new Layer3Info
+            {
+                S32Data = targetS32,
+                LocalX = targetLocalX,
+                LocalY = targetLocalY,
+                GameX = gameX,
+                GameY = gameY
+            };
+        }
+    }
+
+    /// <summary>
+    /// Layer3 資訊（遊戲座標系統，包含正確的 S32 和 Layer3 本地座標 0-63）
+    /// </summary>
+    public class Layer3Info
+    {
+        /// <summary>包含此座標的 S32 檔案</summary>
+        public S32Data S32Data { get; set; } = null!;
+        /// <summary>在 S32 Layer3 中的 X 座標 (0-63)</summary>
+        public int LocalX { get; set; }
+        /// <summary>在 S32 Layer3 中的 Y 座標 (0-63)</summary>
+        public int LocalY { get; set; }
+        /// <summary>遊戲座標 X（絕對座標）</summary>
+        public int GameX { get; set; }
+        /// <summary>遊戲座標 Y（絕對座標）</summary>
+        public int GameY { get; set; }
     }
 
     /// <summary>

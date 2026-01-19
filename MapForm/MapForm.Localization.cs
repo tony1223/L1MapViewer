@@ -11,8 +11,8 @@ namespace L1FlyMapViewer
         // 語言變更事件處理
         private void OnLanguageChanged(object sender, EventArgs e)
         {
-            if (InvokeRequired)
-                Invoke(new Action(UpdateLocalization));
+            if (this.GetInvokeRequired())
+                this.Invoke(new Action(UpdateLocalization));
             else
                 UpdateLocalization();
         }
@@ -39,14 +39,60 @@ namespace L1FlyMapViewer
         // 更新所有 UI 文字
         private void UpdateLocalization()
         {
-            // 選單項目
+            // 頂級選單
+            menuFile.Text = LocalizationManager.L("Menu_File");
+            menuEdit.Text = LocalizationManager.L("Menu_Edit");
+            menuView.Text = LocalizationManager.L("Menu_View");
+            menuTools.Text = LocalizationManager.L("Menu_Tools");
+            menuHelp.Text = LocalizationManager.L("Menu_Help");
+
+            // 檔案選單項目
             openToolStripMenuItem.Text = LocalizationManager.L("Menu_File_OpenClient");
             importMaterialToolStripMenuItem.Text = LocalizationManager.L("Menu_Import_Material");
             importFs32ToNewMapToolStripMenuItem.Text = LocalizationManager.L("Menu_Import_Fs32ToNewMap");
+            menuSaveS32.Text = LocalizationManager.L("Menu_File_Save");
+            menuExportFs32.Text = LocalizationManager.L("Menu_File_ExportFs32");
             exportToolStripMenuItem.Text = LocalizationManager.L("Menu_Export_ServerPassability");
             exportL1JToolStripMenuItem.Text = LocalizationManager.L("Menu_Export_L1JFormat");
             exportDIRToolStripMenuItem.Text = LocalizationManager.L("Menu_Export_DIRFormat");
+            menuExit.Text = LocalizationManager.L("Menu_File_Exit");
+
+            // 編輯選單項目
+            menuUndo.Text = LocalizationManager.L("Menu_Edit_Undo");
+            menuRedo.Text = LocalizationManager.L("Menu_Edit_Redo");
+            menuCopy.Text = LocalizationManager.L("Menu_Edit_Copy");
+            menuPaste.Text = LocalizationManager.L("Menu_Edit_Paste");
+            menuDelete.Text = LocalizationManager.L("Menu_Edit_Delete");
+            menuBatchReplaceTile.Text = LocalizationManager.L("Menu_Edit_BatchReplaceTile");
+
+            // 檢視選單項目
+            menuReloadMap.Text = LocalizationManager.L("Menu_View_Reload");
+            menuLayers.Text = LocalizationManager.L("Menu_View_Layers");
+            menuLayerL1.Text = LocalizationManager.L("Menu_View_Layer1");
+            menuLayerL2.Text = LocalizationManager.L("Menu_View_Layer2");
+            menuLayerL4.Text = LocalizationManager.L("Menu_View_Layer4");
+            menuLayerL5.Text = LocalizationManager.L("Menu_View_Layer5");
+            menuLayerL8.Text = LocalizationManager.L("Menu_View_Layer8");
+            menuLayerPassable.Text = LocalizationManager.L("Menu_View_Passable");
+            menuLayerSafe.Text = LocalizationManager.L("Menu_View_SafeZone");
+            menuLayerCombat.Text = LocalizationManager.L("Menu_View_CombatZone");
+            menuLayerGrid.Text = LocalizationManager.L("Menu_View_Grid");
+            menuLayerS32Bound.Text = LocalizationManager.L("Menu_View_S32Border");
+            menuZoom.Text = LocalizationManager.L("Menu_View_Zoom");
+            menuZoomIn.Text = LocalizationManager.L("Menu_View_ZoomIn");
+            menuZoomOut.Text = LocalizationManager.L("Menu_View_ZoomOut");
+            menuZoom100.Text = LocalizationManager.L("Menu_View_Zoom100");
+
+            // 工具選單項目
+            menuPassableEdit.Text = LocalizationManager.L("Menu_Tools_PassableEdit");
+            menuRegionEdit.Text = LocalizationManager.L("Menu_Tools_RegionEdit");
+            menuLayer5Edit.Text = LocalizationManager.L("Menu_Tools_Layer5Edit");
+            menuValidateMap.Text = LocalizationManager.L("Menu_Tools_ValidateMap");
+
+            // 說明選單項目
             discordToolStripMenuItem.Text = LocalizationManager.L("Menu_Help_Discord");
+            languageToolStripMenuItem.Text = LocalizationManager.L("Menu_Language");
+            menuAbout.Text = LocalizationManager.L("Menu_Help_About");
 
             // 頁籤
             tabMapPreview.Text = LocalizationManager.L("Tab_MapPreview");
@@ -127,8 +173,8 @@ namespace L1FlyMapViewer
             lblGroupThumbnails.Text = LocalizationManager.L("Label_GroupThumbnails");
             btnMoreMaterials.Text = LocalizationManager.L("Button_More");
 
-            // 滑鼠操作提示
-            lblDefaultHint.Text = LocalizationManager.L("Hint_MouseControls");
+            // 滑鼠操作提示現在由 DrawEditModeHelpLabelSK 在 overlay 中繪製
+            // 會自動使用 LocalizationManager.L("Hint_MouseControls")
 
             // 狀態列
             if (toolStripStatusLabel1.Text == "就緒" || toolStripStatusLabel1.Text == "Ready" || toolStripStatusLabel1.Text == "準備完了")
