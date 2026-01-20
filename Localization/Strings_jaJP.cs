@@ -603,6 +603,23 @@ namespace L1MapViewer.Localization
             // === Group Thumbnail Context Menu ===
             { "GroupThumbnail_GotoLocation", "位置へ移動" },
             { "GroupThumbnail_ShowCells", "グループのセルを表示" },
+
+            // === Tile Cleanup Dialog ===
+            { "Menu_Tools_CleanupTiles", "未使用タイルをクリーンアップ..." },
+            { "Dialog_TileCleanup_Title", "未使用タイルのクリーンアップ" },
+            { "Dialog_TileCleanup_Warning", "警告：これは危険な操作です！tile.idx から未使用の高番号タイルを削除します。\n実行前にクライアントフォルダ全体をバックアップしてください。" },
+            { "Dialog_TileCleanup_Scanning", "すべてのマップファイルをスキャンしてタイル使用状況を分析中..." },
+            { "Dialog_TileCleanup_ScanFailed", "スキャン失敗" },
+            { "Dialog_TileCleanup_Summary", "スキャン完了：\n• マップフォルダ: {0} 個\n• S32/Seg ファイル: {1} 個\n• 使用中のタイル: {2} 個\n• tile.idx 合計: {3} 個\n• クリーンアップ可能: {4} 個 (ID > {5} かつ未使用)" },
+            { "Dialog_TileCleanup_ScanErrors", "スキャン中にエラーが発生しました" },
+            { "Dialog_TileCleanup_NoUnusedTiles", "(条件に一致する未使用タイルはありません)" },
+            { "Dialog_TileCleanup_CreateBackup", "バックアップファイルを作成 (tile.idx.backup_日時)" },
+            { "Dialog_TileCleanup_Confirm", "削除を確認" },
+            { "Dialog_TileCleanup_NoSelection", "削除する項目を少なくとも1つ選択してください" },
+            { "Dialog_TileCleanup_FinalConfirm", "tile.idx から {0} 個のタイルファイルを削除しようとしています。\n\nこの操作は元に戻せません（バックアップがない限り）！\n\n続行しますか？" },
+            { "Dialog_TileCleanup_Success", "クリーンアップ完了！{0} 個のタイルを削除しました。\n\nバックアップファイル: {1}" },
+            { "Dialog_TileCleanup_Failed", "クリーンアップ失敗: {0}" },
+            { "Dialog_TileCleanup_NoClient", "先にリネージュクライアントを開いてください" },
         };
     }
 }

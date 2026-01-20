@@ -89,6 +89,7 @@ namespace L1FlyMapViewer
             menuRegionEdit.Text = LocalizationManager.L("Menu_Tools_RegionEdit");
             menuLayer5Edit.Text = LocalizationManager.L("Menu_Tools_Layer5Edit");
             menuValidateMap.Text = LocalizationManager.L("Menu_Tools_ValidateMap");
+            menuCleanupTiles.Text = LocalizationManager.L("Menu_Tools_CleanupTiles");
 
             // 說明選單項目
             discordToolStripMenuItem.Text = LocalizationManager.L("Menu_Help_Discord");

@@ -27333,6 +27333,55 @@ namespace L1FlyMapViewer
             resultForm.ShowDialog(this);
         }
 
+        // 清理未使用的 Tiles（危險操作）
+        private void menuCleanupTiles_Click(object sender, EventArgs e)
+        {
+            // 檢查是否已開啟客戶端
+            if (string.IsNullOrEmpty(Share.LineagePath))
+            {
+                WinFormsMessageBox.Show(
+                    LocalizationManager.L("Dialog_TileCleanup_NoClient"),
+                    LocalizationManager.L("Title_Error"),
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+                return;
+            }
+
+            // 顯示清理對話框
+            var dialog = new L1MapViewer.Forms.TileCleanupDialog();
+            dialog.StartScan(5000); // 門檻值設為 5000
+            dialog.ShowModal();
+
+            if (dialog.Confirmed && dialog.SelectedTileIds.Count > 0)
+            {
+                // 執行刪除
+                var (successCount, errors) = L1MapViewer.Helper.TileCleanupHelper.RemoveTiles(
+                    dialog.SelectedTileIds,
+                    dialog.CreateBackup);
+
+                if (successCount > 0)
+                {
+                    string backupInfo = dialog.CreateBackup
+                        ? $"\n\n備份檔案: Tile.idx.backup_*"
+                        : "";
+                    WinFormsMessageBox.Show(
+                        string.Format(LocalizationManager.L("Dialog_TileCleanup_Success"), successCount, backupInfo),
+                        LocalizationManager.L("Title_Success"),
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Information);
+                }
+
+                if (errors.Count > 0)
+                {
+                    WinFormsMessageBox.Show(
+                        string.Format(LocalizationManager.L("Dialog_TileCleanup_Failed"), string.Join("\n", errors)),
+                        LocalizationManager.L("Title_Error"),
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Error);
+                }
+            }
+        }
+
         // 查看與管理第七層（傳送點）資料 - 支援編輯
         private void btnToolCheckL7_Click(object sender, EventArgs e)
         {

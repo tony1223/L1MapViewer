@@ -66,6 +66,7 @@ namespace L1FlyMapViewer
         private ToolStripMenuItem menuRegionEdit;
         private ToolStripMenuItem menuLayer5Edit;
         private ToolStripMenuItem menuValidateMap;
+        private ToolStripMenuItem menuCleanupTiles;
 
         // 說明選單項目
         private ToolStripMenuItem discordToolStripMenuItem;
@@ -266,6 +267,7 @@ namespace L1FlyMapViewer
             this.menuRegionEdit = new ToolStripMenuItem();
             this.menuLayer5Edit = new ToolStripMenuItem();
             this.menuValidateMap = new ToolStripMenuItem();
+            this.menuCleanupTiles = new ToolStripMenuItem();
 
             // 說明選單項目
             this.discordToolStripMenuItem = new ToolStripMenuItem();
@@ -657,7 +659,9 @@ namespace L1FlyMapViewer
                 this.menuRegionEdit,
                 this.menuLayer5Edit,
                 new ToolStripSeparator(),
-                this.menuValidateMap
+                this.menuValidateMap,
+                new ToolStripSeparator(),
+                this.menuCleanupTiles
             });
 
             this.menuPassableEdit.SetName("menuPassableEdit");
@@ -675,6 +679,11 @@ namespace L1FlyMapViewer
             this.menuValidateMap.SetName("menuValidateMap");
             this.menuValidateMap.Text = "驗證地圖正確性";
             this.menuValidateMap.Click += new System.EventHandler(this.btnMapValidate_Click);
+
+            this.menuCleanupTiles.SetName("menuCleanupTiles");
+            this.menuCleanupTiles.Text = "清理未使用的 Tiles...";
+            this.menuCleanupTiles.ForeColor = Colors.Red;
+            this.menuCleanupTiles.Click += new System.EventHandler(this.menuCleanupTiles_Click);
 
             // ========== 說明選單 ==========
             this.menuHelp.SetName("menuHelp");

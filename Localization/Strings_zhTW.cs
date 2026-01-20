@@ -605,6 +605,23 @@ namespace L1MapViewer.Localization
             // === Group Thumbnail Context Menu ===
             { "GroupThumbnail_GotoLocation", "跳轉到位置" },
             { "GroupThumbnail_ShowCells", "顯示群組所在格子" },
+
+            // === Tile Cleanup Dialog ===
+            { "Menu_Tools_CleanupTiles", "清理未使用的 Tiles..." },
+            { "Dialog_TileCleanup_Title", "清理未使用的 Tiles" },
+            { "Dialog_TileCleanup_Warning", "警告：此為危險操作！將從 tile.idx 中移除未使用的高編號 Tiles。\n建議在執行前備份整個客戶端資料夾。" },
+            { "Dialog_TileCleanup_Scanning", "正在掃描所有地圖檔案，分析 Tile 使用情況..." },
+            { "Dialog_TileCleanup_ScanFailed", "掃描失敗" },
+            { "Dialog_TileCleanup_Summary", "掃描完成：\n• 地圖資料夾: {0} 個\n• S32/Seg 檔案: {1} 個\n• 使用中的 Tile: {2} 個\n• tile.idx 總計: {3} 個\n• 可清理項目: {4} 個 (ID > {5} 且未使用)" },
+            { "Dialog_TileCleanup_ScanErrors", "掃描過程發生錯誤" },
+            { "Dialog_TileCleanup_NoUnusedTiles", "(沒有符合條件的未使用 Tiles)" },
+            { "Dialog_TileCleanup_CreateBackup", "建立備份檔案 (tile.idx.backup_日期時間)" },
+            { "Dialog_TileCleanup_Confirm", "確認刪除" },
+            { "Dialog_TileCleanup_NoSelection", "請至少選擇一個要刪除的項目" },
+            { "Dialog_TileCleanup_FinalConfirm", "即將從 tile.idx 移除 {0} 個 Tile 檔案。\n\n此操作無法復原（除非有備份）！\n\n確定要繼續嗎？" },
+            { "Dialog_TileCleanup_Success", "清理完成！已移除 {0} 個 Tile。\n\n備份檔案: {1}" },
+            { "Dialog_TileCleanup_Failed", "清理失敗: {0}" },
+            { "Dialog_TileCleanup_NoClient", "請先開啟天堂客戶端" },
         };
     }
 }

@@ -603,6 +603,23 @@ namespace L1MapViewer.Localization
             // === Group Thumbnail Context Menu ===
             { "GroupThumbnail_GotoLocation", "Go to location" },
             { "GroupThumbnail_ShowCells", "Show group cells" },
+
+            // === Tile Cleanup Dialog ===
+            { "Menu_Tools_CleanupTiles", "Cleanup Unused Tiles..." },
+            { "Dialog_TileCleanup_Title", "Cleanup Unused Tiles" },
+            { "Dialog_TileCleanup_Warning", "WARNING: This is a dangerous operation! It will remove unused high-ID tiles from tile.idx.\nPlease backup your entire client folder before proceeding." },
+            { "Dialog_TileCleanup_Scanning", "Scanning all map files to analyze tile usage..." },
+            { "Dialog_TileCleanup_ScanFailed", "Scan failed" },
+            { "Dialog_TileCleanup_Summary", "Scan complete:\n• Map folders: {0}\n• S32/Seg files: {1}\n• Tiles in use: {2}\n• Total in tile.idx: {3}\n• Can be cleaned: {4} (ID > {5} and unused)" },
+            { "Dialog_TileCleanup_ScanErrors", "Errors occurred during scan" },
+            { "Dialog_TileCleanup_NoUnusedTiles", "(No unused tiles matching criteria)" },
+            { "Dialog_TileCleanup_CreateBackup", "Create backup file (tile.idx.backup_timestamp)" },
+            { "Dialog_TileCleanup_Confirm", "Confirm Delete" },
+            { "Dialog_TileCleanup_NoSelection", "Please select at least one item to delete" },
+            { "Dialog_TileCleanup_FinalConfirm", "About to remove {0} tile files from tile.idx.\n\nThis operation cannot be undone (unless you have a backup)!\n\nAre you sure you want to continue?" },
+            { "Dialog_TileCleanup_Success", "Cleanup complete! Removed {0} tiles.\n\nBackup file: {1}" },
+            { "Dialog_TileCleanup_Failed", "Cleanup failed: {0}" },
+            { "Dialog_TileCleanup_NoClient", "Please open a Lineage client first" },
         };
     }
 }

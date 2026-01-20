@@ -603,6 +603,23 @@ namespace L1MapViewer.Localization
             // === Group Thumbnail Context Menu ===
             { "GroupThumbnail_GotoLocation", "위치로 이동" },
             { "GroupThumbnail_ShowCells", "그룹 셀 표시" },
+
+            // === Tile Cleanup Dialog ===
+            { "Menu_Tools_CleanupTiles", "미사용 타일 정리..." },
+            { "Dialog_TileCleanup_Title", "미사용 타일 정리" },
+            { "Dialog_TileCleanup_Warning", "경고: 이것은 위험한 작업입니다! tile.idx에서 미사용 고번호 타일을 제거합니다.\n진행하기 전에 전체 클라이언트 폴더를 백업하세요." },
+            { "Dialog_TileCleanup_Scanning", "모든 맵 파일을 스캔하여 타일 사용 현황을 분석 중..." },
+            { "Dialog_TileCleanup_ScanFailed", "스캔 실패" },
+            { "Dialog_TileCleanup_Summary", "스캔 완료:\n• 맵 폴더: {0}개\n• S32/Seg 파일: {1}개\n• 사용 중인 타일: {2}개\n• tile.idx 전체: {3}개\n• 정리 가능: {4}개 (ID > {5} 및 미사용)" },
+            { "Dialog_TileCleanup_ScanErrors", "스캔 중 오류가 발생했습니다" },
+            { "Dialog_TileCleanup_NoUnusedTiles", "(조건에 맞는 미사용 타일이 없습니다)" },
+            { "Dialog_TileCleanup_CreateBackup", "백업 파일 생성 (tile.idx.backup_날짜시간)" },
+            { "Dialog_TileCleanup_Confirm", "삭제 확인" },
+            { "Dialog_TileCleanup_NoSelection", "삭제할 항목을 하나 이상 선택하세요" },
+            { "Dialog_TileCleanup_FinalConfirm", "tile.idx에서 {0}개의 타일 파일을 제거하려고 합니다.\n\n이 작업은 되돌릴 수 없습니다 (백업이 없는 한)!\n\n계속하시겠습니까?" },
+            { "Dialog_TileCleanup_Success", "정리 완료! {0}개의 타일을 제거했습니다.\n\n백업 파일: {1}" },
+            { "Dialog_TileCleanup_Failed", "정리 실패: {0}" },
+            { "Dialog_TileCleanup_NoClient", "먼저 리니지 클라이언트를 열어주세요" },
         };
     }
 }
