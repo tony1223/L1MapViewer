@@ -6275,9 +6275,15 @@ namespace L1FlyMapViewer
         private void btnS32SelectAll_Click(object sender, EventArgs e)
         {
             _isBatchCheckUpdate = true;
+            _checkedS32Files.Clear();
             for (int i = 0; i < lstS32Files.Items.Count; i++)
             {
                 lstS32Files.SetItemChecked(i, true);
+                if (lstS32Files.Items[i] is S32FileItem item)
+                {
+                    item.IsChecked = true;
+                    _checkedS32Files.Add(item.FilePath);
+                }
             }
             _isBatchCheckUpdate = false;
             SyncCheckedS32FilesToDocument();
@@ -6289,9 +6295,14 @@ namespace L1FlyMapViewer
         private void btnS32SelectNone_Click(object sender, EventArgs e)
         {
             _isBatchCheckUpdate = true;
+            _checkedS32Files.Clear();
             for (int i = 0; i < lstS32Files.Items.Count; i++)
             {
                 lstS32Files.SetItemChecked(i, false);
+                if (lstS32Files.Items[i] is S32FileItem item)
+                {
+                    item.IsChecked = false;
+                }
             }
             _isBatchCheckUpdate = false;
             SyncCheckedS32FilesToDocument();
