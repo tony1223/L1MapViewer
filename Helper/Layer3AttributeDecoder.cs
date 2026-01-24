@@ -8,6 +8,18 @@ namespace L1MapViewer.Helper
     public static class Layer3AttributeDecoder
     {
         /// <summary>
+        /// 例外值替換 - 特定值需要轉換為 5 後再進行區域類型判斷
+        /// 參考: passrule_txt.md
+        /// 33 (0x21), 65 (0x41), 69 (0x45), 73 (0x49), 77 (0x4D) → 5
+        /// </summary>
+        private static int ReplaceException(int value)
+        {
+            // if (value == 33 || value == 65 || value == 69 || value == 73 || value == 77)
+            //     return 5;
+            return value;
+        }
+
+        /// <summary>
         /// 取得屬性標記說明
         /// </summary>
         public static string GetAttributeFlags(short value)
@@ -16,8 +28,9 @@ namespace L1MapViewer.Helper
 
             if ((value & 0x0001) != 0) flags.Add("不可通行");
 
-            // MapTool 邏輯: 低4位 4-7,C-F=安全, 8-B=戰鬥
-            int lowNibble = value & 0x0F;
+            // 例外值替換後判斷區域類型
+            int replaced = ReplaceException(value);
+            int lowNibble = replaced & 0x0F;
             if ((lowNibble & 0x04) != 0) flags.Add("安全區");
             else if ((lowNibble & 0x0C) == 0x08) flags.Add("戰鬥區");
 
@@ -53,7 +66,8 @@ namespace L1MapViewer.Helper
         /// </summary>
         public static bool IsSafeZone(short value)
         {
-            int lowNibble = value & 0x0F;
+            int replaced = ReplaceException(value);
+            int lowNibble = replaced & 0x0F;
             return (lowNibble & 0x04) != 0;
         }
 
@@ -62,7 +76,8 @@ namespace L1MapViewer.Helper
         /// </summary>
         public static bool IsCombatZone(short value)
         {
-            int lowNibble = value & 0x0F;
+            int replaced = ReplaceException(value);
+            int lowNibble = replaced & 0x0F;
             return !IsSafeZone(value) && (lowNibble & 0x0C) == 0x08;
         }
 
@@ -74,6 +89,17 @@ namespace L1MapViewer.Helper
             if (IsSafeZone(value)) return "安全區";
             if (IsCombatZone(value)) return "戰鬥區";
             return "一般區";
+        }
+
+        /// <summary>
+        /// 取得區域類型數值（按照 MapTool 的 getZone 邏輯）
+        /// </summary>
+        /// <returns>256=一般區域, 512=安全區域, 1024=戰鬥區域</returns>
+        public static int GetZoneValue(int tileValue)
+        {
+            if (IsSafeZone((short)tileValue)) return 512;
+            if (IsCombatZone((short)tileValue)) return 1024;
+            return 256;
         }
     }
 }

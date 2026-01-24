@@ -65,24 +65,12 @@ namespace L1MapViewer.Helper
         }
 
         /// <summary>
-        /// 取得區域類型（完全按照 MapTool 的 getZone 邏輯）
-        /// 看 tileValue 的低 4 位元
+        /// 取得區域類型（使用 Layer3AttributeDecoder 統一處理）
         /// </summary>
         /// <returns>256=一般區域, 512=安全區域, 1024=戰鬥區域</returns>
         public static int GetZone(int tileValue)
         {
-            int lowNibble = tileValue & 0x0F;
-            // 0-3: 一般區域 (256)
-            if (lowNibble >= 0x00 && lowNibble <= 0x03)
-                return 256;
-            // 4-7, C-F: 安全區域 (512)
-            if ((lowNibble >= 0x04 && lowNibble <= 0x07) ||
-                (lowNibble >= 0x0C && lowNibble <= 0x0F))
-                return 512;
-            // 8-B: 戰鬥區域 (1024)
-            if (lowNibble >= 0x08 && lowNibble <= 0x0B)
-                return 1024;
-            return 256;
+            return Layer3AttributeDecoder.GetZoneValue(tileValue);
         }
     }
 }

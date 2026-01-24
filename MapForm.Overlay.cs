@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using SkiaSharp;
+using L1MapViewer.Helper;
 using L1MapViewer.Models;
 using L1MapViewer.Other;
 using L1MapViewer.Localization;
@@ -199,10 +200,9 @@ namespace L1FlyMapViewer
                         if (X + 48 < 0 || X > worldRect.Width || Y + 24 < 0 || Y > worldRect.Height)
                             continue;
 
-                        // 檢查區域類型（根據 MapTool 邏輯，客戶端只用 Attribute1 判斷整個格子）
-                        int val = attr.Attribute1 & 0x0F;
-                        bool isSafe = (val & 0x04) != 0;  // bit 2 設定 = 安全區
-                        bool isCombat = (val & 0x0C) == 0x08;  // bit 3 設定但 bit 2 未設定 = 戰鬥區
+                        // 使用 Layer3AttributeDecoder 統一處理（含例外值替換）
+                        bool isSafe = Layer3AttributeDecoder.IsSafeZone(attr.Attribute1);
+                        bool isCombat = Layer3AttributeDecoder.IsCombatZone(attr.Attribute1);
 
                         // 決定整個格子的顏色
                         SKPaint regionBrush = null;

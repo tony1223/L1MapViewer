@@ -245,27 +245,11 @@ namespace L1MapViewer.Helper
         }
 
         /// <summary>
-        /// 取得屬性旗標描述
-        /// 根據 MapTool 邏輯: 低4位 4-7,C-F=安全區, 8-B=戰鬥區
+        /// 取得屬性旗標描述（使用 Layer3AttributeDecoder 統一處理）
         /// </summary>
         public static string GetAttributeFlags(short value)
         {
-            List<string> flags = new List<string>();
-
-            if ((value & 0x01) != 0) flags.Add("不可通行");
-            int lowNibble = value & 0x0F;
-            if ((lowNibble & 0x04) != 0) flags.Add("安全區");
-            else if ((lowNibble & 0x0C) == 0x08) flags.Add("戰鬥區");
-            if ((value & 0x02) != 0) flags.Add("旗標0x02");
-            if ((value & 0x10) != 0) flags.Add("旗標0x10");
-            if ((value & 0x20) != 0) flags.Add("旗標0x20");
-            if ((value & 0x40) != 0) flags.Add("旗標0x40");
-            if ((value & 0x80) != 0) flags.Add("旗標0x80");
-
-            if (flags.Count == 0)
-                return "可通行";
-
-            return string.Join(", ", flags);
+            return Layer3AttributeDecoder.GetAttributeFlags(value);
         }
     }
 }

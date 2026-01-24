@@ -6988,13 +6988,11 @@ namespace L1FlyMapViewer
 
             var attr = s32Data.Layer3[cellY, layer3X];
 
-            // 根據 MapTool 邏輯檢查區域類型
-            // 低4位: 0-3=一般, 4-7/C-F=安全(bit2), 8-B=戰鬥(bit3且非bit2)
-            int val1 = attr.Attribute1 & 0x0F;
-            int val2 = attr.Attribute2 & 0x0F;
-
-            bool isSafe = (val1 & 0x04) != 0 || (val2 & 0x04) != 0;
-            bool isCombat = (val1 & 0x0C) == 0x08 || (val2 & 0x0C) == 0x08;
+            // 使用 Layer3AttributeDecoder 統一處理（含例外值替換）
+            bool isSafe = Layer3AttributeDecoder.IsSafeZone(attr.Attribute1) ||
+                          Layer3AttributeDecoder.IsSafeZone(attr.Attribute2);
+            bool isCombat = Layer3AttributeDecoder.IsCombatZone(attr.Attribute1) ||
+                            Layer3AttributeDecoder.IsCombatZone(attr.Attribute2);
 
             if (isCombat) return RegionType.Combat;
             if (isSafe) return RegionType.Safe;
@@ -9104,11 +9102,9 @@ namespace L1FlyMapViewer
                             Point pBottom = new Point(X + 24, Y + 24);
                             Point pLeft = new Point(X + 0, Y + 12);
 
-                            // 檢查區域類型（根據 MapTool 邏輯，客戶端只用 Attribute1 判斷整個格子）
-                            // 低4位: 0-3=一般, 4-7/C-F=安全(bit2), 8-B=戰鬥(bit3且非bit2)
-                            int val = attr.Attribute1 & 0x0F;
-                            bool isSafe = (val & 0x04) != 0;  // bit 2 設定 = 安全區
-                            bool isCombat = (val & 0x0C) == 0x08;  // bit 3 設定但 bit 2 未設定 = 戰鬥區
+                            // 使用 Layer3AttributeDecoder 統一處理（含例外值替換）
+                            bool isSafe = Layer3AttributeDecoder.IsSafeZone(attr.Attribute1);
+                            bool isCombat = Layer3AttributeDecoder.IsCombatZone(attr.Attribute1);
 
                             // 決定整個格子的顏色
                             Brush regionBrush = null;
@@ -14396,13 +14392,10 @@ namespace L1FlyMapViewer
                 attrText += $"(Layer1 X={x}, Y={y})\n";
                 attrText += "─────────────\n";
 
-                // Attribute1 (左上)
+                // Attribute1 (左上) - 使用 Layer3AttributeDecoder 統一處理
                 short attr1 = attr.Attribute1;
-                int low1 = attr1 & 0x0F;
-                bool pass1 = (attr1 & 0x01) == 0;
-                bool safe1 = (low1 & 0x04) != 0;
-                bool combat1 = (low1 & 0x0C) == 0x08;
-                string region1 = safe1 ? "安全" : (combat1 ? "戰鬥" : "一般");
+                bool pass1 = !Layer3AttributeDecoder.IsBlocked(attr1);
+                string region1 = Layer3AttributeDecoder.GetZoneName(attr1);
 
                 attrText += $"\n【Attr1 左上】\n";
                 attrText += $"  值: 0x{attr1:X4}\n";
@@ -14411,11 +14404,8 @@ namespace L1FlyMapViewer
 
                 // Attribute2 (右上)
                 short attr2 = attr.Attribute2;
-                int low2 = attr2 & 0x0F;
-                bool pass2 = (attr2 & 0x01) == 0;
-                bool safe2 = (low2 & 0x04) != 0;
-                bool combat2 = (low2 & 0x0C) == 0x08;
-                string region2 = safe2 ? "安全" : (combat2 ? "戰鬥" : "一般");
+                bool pass2 = !Layer3AttributeDecoder.IsBlocked(attr2);
+                string region2 = Layer3AttributeDecoder.GetZoneName(attr2);
 
                 attrText += $"\n【Attr2 右上】\n";
                 attrText += $"  值: 0x{attr2:X4}\n";
@@ -17052,31 +17042,13 @@ namespace L1FlyMapViewer
                         info.AppendLine($"  左上邊: 0x{attr.Attribute1:X4} ({attr.Attribute1})");
                         info.AppendLine($"  右上邊: 0x{attr.Attribute2:X4} ({attr.Attribute2})");
 
-                        // 左上邊標記
-                        List<string> flags1 = new List<string>();
-                        if ((attr.Attribute1 & 0x01) != 0)
-                            flags1.Add("不可通行");
-                        else
-                            flags1.Add("可通行");
-                        int val1 = attr.Attribute1 & 0x0F;
-                        if ((val1 & 0x04) != 0) flags1.Add("安全區");
-                        else if ((val1 & 0x0C) == 0x08) flags1.Add("戰鬥區");
-                        if ((attr.Attribute1 & 0x02) != 0) flags1.Add("標記2");
-                        if ((attr.Attribute1 & 0x10) != 0) flags1.Add("標記16");
-                        info.AppendLine($"  左上邊標記: {string.Join(", ", flags1)}");
+                        // 左上邊標記（使用 Layer3AttributeDecoder 統一處理例外值）
+                        string flags1Str = Layer3AttributeDecoder.GetAttributeFlags(attr.Attribute1);
+                        info.AppendLine($"  左上邊標記: {flags1Str}");
 
                         // 右上邊標記
-                        List<string> flags2 = new List<string>();
-                        if ((attr.Attribute2 & 0x01) != 0)
-                            flags2.Add("不可通行");
-                        else
-                            flags2.Add("可通行");
-                        int val2 = attr.Attribute2 & 0x0F;
-                        if ((val2 & 0x04) != 0) flags2.Add("安全區");
-                        else if ((val2 & 0x0C) == 0x08) flags2.Add("戰鬥區");
-                        if ((attr.Attribute2 & 0x02) != 0) flags2.Add("標記2");
-                        if ((attr.Attribute2 & 0x10) != 0) flags2.Add("標記16");
-                        info.AppendLine($"  右上邊標記: {string.Join(", ", flags2)}");
+                        string flags2Str = Layer3AttributeDecoder.GetAttributeFlags(attr.Attribute2);
+                        info.AppendLine($"  右上邊標記: {flags2Str}");
                         info.AppendLine($"  來源 S32: {System.IO.Path.GetFileName(s32Data.FilePath)}");
                         foundLayer3 = true;
                         break;
@@ -25203,20 +25175,18 @@ namespace L1FlyMapViewer
                         var attr = s32Data.Layer3[y, x];
                         if (attr == null || (attr.Attribute1 == 0 && attr.Attribute2 == 0)) continue;
 
-                        // 解析 Attribute1
-                        int val1 = attr.Attribute1 & 0x0F;
-                        bool pass1 = (attr.Attribute1 & 0x01) == 0;
-                        string region1 = "一般";
-                        if ((val1 & 0x04) != 0) { region1 = "安全"; safeCount++; }
-                        else if ((val1 & 0x0C) == 0x08) { region1 = "戰鬥"; combatCount++; }
+                        // 解析 Attribute1 - 使用 Layer3AttributeDecoder 統一處理
+                        bool pass1 = !Layer3AttributeDecoder.IsBlocked(attr.Attribute1);
+                        string region1 = Layer3AttributeDecoder.GetZoneName(attr.Attribute1);
+                        if (Layer3AttributeDecoder.IsSafeZone(attr.Attribute1)) safeCount++;
+                        else if (Layer3AttributeDecoder.IsCombatZone(attr.Attribute1)) combatCount++;
                         if (!pass1) impassableCount++;
 
                         // 解析 Attribute2
-                        int val2 = attr.Attribute2 & 0x0F;
-                        bool pass2 = (attr.Attribute2 & 0x01) == 0;
-                        string region2 = "一般";
-                        if ((val2 & 0x04) != 0) { region2 = "安全"; safeCount++; }
-                        else if ((val2 & 0x0C) == 0x08) { region2 = "戰鬥"; combatCount++; }
+                        bool pass2 = !Layer3AttributeDecoder.IsBlocked(attr.Attribute2);
+                        string region2 = Layer3AttributeDecoder.GetZoneName(attr.Attribute2);
+                        if (Layer3AttributeDecoder.IsSafeZone(attr.Attribute2)) safeCount++;
+                        else if (Layer3AttributeDecoder.IsCombatZone(attr.Attribute2)) combatCount++;
                         if (!pass2) impassableCount++;
 
                         totalNonZero++;

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using Eto.Drawing;
 using L1MapViewer.Compatibility;
+using L1MapViewer.Helper;
 using L1MapViewer.Models;
 
 namespace L1MapViewer.Rendering
@@ -193,9 +194,9 @@ namespace L1MapViewer.Rendering
                             {
                                 var attr = s32Data.Layer3[y, x];
 
-                                // 檢查區域類型
-                                bool isSafe = attr != null && ((attr.Attribute1 & 0x02) != 0 || (attr.Attribute2 & 0x02) != 0);
-                                bool isCombat = attr != null && ((attr.Attribute1 & 0x04) != 0 || (attr.Attribute2 & 0x04) != 0);
+                                // 使用 Layer3AttributeDecoder 統一處理（含例外值替換）
+                                bool isSafe = attr != null && (Layer3AttributeDecoder.IsSafeZone(attr.Attribute1) || Layer3AttributeDecoder.IsSafeZone(attr.Attribute2));
+                                bool isCombat = attr != null && (Layer3AttributeDecoder.IsCombatZone(attr.Attribute1) || Layer3AttributeDecoder.IsCombatZone(attr.Attribute2));
 
                                 // 根據顯示選項過濾
                                 if (isSafe && !showSafeZones) isSafe = false;
