@@ -637,6 +637,20 @@ namespace L1MapViewer.Localization
             { "Dialog_TileCleanup_Success", "Cleanup complete! Removed {0} tiles.\n\nBackup file: {1}" },
             { "Dialog_TileCleanup_Failed", "Cleanup failed: {0}" },
             { "Dialog_TileCleanup_NoClient", "Please open a Lineage client first" },
+
+            // === Export Map Image Dialog ===
+            { "ExportImage_Title", "Export Map Image" },
+            { "ExportImage_Scale", "Scale:" },
+            { "ExportImage_Format", "Image Format:" },
+            { "ExportImage_EstimatedSize", "Estimated Size:" },
+            { "ExportImage_EstimatedMemory", "Est. Memory: {0}" },
+            { "ExportImage_Pixels", "{0} x {1} pixels" },
+            { "ExportImage_Export", "Export" },
+            { "ExportImage_Exporting", "Exporting map image..." },
+            { "ExportImage_Cancelling", "Cancelling..." },
+            { "ExportImage_ExportComplete", "Export Complete" },
+            { "ExportImage_ExportedTo", "Exported to {0}\n({1} x {2} pixels)" },
+            { "Menu_File_ExportMapImage", "Export Map Image..." },
         };
     }
 }

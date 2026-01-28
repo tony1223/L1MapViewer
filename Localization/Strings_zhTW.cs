@@ -639,6 +639,20 @@ namespace L1MapViewer.Localization
             { "Dialog_TileCleanup_Success", "清理完成！已移除 {0} 個 Tile。\n\n備份檔案: {1}" },
             { "Dialog_TileCleanup_Failed", "清理失敗: {0}" },
             { "Dialog_TileCleanup_NoClient", "請先開啟天堂客戶端" },
+
+            // === Export Map Image Dialog ===
+            { "ExportImage_Title", "匯出地圖圖片" },
+            { "ExportImage_Scale", "縮放比例:" },
+            { "ExportImage_Format", "圖片格式:" },
+            { "ExportImage_EstimatedSize", "預估大小:" },
+            { "ExportImage_EstimatedMemory", "預估記憶體: {0}" },
+            { "ExportImage_Pixels", "{0} x {1} 像素" },
+            { "ExportImage_Export", "匯出" },
+            { "ExportImage_Exporting", "正在匯出地圖圖片..." },
+            { "ExportImage_Cancelling", "正在取消..." },
+            { "ExportImage_ExportComplete", "匯出完成" },
+            { "ExportImage_ExportedTo", "已匯出至 {0}\n({1} x {2} 像素)" },
+            { "Menu_File_ExportMapImage", "匯出地圖圖片..." },
         };
     }
 }

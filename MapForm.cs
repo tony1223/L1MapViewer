@@ -4286,6 +4286,110 @@ namespace L1FlyMapViewer
             ExportCurrentMapAsFs32();
         }
 
+        // 匯出地圖圖片（選單項目）
+        private void ExportMapImageMenuItem_Click(object sender, EventArgs e)
+        {
+            ExportMapAsImage();
+        }
+
+        // 匯出地圖為圖片（使用分塊渲染降低記憶體使用）
+        private async void ExportMapAsImage()
+        {
+            if (string.IsNullOrEmpty(_document.MapId) || _document.S32Files.Count == 0)
+            {
+                WinFormsMessageBox.Show(LocalizationManager.L("Message_PleaseLoadMap"), LocalizationManager.L("Title_Info"), MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            int mapWidth = _document.MapPixelWidth;
+            int mapHeight = _document.MapPixelHeight;
+
+            using (var dialog = new ExportImageDialog(mapWidth, mapHeight))
+            {
+                if (dialog.ShowDialog(this) != DialogResult.Ok)
+                    return;
+
+                float scale = dialog.Scale;
+                string format = dialog.ImageFormat;
+                string ext = format == "bmp" ? ".bmp" : ".png";
+
+                using (var saveDialog = new SaveFileDialog())
+                {
+                    if (format == "bmp")
+                    {
+                        saveDialog.Filters.Add(new FileFilter("BMP", ".bmp"));
+                    }
+                    else
+                    {
+                        saveDialog.Filters.Add(new FileFilter("PNG", ".png"));
+                    }
+                    saveDialog.FileName = $"{_document.MapId}{ext}";
+
+                    if (saveDialog.ShowDialog(this) != DialogResult.Ok)
+                        return;
+
+                    string outputPath = saveDialog.FileName;
+
+                    try
+                    {
+                        // 使用 TiledMapExporter 進行分塊匯出
+                        var exporter = new TiledMapExporter();
+                        var checkedFiles = new HashSet<string>(_document.S32Files.Keys);
+
+                        // 計算邊界
+                        var bounds = exporter.CalculateBounds(_document.S32Files, checkedFiles);
+
+                        // 計算輸出尺寸
+                        int outputWidth = (int)(bounds.ContentWidth * scale);
+                        int outputHeight = (int)(bounds.ContentHeight * scale);
+
+                        // 建立進度對話框
+                        using (var progressDialog = new ExportProgressDialog())
+                        {
+                            // 設定進度回調
+                            exporter.ProgressChanged += progress =>
+                            {
+                                progressDialog.UpdateProgress(progress);
+                            };
+
+                            // 設定匯出任務
+                            progressDialog.SetExportTask(async (cancellationToken) =>
+                            {
+                                await exporter.ExportAsync(
+                                    outputPath,
+                                    format,
+                                    outputWidth,
+                                    outputHeight,
+                                    _document.S32Files,
+                                    checkedFiles,
+                                    bounds,
+                                    cancellationToken);
+                            });
+
+                            // 顯示進度對話框並執行匯出
+                            bool success = await progressDialog.ShowAndExportAsync(this);
+
+                            if (success)
+                            {
+                                string resultMsg = LocalizationManager.L("ExportImage_ExportedTo", outputPath, outputWidth, outputHeight);
+                                toolStripStatusLabel1.Text = resultMsg.Replace("\n", " ");
+                                ShowAutoCloseMessage(resultMsg, LocalizationManager.L("ExportImage_ExportComplete"));
+                            }
+                            else
+                            {
+                                toolStripStatusLabel1.Text = "";
+                            }
+                        }
+                    }
+                    catch (System.Exception ex)
+                    {
+                        _logger.Error(ex, "匯出地圖圖片失敗");
+                        WinFormsMessageBox.Show(LocalizationManager.L("Message_ExportFailed", ex.Message), LocalizationManager.L("Title_Error"), MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    }
+                }
+            }
+        }
+
         // 顯示單點座標
         private void ShowSinglePoint(int x, int y)
         {

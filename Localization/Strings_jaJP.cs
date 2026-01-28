@@ -637,6 +637,20 @@ namespace L1MapViewer.Localization
             { "Dialog_TileCleanup_Success", "クリーンアップ完了！{0} 個のタイルを削除しました。\n\nバックアップファイル: {1}" },
             { "Dialog_TileCleanup_Failed", "クリーンアップ失敗: {0}" },
             { "Dialog_TileCleanup_NoClient", "先にリネージュクライアントを開いてください" },
+
+            // === Export Map Image Dialog ===
+            { "ExportImage_Title", "マップ画像をエクスポート" },
+            { "ExportImage_Scale", "拡大率:" },
+            { "ExportImage_Format", "画像形式:" },
+            { "ExportImage_EstimatedSize", "推定サイズ:" },
+            { "ExportImage_EstimatedMemory", "推定メモリ: {0}" },
+            { "ExportImage_Pixels", "{0} x {1} ピクセル" },
+            { "ExportImage_Export", "エクスポート" },
+            { "ExportImage_Exporting", "マップ画像をエクスポート中..." },
+            { "ExportImage_Cancelling", "キャンセル中..." },
+            { "ExportImage_ExportComplete", "エクスポート完了" },
+            { "ExportImage_ExportedTo", "{0} にエクスポートしました\n({1} x {2} ピクセル)" },
+            { "Menu_File_ExportMapImage", "マップ画像をエクスポート..." },
         };
     }
 }

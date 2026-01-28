@@ -53,6 +53,7 @@ namespace L1FlyMapViewer
             importFs32ToNewMapToolStripMenuItem.Text = LocalizationManager.L("Menu_Import_Fs32ToNewMap");
             menuSaveS32.Text = LocalizationManager.L("Menu_File_Save");
             menuExportFs32.Text = LocalizationManager.L("Menu_File_ExportFs32");
+            menuExportMapImage.Text = LocalizationManager.L("Menu_File_ExportMapImage");
             exportToolStripMenuItem.Text = LocalizationManager.L("Menu_Export_ServerPassability");
             exportL1JToolStripMenuItem.Text = LocalizationManager.L("Menu_Export_L1JFormat");
             exportDIRToolStripMenuItem.Text = LocalizationManager.L("Menu_Export_DIRFormat");

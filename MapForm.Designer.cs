@@ -27,6 +27,7 @@ namespace L1FlyMapViewer
         private ToolStripMenuItem importFs32ToNewMapToolStripMenuItem;
         private ToolStripMenuItem menuSaveS32;
         private ToolStripMenuItem menuExportFs32;
+        private ToolStripMenuItem menuExportMapImage;
         private ToolStripMenuItem exportToolStripMenuItem;
         private ToolStripMenuItem exportL1JToolStripMenuItem;
         private ToolStripMenuItem exportDIRToolStripMenuItem;
@@ -228,6 +229,7 @@ namespace L1FlyMapViewer
             this.importFs32ToNewMapToolStripMenuItem = new ToolStripMenuItem();
             this.menuSaveS32 = new ToolStripMenuItem();
             this.menuExportFs32 = new ToolStripMenuItem();
+            this.menuExportMapImage = new ToolStripMenuItem();
             this.exportToolStripMenuItem = new ToolStripMenuItem();
             this.exportL1JToolStripMenuItem = new ToolStripMenuItem();
             this.exportDIRToolStripMenuItem = new ToolStripMenuItem();
@@ -445,6 +447,7 @@ namespace L1FlyMapViewer
                 new ToolStripSeparator(),
                 this.menuSaveS32,
                 this.menuExportFs32,
+                this.menuExportMapImage,
                 this.exportToolStripMenuItem,
                 new ToolStripSeparator(),
                 this.menuExit
@@ -472,6 +475,10 @@ namespace L1FlyMapViewer
             this.menuExportFs32.SetName("menuExportFs32");
             this.menuExportFs32.Text = "匯出 FS32 地圖包...";
             this.menuExportFs32.Click += new System.EventHandler(this.ExportFs32MenuItem_Click);
+
+            this.menuExportMapImage.SetName("menuExportMapImage");
+            this.menuExportMapImage.Text = "匯出地圖圖片...";
+            this.menuExportMapImage.Click += new System.EventHandler(this.ExportMapImageMenuItem_Click);
 
             this.exportToolStripMenuItem.SetName("exportToolStripMenuItem");
             this.exportToolStripMenuItem.Text = "匯出通行資料";

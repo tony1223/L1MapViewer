@@ -1308,5 +1308,158 @@ namespace L1MapViewer.Helper
             TileProvider.Instance.ClearCache();
             _tileColorCache.Clear();
         }
+
+        /// <summary>
+        /// 渲染指定世界座標範圍的區域（用於分塊匯出）
+        /// </summary>
+        /// <param name="worldX">世界座標 X 起點</param>
+        /// <param name="worldY">世界座標 Y 起點</param>
+        /// <param name="worldWidth">世界座標寬度</param>
+        /// <param name="worldHeight">世界座標高度</param>
+        /// <param name="outputWidth">輸出 bitmap 寬度</param>
+        /// <param name="outputHeight">輸出 bitmap 高度</param>
+        /// <param name="s32Files">S32 檔案字典</param>
+        /// <param name="checkedFiles">要渲染的 S32 檔案集合</param>
+        /// <returns>渲染後的 SKBitmap</returns>
+        public SKBitmap RenderRegion(
+            int worldX, int worldY,
+            int worldWidth, int worldHeight,
+            int outputWidth, int outputHeight,
+            Dictionary<string, S32Data> s32Files,
+            HashSet<string> checkedFiles)
+        {
+            // 計算縮放比例
+            float scaleX = (float)outputWidth / worldWidth;
+            float scaleY = (float)outputHeight / worldHeight;
+            float scale = Math.Min(scaleX, scaleY);
+
+            // 建立輸出 bitmap
+            var bitmap = new SKBitmap(outputWidth, outputHeight, SKColorType.Rgb565, SKAlphaType.Opaque);
+
+            // 找出與此區域相交的 S32 區塊
+            var intersectingBlocks = new List<(S32Data s32Data, int offsetX, int offsetY)>();
+
+            foreach (var kvp in s32Files)
+            {
+                if (!checkedFiles.Contains(kvp.Key)) continue;
+
+                var s32Data = kvp.Value;
+                if (BlockIntersectsRegion(s32Data, worldX, worldY, worldWidth, worldHeight))
+                {
+                    int[] loc = s32Data.SegInfo.GetLoc(1.0);
+                    // 計算相對於渲染區域的偏移
+                    intersectingBlocks.Add((s32Data, loc[0] - worldX, loc[1] - worldY));
+                }
+            }
+
+            if (intersectingBlocks.Count == 0)
+            {
+                return bitmap;
+            }
+
+            // 收集此區域內的 Tile
+            var regionTiles = new List<(int pixelX, int pixelY, int layer, int tileId, int indexId)>();
+
+            foreach (var (s32Data, offsetX, offsetY) in intersectingBlocks)
+            {
+                // Layer 1 (地板)
+                for (int y = 0; y < 64; y++)
+                {
+                    for (int x = 0; x < 128; x++)
+                    {
+                        var cell = s32Data.Layer1[y, x];
+                        if (cell != null && cell.TileId >= 0)
+                        {
+                            int halfX = x / 2;
+                            int baseX = -24 * halfX;
+                            int baseY = 63 * 12 - 12 * halfX;
+                            int pixelX = offsetX + baseX + x * 24 + y * 24;
+                            int pixelY = offsetY + baseY + y * 12;
+
+                            // 過濾不在渲染區域內的 Tile（考慮 Tile 大小約 48x24）
+                            if (pixelX + 48 >= 0 && pixelX < worldWidth &&
+                                pixelY + 24 >= 0 && pixelY < worldHeight)
+                            {
+                                regionTiles.Add((pixelX, pixelY, -2, cell.TileId, cell.IndexId));
+                            }
+                        }
+                    }
+                }
+
+                // Layer 2
+                foreach (var item in s32Data.Layer2)
+                {
+                    if (item.TileId >= 0)
+                    {
+                        int x = item.X;
+                        int y = item.Y;
+                        int halfX = x / 2;
+                        int baseX = -24 * halfX;
+                        int baseY = 63 * 12 - 12 * halfX;
+                        int pixelX = offsetX + baseX + x * 24 + y * 24;
+                        int pixelY = offsetY + baseY + y * 12;
+
+                        if (pixelX + 48 >= 0 && pixelX < worldWidth &&
+                            pixelY + 24 >= 0 && pixelY < worldHeight)
+                        {
+                            regionTiles.Add((pixelX, pixelY, -1, item.TileId, item.IndexId));
+                        }
+                    }
+                }
+
+                // Layer 4 (物件)
+                foreach (var obj in s32Data.Layer4)
+                {
+                    int halfX = obj.X / 2;
+                    int baseX = -24 * halfX;
+                    int baseY = 63 * 12 - 12 * halfX;
+                    int pixelX = offsetX + baseX + obj.X * 24 + obj.Y * 24;
+                    int pixelY = offsetY + baseY + obj.Y * 12;
+
+                    // 物件可能較大，使用更寬鬆的過濾
+                    if (pixelX + 200 >= 0 && pixelX < worldWidth &&
+                        pixelY + 200 >= 0 && pixelY < worldHeight)
+                    {
+                        regionTiles.Add((pixelX, pixelY, obj.Layer, obj.TileId, obj.IndexId));
+                    }
+                }
+            }
+
+            // 按 Layer 排序
+            var sortedTiles = regionTiles.OrderBy(t => t.layer).ToList();
+
+            // 渲染到 bitmap
+            int rowBytes = bitmap.RowBytes;
+            unsafe
+            {
+                byte* ptr = (byte*)bitmap.GetPixels().ToPointer();
+
+                foreach (var tile in sortedTiles)
+                {
+                    // 將世界座標轉換為輸出座標
+                    int outX = (int)(tile.pixelX * scale);
+                    int outY = (int)(tile.pixelY * scale);
+
+                    DrawTilToBufferDirectSK(outX, outY, tile.tileId, tile.indexId,
+                        rowBytes, ptr, outputWidth, outputHeight);
+                }
+            }
+
+            return bitmap;
+        }
+
+        /// <summary>
+        /// 判斷 S32 區塊是否與指定區域相交（AABB 碰撞檢測）
+        /// </summary>
+        private bool BlockIntersectsRegion(S32Data s32, int rx, int ry, int rw, int rh)
+        {
+            int[] loc = s32.SegInfo.GetLoc(1.0);
+            int bx = loc[0], by = loc[1];
+            int bw = BlockWidth, bh = BlockHeight;
+
+            // AABB 碰撞：任一邊完全在另一個區域外則不相交
+            return !(bx + bw <= rx || bx >= rx + rw ||
+                     by + bh <= ry || by >= ry + rh);
+        }
     }
 }

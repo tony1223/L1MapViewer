@@ -637,6 +637,20 @@ namespace L1MapViewer.Localization
             { "Dialog_TileCleanup_Success", "정리 완료! {0}개의 타일을 제거했습니다.\n\n백업 파일: {1}" },
             { "Dialog_TileCleanup_Failed", "정리 실패: {0}" },
             { "Dialog_TileCleanup_NoClient", "먼저 리니지 클라이언트를 열어주세요" },
+
+            // === Export Map Image Dialog ===
+            { "ExportImage_Title", "맵 이미지 내보내기" },
+            { "ExportImage_Scale", "배율:" },
+            { "ExportImage_Format", "이미지 형식:" },
+            { "ExportImage_EstimatedSize", "예상 크기:" },
+            { "ExportImage_EstimatedMemory", "예상 메모리: {0}" },
+            { "ExportImage_Pixels", "{0} x {1} 픽셀" },
+            { "ExportImage_Export", "내보내기" },
+            { "ExportImage_Exporting", "맵 이미지 내보내는 중..." },
+            { "ExportImage_Cancelling", "취소 중..." },
+            { "ExportImage_ExportComplete", "내보내기 완료" },
+            { "ExportImage_ExportedTo", "{0}에 내보냈습니다\n({1} x {2} 픽셀)" },
+            { "Menu_File_ExportMapImage", "맵 이미지 내보내기..." },
         };
     }
 }
