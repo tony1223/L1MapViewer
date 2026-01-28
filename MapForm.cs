@@ -7160,7 +7160,11 @@ namespace L1FlyMapViewer
             if (_editState.SelectedCells.Count == 0) return;
 
             int count = 0;
+            int skippedCount = 0;  // 因為沒有主要 S32 而跳過的格子數
             HashSet<S32Data> modifiedS32s = new HashSet<S32Data>();
+
+            // 追蹤已處理的遊戲座標，避免重複處理
+            var processedCoords = new HashSet<(int gameX, int gameY)>();
 
             foreach (var cell in _editState.SelectedCells)
             {
@@ -7170,26 +7174,61 @@ namespace L1FlyMapViewer
                 int gameX = cell.S32Data.SegInfo.nLinBeginX + cell.LocalX / 2;
                 int gameY = cell.S32Data.SegInfo.nLinBeginY + cell.LocalY;
 
-                // 確保 MarketRegion 存在，如不存在則建立
-                if (cell.S32Data.MarketRegion == null)
+                // 避免重複處理同一個遊戲座標
+                if (!processedCoords.Add((gameX, gameY)))
+                    continue;
+
+                // 找到「主要 S32」：遊戲座標落在 [nLinBeginX, nLinBeginX+63] 範圍內的 S32
+                // MarketRegion 只有 64x64 範圍，不支援擴展區域
+                _logger.Debug($"[MarketRegion] 查找主要 S32: gameCoord=({gameX}, {gameY}), S32Files.Count={_document.S32Files.Count}");
+                var primaryS32 = CoordinateHelper.GetPrimaryS32ByGameCoords(gameX, gameY, _document.S32Files.Values);
+
+                if (primaryS32 == null)
                 {
-                    // 從 SegInfo 取得 block 座標
-                    int blockX = cell.S32Data.SegInfo.nBlockX;
-                    int blockY = cell.S32Data.SegInfo.nBlockY;
-                    cell.S32Data.MarketRegion = Lin.Helper.Core.Map.L1MapMarketRegion.Create(blockX, blockY, "MarketRegion");
+                    // 座標在擴展區域，沒有對應的主要 S32 檔案
+                    _logger.Warn($"[MarketRegion] 找不到主要 S32 for gameCoord ({gameX}, {gameY}) - 座標在擴展區域");
+                    // 輸出所有 S32 的範圍以便診斷
+                    foreach (var s32 in _document.S32Files.Values.Take(5))
+                    {
+                        if (s32?.SegInfo != null)
+                        {
+                            _logger.Debug($"  S32: {Path.GetFileName(s32.FilePath)}, nLinBegin=({s32.SegInfo.nLinBeginX}, {s32.SegInfo.nLinBeginY})");
+                        }
+                    }
+                    skippedCount++;
+                    continue;
+                }
+
+                _logger.Debug($"[MarketRegion] 找到主要 S32: {Path.GetFileName(primaryS32.FilePath)}, nLinBegin=({primaryS32.SegInfo.nLinBeginX}, {primaryS32.SegInfo.nLinBeginY})");
+
+                // 確保 MarketRegion 存在，如不存在則建立
+                if (primaryS32.MarketRegion == null)
+                {
+                    int blockX = primaryS32.SegInfo.nBlockX;
+                    int blockY = primaryS32.SegInfo.nBlockY;
+                    _logger.Debug($"[MarketRegion] 建立新的 MarketRegion: blockX={blockX:X4}, blockY={blockY:X4}");
+                    primaryS32.MarketRegion = Lin.Helper.Core.Map.L1MapMarketRegion.Create(blockX, blockY, "MarketRegion");
                 }
 
                 // 設定可開店區
-                bool success = cell.S32Data.MarketRegion.SetInRegion(gameX, gameY, setAsMarket);
+                bool success = primaryS32.MarketRegion.SetInRegion(gameX, gameY, setAsMarket);
+                _logger.Debug($"[MarketRegion] SetInRegion({gameX}, {gameY}, {setAsMarket}) = {success}");
                 if (success)
                 {
-                    modifiedS32s.Add(cell.S32Data);
+                    modifiedS32s.Add(primaryS32);
                     count++;
                 }
             }
 
             string action = setAsMarket ? LocalizationManager.L("Action_SetMarketRegion") : LocalizationManager.L("Action_ClearMarketRegion");
-            this.toolStripStatusLabel1.Text = $"{action}: {count}";
+            if (skippedCount > 0)
+            {
+                this.toolStripStatusLabel1.Text = $"{action}: {count} (跳過 {skippedCount} 格 - 無對應 S32)";
+            }
+            else
+            {
+                this.toolStripStatusLabel1.Text = $"{action}: {count}";
+            }
 
             // 清除選取區域
             _editState.SelectedCells.Clear();

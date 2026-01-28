@@ -57,7 +57,7 @@
       <PackageReference Include="SkiaSharp.NativeAssets.macOS" Version="3.119.1" Condition="$([MSBuild]::IsOSPlatform('OSX'))" />
 
       <!-- Existing dependencies -->
-      <PackageReference Include="Lin.Helper.Core" Version="1.4.0" />
+      <PackageReference Include="Lin.Helper.Core" Version="1.4.2" />
       <PackageReference Include="System.Text.Encoding.CodePages" Version="9.0.0" />
       <!-- Settings support for non-Windows platforms -->
       <PackageReference Include="System.Configuration.ConfigurationManager" Version="9.0.0" Condition="!$([MSBuild]::IsOSPlatform('Windows'))" />

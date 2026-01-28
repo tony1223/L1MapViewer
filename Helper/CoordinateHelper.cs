@@ -12,16 +12,38 @@ namespace L1MapViewer.Helper
     public class CoordinateHelper
     {
         /// <summary>
-        /// 根據遊戲座標找到對應的 S32Data
+        /// 根據遊戲座標找到對應的 S32Data（包含擴展區域）
         /// </summary>
         public static S32Data? GetS32DataByGameCoords(int gameX, int gameY, Dictionary<string, S32Data> allS32DataDict)
         {
             foreach (var s32Data in allS32DataDict.Values)
             {
-                // 使用 ContainsGameCoord 檢查實際邊界
+                // 使用 ContainsGameCoord 檢查實際邊界（包含擴展區域）
                 if (s32Data.ContainsGameCoord(gameX, gameY))
                 {
                     return s32Data;
+                }
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// 根據遊戲座標找到「主要 S32」（只檢查標準 64x64 範圍，不含擴展區域）
+        /// 用於 MarketRegion 等只支援 64x64 範圍的功能
+        /// </summary>
+        public static S32Data? GetPrimaryS32ByGameCoords(int gameX, int gameY, IEnumerable<S32Data> s32Files)
+        {
+            foreach (var s32 in s32Files)
+            {
+                if (s32?.SegInfo == null) continue;
+
+                int localX = gameX - s32.SegInfo.nLinBeginX;
+                int localY = gameY - s32.SegInfo.nLinBeginY;
+
+                // 只檢查主要範圍 (0-63)，不含擴展區域
+                if (localX >= 0 && localX < 64 && localY >= 0 && localY < 64)
+                {
+                    return s32;
                 }
             }
             return null;
