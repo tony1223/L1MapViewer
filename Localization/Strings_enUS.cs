@@ -99,10 +99,11 @@ namespace L1MapViewer.Localization
             { "Button_CopySettings", "Copy Settings" },
             { "Button_CopyMapCoords", "Copy Coordinates" },
             { "Button_ImportFs32", "Import Map Pack" },
-            { "Button_EditPassable", "Edit Passable" },
-            { "Button_EditLayer5", "Edit Transparency" },
-            { "Button_RegionEdit", "Region Edit" },
-            { "Button_MarketRegionEdit", "Market Zone" },
+            { "Label_RegionEdit", "Region Edit:" },
+            { "Button_EditPassable", "Pass" },
+            { "Button_EditLayer5", "Transp" },
+            { "Button_RegionEdit", "Safe/Combat" },
+            { "Button_MarketRegionEdit", "Market" },
             { "Button_MergeL2ToL1", "Merge L2 to L1" },
 
             // === Market Region Edit ===

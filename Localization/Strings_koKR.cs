@@ -99,10 +99,11 @@ namespace L1MapViewer.Localization
             { "Button_CopySettings", "설정 복사" },
             { "Button_CopyMapCoords", "좌표 복사" },
             { "Button_ImportFs32", "맵 팩 가져오기" },
-            { "Button_EditPassable", "통행 편집" },
-            { "Button_EditLayer5", "투명도 편집" },
-            { "Button_RegionEdit", "영역 편집" },
-            { "Button_MarketRegionEdit", "노점 구역" },
+            { "Label_RegionEdit", "영역 편집:" },
+            { "Button_EditPassable", "통행" },
+            { "Button_EditLayer5", "투명" },
+            { "Button_RegionEdit", "안전/전투" },
+            { "Button_MarketRegionEdit", "노점" },
             { "Button_MergeL2ToL1", "L2를 L1에 병합" },
 
             // === Market Region Edit ===

@@ -196,6 +196,7 @@ namespace L1FlyMapViewer
         private Button btnEditPassable;
         private Button btnEditLayer5;
         private Button btnMergeL2ToL1;
+        private Label lblRegionEdit;
         private Button btnSaveS32;
         private Button btnReloadMap;
         private Button btnAnalyzeAttr;
@@ -381,6 +382,7 @@ namespace L1FlyMapViewer
             this.btnEditPassable = new Button();
             this.btnEditLayer5 = new Button();
             this.btnMergeL2ToL1 = new Button();
+            this.lblRegionEdit = new Label();
             this.btnSaveS32 = new Button();
             this.btnReloadMap = new Button();
             this.btnAnalyzeAttr = new Button();
@@ -1205,59 +1207,69 @@ namespace L1FlyMapViewer
             this.btnImportFs32.Click += new System.EventHandler(this.btnImportFs32_Click);
 
             //
+            // lblRegionEdit
+            //
+            this.lblRegionEdit.SetAutoSize(true);
+            this.lblRegionEdit.SetLocation(new Point(10, 40));
+            this.lblRegionEdit.SetName("lblRegionEdit");
+            this.lblRegionEdit.Size = new Size(60, 15);
+            this.lblRegionEdit.TabIndex = 18;
+            this.lblRegionEdit.Text = "區域編輯:";
+
+            //
             // btnEditPassable
             //
-            this.btnEditPassable.SetLocation(new Point(10, 35));
+            this.btnEditPassable.SetLocation(new Point(80, 35));
             this.btnEditPassable.SetName("btnEditPassable");
-            this.btnEditPassable.Size = new Size(80, 25);
+            this.btnEditPassable.Size = new Size(55, 25);
             this.btnEditPassable.TabIndex = 9;
-            this.btnEditPassable.Text = "通行編輯";
+            this.btnEditPassable.Text = "通行";
             this.btnEditPassable.SetUseVisualStyleBackColor(true);
             this.btnEditPassable.Click += new System.EventHandler(this.btnEditPassable_Click);
 
             //
             // btnEditLayer5
             //
-            this.btnEditLayer5.SetLocation(new Point(100, 35));
+            this.btnEditLayer5.SetLocation(new Point(140, 35));
             this.btnEditLayer5.SetName("btnEditLayer5");
-            this.btnEditLayer5.Size = new Size(80, 25);
+            this.btnEditLayer5.Size = new Size(65, 25);
             this.btnEditLayer5.TabIndex = 14;
-            this.btnEditLayer5.Text = "透明編輯";
+            this.btnEditLayer5.Text = "半透明";
             this.btnEditLayer5.SetUseVisualStyleBackColor(true);
             this.btnEditLayer5.Click += new System.EventHandler(this.btnEditLayer5_Click);
 
             //
-            // btnMergeL2ToL1
-            //
-            this.btnMergeL2ToL1.SetLocation(new Point(190, 35));
-            this.btnMergeL2ToL1.SetName("btnMergeL2ToL1");
-            this.btnMergeL2ToL1.Size = new Size(80, 25);
-            this.btnMergeL2ToL1.TabIndex = 16;
-            this.btnMergeL2ToL1.Text = "L2合併L1";
-            this.btnMergeL2ToL1.SetUseVisualStyleBackColor(true);
-            this.btnMergeL2ToL1.Click += new System.EventHandler(this.btnMergeL2ToL1_Click);
-
-            //
             // btnRegionEdit
             //
-            this.btnRegionEdit.SetLocation(new Point(280, 35));
+            this.btnRegionEdit.SetLocation(new Point(210, 35));
             this.btnRegionEdit.SetName("btnRegionEdit");
-            this.btnRegionEdit.Size = new Size(80, 25);
+            this.btnRegionEdit.Size = new Size(90, 25);
             this.btnRegionEdit.TabIndex = 15;
-            this.btnRegionEdit.Text = "戰鬥區域";
+            this.btnRegionEdit.Text = "安全/戰鬥區";
             this.btnRegionEdit.SetUseVisualStyleBackColor(true);
             this.btnRegionEdit.Click += new System.EventHandler(this.btnRegionEdit_Click);
 
             //
             // btnMarketRegionEdit
             //
-            this.btnMarketRegionEdit.SetLocation(new Point(370, 35));
+            this.btnMarketRegionEdit.SetLocation(new Point(305, 35));
             this.btnMarketRegionEdit.SetName("btnMarketRegionEdit");
-            this.btnMarketRegionEdit.Size = new Size(80, 25);
+            this.btnMarketRegionEdit.Size = new Size(75, 25);
             this.btnMarketRegionEdit.TabIndex = 17;
             this.btnMarketRegionEdit.Text = "可開店區";
             this.btnMarketRegionEdit.SetUseVisualStyleBackColor(true);
             this.btnMarketRegionEdit.Click += new System.EventHandler(this.btnMarketRegionEdit_Click);
+
+            //
+            // btnMergeL2ToL1
+            //
+            this.btnMergeL2ToL1.SetLocation(new Point(385, 35));
+            this.btnMergeL2ToL1.SetName("btnMergeL2ToL1");
+            this.btnMergeL2ToL1.Size = new Size(80, 25);
+            this.btnMergeL2ToL1.TabIndex = 16;
+            this.btnMergeL2ToL1.Text = "L2合併L1";
+            this.btnMergeL2ToL1.SetUseVisualStyleBackColor(true);
+            this.btnMergeL2ToL1.Click += new System.EventHandler(this.btnMergeL2ToL1_Click);
 
             //
             // btnSaveS32

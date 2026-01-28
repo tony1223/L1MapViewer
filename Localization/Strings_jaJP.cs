@@ -99,10 +99,11 @@ namespace L1MapViewer.Localization
             { "Button_CopySettings", "設定をコピー" },
             { "Button_CopyMapCoords", "座標をコピー" },
             { "Button_ImportFs32", "マップパックをインポート" },
-            { "Button_EditPassable", "通行編集" },
-            { "Button_EditLayer5", "半透明編集" },
-            { "Button_RegionEdit", "領域編集" },
-            { "Button_MarketRegionEdit", "露店エリア" },
+            { "Label_RegionEdit", "領域編集:" },
+            { "Button_EditPassable", "通行" },
+            { "Button_EditLayer5", "半透明" },
+            { "Button_RegionEdit", "安全/戦闘" },
+            { "Button_MarketRegionEdit", "露店" },
             { "Button_MergeL2ToL1", "L2をL1に統合" },
 
             // === Market Region Edit ===

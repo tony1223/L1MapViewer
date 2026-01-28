@@ -694,17 +694,19 @@ namespace L1FlyMapViewer
             toolRow1.Items.Add(btnCopySettings);
             toolRow1.Items.Add(btnCopyMapCoords);
             toolRow1.Items.Add(btnImportFs32);
+            toolRow1.Items.Add(btnMergeL2ToL1);
 
-            // 工具列按鈕 Row 2
+            // 工具列按鈕 Row 2: 區域編輯: [通行] [半透明] [安全/戰鬥區] [可開店區]
             var toolRow2 = new Eto.Forms.StackLayout
             {
                 Orientation = Eto.Forms.Orientation.Horizontal,
                 Spacing = 5,
-                Padding = new Eto.Drawing.Padding(5, 0, 5, 5)
+                Padding = new Eto.Drawing.Padding(5, 0, 5, 5),
+                VerticalContentAlignment = Eto.Forms.VerticalAlignment.Center
             };
+            toolRow2.Items.Add(lblRegionEdit);
             toolRow2.Items.Add(btnEditPassable);
             toolRow2.Items.Add(btnEditLayer5);
-            toolRow2.Items.Add(btnMergeL2ToL1);
             toolRow2.Items.Add(btnRegionEdit);
             toolRow2.Items.Add(btnMarketRegionEdit);
 

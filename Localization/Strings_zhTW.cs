@@ -99,9 +99,10 @@ namespace L1MapViewer.Localization
             { "Button_CopySettings", "複製設定" },
             { "Button_CopyMapCoords", "複製座標" },
             { "Button_ImportFs32", "匯入地圖包" },
-            { "Button_EditPassable", "通行編輯" },
-            { "Button_EditLayer5", "編輯半透明" },
-            { "Button_RegionEdit", "區域編輯" },
+            { "Label_RegionEdit", "區域編輯:" },
+            { "Button_EditPassable", "通行" },
+            { "Button_EditLayer5", "半透明" },
+            { "Button_RegionEdit", "安全/戰鬥區" },
             { "Button_MarketRegionEdit", "可開店區" },
             { "Button_MergeL2ToL1", "L2合併L1" },
 

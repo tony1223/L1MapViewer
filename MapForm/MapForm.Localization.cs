@@ -125,6 +125,7 @@ namespace L1FlyMapViewer
             btnCopySettings.Text = LocalizationManager.L("Button_CopySettings");
             btnCopyMapCoords.Text = LocalizationManager.L("Button_CopyMapCoords");
             btnImportFs32.Text = LocalizationManager.L("Button_ImportFs32");
+            lblRegionEdit.Text = LocalizationManager.L("Label_RegionEdit");
             btnEditPassable.Text = LocalizationManager.L("Button_EditPassable");
             btnEditLayer5.Text = LocalizationManager.L("Button_EditLayer5");
             btnRegionEdit.Text = LocalizationManager.L("Button_RegionEdit");
