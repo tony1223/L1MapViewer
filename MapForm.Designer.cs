@@ -32,6 +32,7 @@ namespace L1FlyMapViewer
         private ToolStripMenuItem exportDIRToolStripMenuItem;
         private ToolStripMenuItem exportAllL1JToolStripMenuItem;
         private ToolStripMenuItem exportAllDIRToolStripMenuItem;
+        private ToolStripMenuItem menuExportMapImage;
         private ToolStripMenuItem menuExit;
 
         // 編輯選單項目
@@ -238,6 +239,7 @@ namespace L1FlyMapViewer
             this.exportDIRToolStripMenuItem = new ToolStripMenuItem();
             this.exportAllL1JToolStripMenuItem = new ToolStripMenuItem();
             this.exportAllDIRToolStripMenuItem = new ToolStripMenuItem();
+            this.menuExportMapImage = new ToolStripMenuItem();
             this.menuExit = new ToolStripMenuItem();
 
             // 編輯選單項目
@@ -454,6 +456,7 @@ namespace L1FlyMapViewer
                 this.menuSaveS32,
                 this.menuExportFs32,
                 this.exportToolStripMenuItem,
+                this.menuExportMapImage,
                 new ToolStripSeparator(),
                 this.menuExit
             });
@@ -506,6 +509,10 @@ namespace L1FlyMapViewer
             this.exportAllDIRToolStripMenuItem.SetName("exportAllDIRToolStripMenuItem");
             this.exportAllDIRToolStripMenuItem.Text = "輸出所有地圖 (DIR)";
             this.exportAllDIRToolStripMenuItem.Click += new System.EventHandler(this.exportAllDIRToolStripMenuItem_Click);
+
+            this.menuExportMapImage.SetName("menuExportMapImage");
+            this.menuExportMapImage.Text = "輸出地圖圖片...";
+            this.menuExportMapImage.Click += new System.EventHandler(this.menuExportMapImage_Click);
 
             this.menuExit.SetName("menuExit");
             this.menuExit.Text = "結束";

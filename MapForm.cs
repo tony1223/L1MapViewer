@@ -4267,6 +4267,21 @@ namespace L1FlyMapViewer
             ExportCurrentMapAsFs32();
         }
 
+        // 輸出地圖圖片（選單項目）
+        private void menuExportMapImage_Click(object sender, EventArgs e)
+        {
+            try
+            {
+                var dialog = new L1MapViewer.Forms.MapExportDialog(_document);
+                dialog.ShowDialog(this);
+            }
+            catch (Exception ex)
+            {
+                _logger.Error(ex, "[MapForm] Failed to show MapExportDialog");
+                WinFormsMessageBox.Show($"無法開啟輸出對話框: {ex.Message}", "錯誤", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
         // 顯示單點座標
         private void ShowSinglePoint(int x, int y)
         {
