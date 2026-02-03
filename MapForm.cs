@@ -26405,6 +26405,51 @@ namespace L1FlyMapViewer
             resultForm.Show();
         }
 
+        /// <summary>
+        /// 地圖驗證結果
+        /// </summary>
+        private class MapValidationResult
+        {
+            public List<(string filePath, string fileName, Layer5Item item, int itemIndex, string reason)> InvalidL5Items { get; set; }
+            public List<InvalidTileInfo> InvalidTileItems { get; set; }
+            public List<(string filePath, string fileName, int layer8Count)> Layer8ExtendedS32 { get; set; }
+            public List<int> OverLimitTileIds { get; set; }
+            public int TileLimit { get; set; }
+            public int MaxTileId { get; set; }
+            public List<(string filePath, string fileName, Layer5Item item, int itemIndex)> InvalidL5TypeItems { get; set; }
+            public List<TileIntegrityChecker.TileCheckResult> CorruptedTiles { get; set; }
+            public List<(string filePath, string fileName, int minGroupId, int maxGroupId, List<int> missingIds)> DiscontinuousGroupIds { get; set; }
+
+            public int TotalIssueCount =>
+                (InvalidL5Items?.Count ?? 0) +
+                (InvalidTileItems?.Count ?? 0) +
+                (Layer8ExtendedS32?.Count ?? 0) +
+                (OverLimitTileIds?.Count ?? 0) +
+                (InvalidL5TypeItems?.Count ?? 0) +
+                (CorruptedTiles?.Count ?? 0) +
+                (DiscontinuousGroupIds?.Count ?? 0);
+
+            public bool HasIssues => TotalIssueCount > 0;
+        }
+
+        /// <summary>
+        /// 執行所有地圖驗證檢查
+        /// </summary>
+        private MapValidationResult RunAllValidationChecks()
+        {
+            var result = new MapValidationResult();
+
+            result.InvalidL5Items = GetInvalidLayer5Items();
+            result.InvalidTileItems = GetInvalidTileIds();
+            result.Layer8ExtendedS32 = GetLayer8ExtendedS32Files();
+            (result.OverLimitTileIds, result.TileLimit, result.MaxTileId) = GetAllOverLimitTileIds();
+            result.InvalidL5TypeItems = GetInvalidLayer5TypeItems();
+            result.CorruptedTiles = GetCorruptedTiles();
+            result.DiscontinuousGroupIds = GetDiscontinuousGroupIds();
+
+            return result;
+        }
+
         // 檢查 Layer5 異常並更新按鈕顯示狀態（異步版本，不阻塞 UI）
         private void UpdateMapValidateButton()
         {
@@ -26414,49 +26459,39 @@ namespace L1FlyMapViewer
             Task.Run(() =>
             {
                 var totalSw = Stopwatch.StartNew();
-
-                var sw1 = Stopwatch.StartNew();
-                var invalidL5Items = GetInvalidLayer5Items();
-                sw1.Stop();
-
-                var sw2 = Stopwatch.StartNew();
-                var invalidTileItems = GetInvalidTileIds();
-                sw2.Stop();
-
-                var sw3 = Stopwatch.StartNew();
-                var layer8ExtendedS32 = GetLayer8ExtendedS32Files();
-                sw3.Stop();
-
-                var sw4 = Stopwatch.StartNew();
-                var (overLimitTileIds, tileLimit, maxTileId) = GetAllOverLimitTileIds();
-                sw4.Stop();
-
-                var sw5 = Stopwatch.StartNew();
-                var invalidL5TypeItems = GetInvalidLayer5TypeItems();
-                sw5.Stop();
-
+                var validationResult = RunAllValidationChecks();
                 totalSw.Stop();
 
-                int totalInvalid = invalidL5Items.Count + invalidTileItems.Count + layer8ExtendedS32.Count + overLimitTileIds.Count + invalidL5TypeItems.Count;
-                Console.WriteLine($"[MapValidate] Total: {totalSw.ElapsedMilliseconds}ms | L5Check: {sw1.ElapsedMilliseconds}ms ({invalidL5Items.Count}) | TileValidate: {sw2.ElapsedMilliseconds}ms ({invalidTileItems.Count}) | L8Ext: {sw3.ElapsedMilliseconds}ms ({layer8ExtendedS32.Count}) | OverLimit: {sw4.ElapsedMilliseconds}ms ({overLimitTileIds.Count}) | L5Type: {sw5.ElapsedMilliseconds}ms ({invalidL5TypeItems.Count})");
+                Console.WriteLine($"[MapValidate] Total: {totalSw.ElapsedMilliseconds}ms | " +
+                    $"L5: {validationResult.InvalidL5Items.Count}, " +
+                    $"Tile: {validationResult.InvalidTileItems.Count}, " +
+                    $"L8Ext: {validationResult.Layer8ExtendedS32.Count}, " +
+                    $"OverLimit: {validationResult.OverLimitTileIds.Count}, " +
+                    $"L5Type: {validationResult.InvalidL5TypeItems.Count}, " +
+                    $"Corrupted: {validationResult.CorruptedTiles.Count}, " +
+                    $"GroupId: {validationResult.DiscontinuousGroupIds.Count}");
 
                 // 回到 UI 執行緒更新按鈕
                 this.BeginInvoke((MethodInvoker)delegate
                 {
-                    btnMapValidate.Visible = totalInvalid > 0;
-                    if (totalInvalid > 0)
+                    btnMapValidate.Visible = validationResult.HasIssues;
+                    if (validationResult.HasIssues)
                     {
                         var tooltipParts = new List<string>();
-                        if (invalidL5Items.Count > 0)
-                            tooltipParts.Add($"Layer5異常: {invalidL5Items.Count}");
-                        if (invalidTileItems.Count > 0)
-                            tooltipParts.Add($"無效TileId: {invalidTileItems.Count}");
-                        if (layer8ExtendedS32.Count > 0)
-                            tooltipParts.Add($"L8擴展: {layer8ExtendedS32.Count}");
-                        if (overLimitTileIds.Count > 0)
-                            tooltipParts.Add($"Tile超上限: {overLimitTileIds.Count}");
-                        if (invalidL5TypeItems.Count > 0)
-                            tooltipParts.Add($"L5無效Type: {invalidL5TypeItems.Count}");
+                        if (validationResult.InvalidL5Items.Count > 0)
+                            tooltipParts.Add($"Layer5異常: {validationResult.InvalidL5Items.Count}");
+                        if (validationResult.InvalidTileItems.Count > 0)
+                            tooltipParts.Add($"無效TileId: {validationResult.InvalidTileItems.Count}");
+                        if (validationResult.Layer8ExtendedS32.Count > 0)
+                            tooltipParts.Add($"L8擴展: {validationResult.Layer8ExtendedS32.Count}");
+                        if (validationResult.OverLimitTileIds.Count > 0)
+                            tooltipParts.Add($"Tile超上限: {validationResult.OverLimitTileIds.Count}");
+                        if (validationResult.InvalidL5TypeItems.Count > 0)
+                            tooltipParts.Add($"L5無效Type: {validationResult.InvalidL5TypeItems.Count}");
+                        if (validationResult.CorruptedTiles.Count > 0)
+                            tooltipParts.Add($"損壞Tile: {validationResult.CorruptedTiles.Count}");
+                        if (validationResult.DiscontinuousGroupIds.Count > 0)
+                            tooltipParts.Add(string.Format(LocalizationManager.L("AbnormalCheck_GroupIdTooltip"), validationResult.DiscontinuousGroupIds.Count));
                         toolTip1.SetToolTip(btnMapValidate, $"發現異常: {string.Join(", ", tooltipParts)}");
                     }
                 });
@@ -26545,6 +26580,104 @@ namespace L1FlyMapViewer
             }
 
             return result;
+        }
+
+        /// <summary>
+        /// 檢測 Layer4 Group ID 不連續的 S32 檔案
+        /// </summary>
+        /// <returns>每個有問題的 S32 檔案及其缺失的 Group ID</returns>
+        private List<(string filePath, string fileName, int minGroupId, int maxGroupId, List<int> missingIds)> GetDiscontinuousGroupIds()
+        {
+            var result = new List<(string filePath, string fileName, int minGroupId, int maxGroupId, List<int> missingIds)>();
+
+            if (_document.S32Files.Count == 0)
+                return result;
+
+            foreach (var kvp in _document.S32Files)
+            {
+                string filePath = kvp.Key;
+                string fileName = Path.GetFileName(filePath);
+                S32Data s32Data = kvp.Value;
+
+                if (s32Data.Layer4 == null || s32Data.Layer4.Count == 0)
+                    continue;
+
+                // 收集該 S32 中所有的 GroupId
+                var groupIds = s32Data.Layer4.Select(obj => obj.GroupId).Distinct().OrderBy(id => id).ToList();
+                if (groupIds.Count == 0)
+                    continue;
+
+                int minId = groupIds.Min();
+                int maxId = groupIds.Max();
+
+                // 檢查從 minId 到 maxId 是否有缺失的 ID
+                var groupIdSet = new HashSet<int>(groupIds);
+                var missingIds = new List<int>();
+                for (int id = minId; id <= maxId; id++)
+                {
+                    if (!groupIdSet.Contains(id))
+                    {
+                        missingIds.Add(id);
+                    }
+                }
+
+                if (missingIds.Count > 0)
+                {
+                    result.Add((filePath, fileName, minId, maxId, missingIds));
+                }
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        /// 修正指定 S32 的 Group ID，使其從 0 開始連續編號
+        /// 同時更新 Layer5 的 ObjectIndex
+        /// </summary>
+        private int FixDiscontinuousGroupIds(S32Data s32Data)
+        {
+            if (s32Data.Layer4 == null || s32Data.Layer4.Count == 0)
+                return 0;
+
+            // 收集所有現有的 GroupId（按順序）
+            var oldGroupIds = s32Data.Layer4.Select(obj => obj.GroupId).Distinct().OrderBy(id => id).ToList();
+            if (oldGroupIds.Count == 0)
+                return 0;
+
+            // 建立舊 GroupId -> 新 GroupId 的映射（從 0 開始連續）
+            var groupIdMapping = new Dictionary<int, int>();
+            for (int i = 0; i < oldGroupIds.Count; i++)
+            {
+                groupIdMapping[oldGroupIds[i]] = i;
+            }
+
+            int changedCount = 0;
+
+            // 更新 Layer4 的 GroupId
+            foreach (var obj in s32Data.Layer4)
+            {
+                if (groupIdMapping.TryGetValue(obj.GroupId, out int newId) && obj.GroupId != newId)
+                {
+                    obj.GroupId = newId;
+                    changedCount++;
+                }
+            }
+
+            // 更新 Layer5 的 ObjectIndex
+            foreach (var l5Item in s32Data.Layer5)
+            {
+                if (groupIdMapping.TryGetValue(l5Item.ObjectIndex, out int newIndex) && l5Item.ObjectIndex != newIndex)
+                {
+                    l5Item.ObjectIndex = (ushort)newIndex;
+                }
+            }
+
+            if (changedCount > 0)
+            {
+                s32Data.IsModified = true;
+            }
+
+            return changedCount;
         }
 
         /// <summary>
@@ -26983,15 +27116,21 @@ namespace L1FlyMapViewer
         // 檢查 Layer5 異常和無效 TileId
         private void btnMapValidate_Click(object sender, EventArgs e)
         {
-            var invalidL5Items = GetInvalidLayer5Items();
-            var invalidTileItems = GetInvalidTileIds();
-            var layer8ExtendedS32 = GetLayer8ExtendedS32Files();
-            var (overLimitTileIds, tileLimit, maxTileId) = GetAllOverLimitTileIds();
-            var invalidL5TypeItems = GetInvalidLayer5TypeItems();
-            var corruptedTiles = GetCorruptedTiles();
+            // 使用共用的驗證方法
+            var validationResult = RunAllValidationChecks();
 
-            if (invalidL5Items.Count == 0 && invalidTileItems.Count == 0 && layer8ExtendedS32.Count == 0 &&
-                overLimitTileIds.Count == 0 && invalidL5TypeItems.Count == 0 && corruptedTiles.Count == 0)
+            // 提取變數供後續使用
+            var invalidL5Items = validationResult.InvalidL5Items;
+            var invalidTileItems = validationResult.InvalidTileItems;
+            var layer8ExtendedS32 = validationResult.Layer8ExtendedS32;
+            var overLimitTileIds = validationResult.OverLimitTileIds;
+            var tileLimit = validationResult.TileLimit;
+            var maxTileId = validationResult.MaxTileId;
+            var invalidL5TypeItems = validationResult.InvalidL5TypeItems;
+            var corruptedTiles = validationResult.CorruptedTiles;
+            var discontinuousGroupIds = validationResult.DiscontinuousGroupIds;
+
+            if (!validationResult.HasIssues)
             {
                 WinFormsMessageBox.Show("檢查完成，沒有發現任何異常。",
                     "檢查完成", MessageBoxButtons.OK, MessageBoxIcon.Information);
@@ -27042,6 +27181,11 @@ namespace L1FlyMapViewer
                     .OrderBy(g => g.Key)
                     .Select(g => $"Type={g.Key}:{g.Count()}");
                 msgParts.Add($"• {invalidL5TypeItems.Count} 個 L5 無效 Type ({string.Join(", ", typeCounts)})");
+            }
+            if (discontinuousGroupIds.Count > 0)
+            {
+                int totalMissing = discontinuousGroupIds.Sum(x => x.missingIds.Count);
+                msgParts.Add(string.Format(LocalizationManager.L("AbnormalCheck_GroupIdDiscontinuous"), discontinuousGroupIds.Count, totalMissing));
             }
 
             // 顯示確認對話框
@@ -27648,6 +27792,113 @@ namespace L1FlyMapViewer
                     WinFormsMessageBox.Show($"已複製 {corruptedTiles.Count} 個 Tile ID 到剪貼簿。", "已複製");
                 };
                 pnlCorruptedTileInfo.GetControls().Add(btnCopyList);
+            }
+
+            // ===== Tab 7: L4 GroupId 不連續 =====
+            if (discontinuousGroupIds.Count > 0)
+            {
+                int totalMissing = discontinuousGroupIds.Sum(x => x.missingIds.Count);
+                TabPage tabGroupId = new TabPage(string.Format(LocalizationManager.L("AbnormalCheck_Tab_GroupId"), discontinuousGroupIds.Count));
+                tabControl.GetTabPages().Add(tabGroupId);
+
+                Label lblGroupIdSummary = new Label();
+                lblGroupIdSummary.Text = string.Format(LocalizationManager.L("AbnormalCheck_GroupIdSummary"), discontinuousGroupIds.Count, totalMissing);
+                lblGroupIdSummary.SetLocation(new Point(5, 5));
+                lblGroupIdSummary.Size = new Size(tabContentWidth - 10, 45);
+                lblGroupIdSummary.SetAnchor(AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right);
+                tabGroupId.GetControls().Add(lblGroupIdSummary);
+
+                CheckedListBox clbGroupIdItems = new CheckedListBox();
+                clbGroupIdItems.SetLocation(new Point(5, 55));
+                clbGroupIdItems.Size = new Size(tabContentWidth - 10, tabContentHeight - 135);
+                clbGroupIdItems.Font = new Font("Consolas", 9);
+                clbGroupIdItems.CheckOnClick = true;
+                clbGroupIdItems.SetAnchor(AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right);
+
+                foreach (var (filePath, fileName, minId, maxId, missingIds) in discontinuousGroupIds)
+                {
+                    string missingStr = missingIds.Count <= 10
+                        ? string.Join(", ", missingIds)
+                        : string.Join(", ", missingIds.Take(10)) + $"... ({missingIds.Count})";
+                    string displayText = $"[{fileName}] {minId}~{maxId}, missing: {missingStr}";
+                    clbGroupIdItems.Items.Add(displayText);
+                }
+                tabGroupId.GetControls().Add(clbGroupIdItems);
+
+                // 按鈕面板
+                Panel pnlGroupIdButtons = new Panel();
+                pnlGroupIdButtons.SetLocation(new Point(5, tabContentHeight - 75));
+                pnlGroupIdButtons.Size = new Size(tabContentWidth - 10, 70);
+                pnlGroupIdButtons.SetAnchor(AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right);
+                tabGroupId.GetControls().Add(pnlGroupIdButtons);
+
+                Button btnGroupIdSelectAll = new Button { Text = LocalizationManager.L("Button_SelectAll"), Location = new Point(0, 0), Size = new Size(80, 30) };
+                btnGroupIdSelectAll.Click += (s, args) => { for (int i = 0; i < clbGroupIdItems.Items.Count; i++) clbGroupIdItems.SetItemChecked(i, true); };
+                pnlGroupIdButtons.GetControls().Add(btnGroupIdSelectAll);
+
+                Button btnGroupIdDeselectAll = new Button { Text = LocalizationManager.L("AbnormalCheck_DeselectAll"), Location = new Point(90, 0), Size = new Size(80, 30) };
+                btnGroupIdDeselectAll.Click += (s, args) => { for (int i = 0; i < clbGroupIdItems.Items.Count; i++) clbGroupIdItems.SetItemChecked(i, false); };
+                pnlGroupIdButtons.GetControls().Add(btnGroupIdDeselectAll);
+
+                Button btnFixSelected = new Button { Text = LocalizationManager.L("AbnormalCheck_FixSelected"), Location = new Point(0, 35), Size = new Size(100, 30), BackColor = WinFormsColors.LightGreen };
+                btnFixSelected.Click += (s, args) =>
+                {
+                    if (clbGroupIdItems.CheckedIndices.Count == 0)
+                    {
+                        WinFormsMessageBox.Show(LocalizationManager.L("AbnormalCheck_PleaseSelectItems"), LocalizationManager.L("AbnormalCheck_Notice"));
+                        return;
+                    }
+                    if (WinFormsMessageBox.Show(string.Format(LocalizationManager.L("AbnormalCheck_ConfirmFixSelected"), clbGroupIdItems.CheckedIndices.Count), LocalizationManager.L("AbnormalCheck_ConfirmFix"), MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
+                        return;
+
+                    int fixedCount = 0;
+                    int totalChanged = 0;
+                    foreach (int idx in clbGroupIdItems.CheckedIndices)
+                    {
+                        var (filePath, _, _, _, _) = discontinuousGroupIds[idx];
+                        if (_document.S32Files.TryGetValue(filePath, out var s32Data))
+                        {
+                            int changed = FixDiscontinuousGroupIds(s32Data);
+                            if (changed > 0)
+                            {
+                                totalChanged += changed;
+                                fixedCount++;
+                            }
+                        }
+                    }
+                    WinFormsMessageBox.Show(string.Format(LocalizationManager.L("AbnormalCheck_FixComplete"), fixedCount, totalChanged), LocalizationManager.L("AbnormalCheck_FixDone"));
+                    ClearS32BlockCache();
+                    resultForm.Close();
+                    RenderS32Map();
+                };
+                pnlGroupIdButtons.GetControls().Add(btnFixSelected);
+
+                Button btnFixAll = new Button { Text = LocalizationManager.L("AbnormalCheck_FixAll"), Location = new Point(110, 35), Size = new Size(100, 30), BackColor = WinFormsColors.PaleGreen };
+                btnFixAll.Click += (s, args) =>
+                {
+                    if (WinFormsMessageBox.Show(string.Format(LocalizationManager.L("AbnormalCheck_ConfirmFixAll"), discontinuousGroupIds.Count), LocalizationManager.L("AbnormalCheck_ConfirmFixAll_Title"), MessageBoxButtons.YesNo, MessageBoxIcon.Warning) != DialogResult.Yes)
+                        return;
+
+                    int fixedCount = 0;
+                    int totalChanged = 0;
+                    foreach (var (filePath, _, _, _, _) in discontinuousGroupIds)
+                    {
+                        if (_document.S32Files.TryGetValue(filePath, out var s32Data))
+                        {
+                            int changed = FixDiscontinuousGroupIds(s32Data);
+                            if (changed > 0)
+                            {
+                                totalChanged += changed;
+                                fixedCount++;
+                            }
+                        }
+                    }
+                    WinFormsMessageBox.Show(string.Format(LocalizationManager.L("AbnormalCheck_FixComplete"), fixedCount, totalChanged), LocalizationManager.L("AbnormalCheck_FixDone"));
+                    ClearS32BlockCache();
+                    resultForm.Close();
+                    RenderS32Map();
+                };
+                pnlGroupIdButtons.GetControls().Add(btnFixAll);
             }
 
             // 關閉按鈕

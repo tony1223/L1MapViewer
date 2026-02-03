@@ -5193,6 +5193,9 @@ public static class WinFormsColors
     public static readonly Eto.Drawing.Color OrangeRed = Eto.Drawing.Color.FromArgb(255, 69, 0);
     public static readonly Eto.Drawing.Color DarkOrange = Eto.Drawing.Color.FromArgb(255, 140, 0);
     public static readonly Eto.Drawing.Color Gold = Eto.Drawing.Color.FromArgb(255, 215, 0);
+    // Green colors
+    public static readonly Eto.Drawing.Color LightGreen = Eto.Drawing.Color.FromArgb(144, 238, 144);
+    public static readonly Eto.Drawing.Color PaleGreen = Eto.Drawing.Color.FromArgb(152, 251, 152);
     // Blue colors
     public static readonly Eto.Drawing.Color SteelBlue = Eto.Drawing.Color.FromArgb(70, 130, 180);
     public static readonly Eto.Drawing.Color Khaki = Eto.Drawing.Color.FromArgb(240, 230, 140);

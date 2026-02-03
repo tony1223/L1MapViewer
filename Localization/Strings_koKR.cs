@@ -343,6 +343,18 @@ namespace L1MapViewer.Localization
             { "AbnormalCheck_ConfirmResetAll", "모든 {0}개의 S32를 일반 형식으로 재설정하시겠습니까?\n\n모든 Layer8 항목의 ExtendedData가 지워집니다." },
             { "AbnormalCheck_ConfirmResetAll_Title", "전체 재설정 확인" },
             { "AbnormalCheck_Layer8ItemCount", "[{0}] Layer8 항목: {1}" },
+            { "AbnormalCheck_GroupIdDiscontinuous", "• {0}개의 S32에서 L4 GroupId가 불연속 (누락된 번호: {1}개)" },
+            { "AbnormalCheck_Tab_GroupId", "GroupId 불연속 ({0})" },
+            { "AbnormalCheck_GroupIdSummary", "{0}개의 S32 파일에서 Layer4 GroupId가 불연속입니다 (총 {1}개 번호 누락).\n클라이언트 충돌이 발생할 수 있습니다. GroupId를 연속으로 재번호 매기는 것을 권장합니다." },
+            { "AbnormalCheck_GroupIdTooltip", "GroupId 불연속: {0}" },
+            { "AbnormalCheck_FixSelected", "선택 수정" },
+            { "AbnormalCheck_FixAll", "전체 수정" },
+            { "AbnormalCheck_ConfirmFixSelected", "선택한 {0}개의 S32 파일을 수정하시겠습니까?\n\n이 작업은:\n• Layer4 GroupId를 연속 번호로 재번호 매김 (0부터 시작)\n• Layer5 ObjectIndex도 함께 업데이트" },
+            { "AbnormalCheck_ConfirmFix", "수정 확인" },
+            { "AbnormalCheck_ConfirmFixAll", "모든 {0}개의 S32 파일을 수정하시겠습니까?\n\n이 작업은:\n• Layer4 GroupId를 연속 번호로 재번호 매김 (0부터 시작)\n• Layer5 ObjectIndex도 함께 업데이트" },
+            { "AbnormalCheck_ConfirmFixAll_Title", "전체 수정 확인" },
+            { "AbnormalCheck_FixComplete", "{0}개의 S32 파일을 수정하고 {1}개의 L4 오브젝트 GroupId를 업데이트했습니다." },
+            { "AbnormalCheck_FixDone", "수정 완료" },
 
             // === Status Bar ===
             { "Status_Ready", "준비" },

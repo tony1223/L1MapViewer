@@ -343,6 +343,18 @@ namespace L1MapViewer.Localization
             { "AbnormalCheck_ConfirmResetAll", "すべての {0} 個の S32 を通常形式にリセットしますか？\n\nすべての Layer8 項目の ExtendedData がクリアされます。" },
             { "AbnormalCheck_ConfirmResetAll_Title", "全リセット確認" },
             { "AbnormalCheck_Layer8ItemCount", "[{0}] Layer8 項目数: {1}" },
+            { "AbnormalCheck_GroupIdDiscontinuous", "• {0} 個の S32 で L4 GroupId が不連続（{1} 個の番号が欠落）" },
+            { "AbnormalCheck_Tab_GroupId", "GroupId不連続 ({0})" },
+            { "AbnormalCheck_GroupIdSummary", "{0} 個の S32 ファイルで Layer4 GroupId が不連続です（合計 {1} 個の番号が欠落）。\nクライアントがクラッシュする可能性があります。GroupId を連続に再番号付けすることをお勧めします。" },
+            { "AbnormalCheck_GroupIdTooltip", "GroupId不連続: {0}" },
+            { "AbnormalCheck_FixSelected", "選択を修正" },
+            { "AbnormalCheck_FixAll", "すべて修正" },
+            { "AbnormalCheck_ConfirmFixSelected", "選択した {0} 個の S32 ファイルを修正しますか？\n\nこの操作では：\n• Layer4 の GroupId を連続番号に再番号付け（0から開始）\n• Layer5 の ObjectIndex も更新" },
+            { "AbnormalCheck_ConfirmFix", "修正確認" },
+            { "AbnormalCheck_ConfirmFixAll", "すべての {0} 個の S32 ファイルを修正しますか？\n\nこの操作では：\n• Layer4 の GroupId を連続番号に再番号付け（0から開始）\n• Layer5 の ObjectIndex も更新" },
+            { "AbnormalCheck_ConfirmFixAll_Title", "全修正確認" },
+            { "AbnormalCheck_FixComplete", "{0} 個の S32 ファイルを修正し、{1} 個の L4 オブジェクトの GroupId を更新しました。" },
+            { "AbnormalCheck_FixDone", "修正完了" },
 
             // === Status Bar ===
             { "Status_Ready", "準備完了" },

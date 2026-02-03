@@ -343,6 +343,18 @@ namespace L1MapViewer.Localization
             { "AbnormalCheck_ConfirmResetAll", "Are you sure you want to reset all {0} S32 to normal format?\n\nThis will clear ExtendedData from all Layer8 items." },
             { "AbnormalCheck_ConfirmResetAll_Title", "Confirm Reset All" },
             { "AbnormalCheck_Layer8ItemCount", "[{0}] Layer8 items: {1}" },
+            { "AbnormalCheck_GroupIdDiscontinuous", "• {0} S32 files have discontinuous L4 GroupId (missing {1} IDs)" },
+            { "AbnormalCheck_Tab_GroupId", "GroupId Gaps ({0})" },
+            { "AbnormalCheck_GroupIdSummary", "Found {0} S32 files with discontinuous Layer4 GroupId (missing {1} IDs total).\nThis may cause client crashes. Recommend renumbering GroupId to be consecutive." },
+            { "AbnormalCheck_GroupIdTooltip", "GroupId Gaps: {0}" },
+            { "AbnormalCheck_FixSelected", "Fix Selected" },
+            { "AbnormalCheck_FixAll", "Fix All" },
+            { "AbnormalCheck_ConfirmFixSelected", "Are you sure you want to fix the selected {0} S32 files?\n\nThis will:\n• Renumber Layer4 GroupId to consecutive numbers (starting from 0)\n• Update corresponding Layer5 ObjectIndex" },
+            { "AbnormalCheck_ConfirmFix", "Confirm Fix" },
+            { "AbnormalCheck_ConfirmFixAll", "Are you sure you want to fix all {0} S32 files?\n\nThis will:\n• Renumber Layer4 GroupId to consecutive numbers (starting from 0)\n• Update corresponding Layer5 ObjectIndex" },
+            { "AbnormalCheck_ConfirmFixAll_Title", "Confirm Fix All" },
+            { "AbnormalCheck_FixComplete", "Fixed {0} S32 files, updated {1} L4 object GroupIds." },
+            { "AbnormalCheck_FixDone", "Fix Complete" },
 
             // === Status Bar ===
             { "Status_Ready", "Ready" },

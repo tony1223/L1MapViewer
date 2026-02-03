@@ -345,6 +345,18 @@ namespace L1MapViewer.Localization
             { "AbnormalCheck_ConfirmResetAll", "確定要將所有 {0} 個 S32 重設為一般格式嗎？\n\n這會清除所有 Layer8 項目的 ExtendedData。" },
             { "AbnormalCheck_ConfirmResetAll_Title", "確認重設全部" },
             { "AbnormalCheck_Layer8ItemCount", "[{0}] Layer8 項目數: {1}" },
+            { "AbnormalCheck_GroupIdDiscontinuous", "• {0} 個 S32 的 L4 GroupId 不連續（共缺 {1} 個編號）" },
+            { "AbnormalCheck_Tab_GroupId", "GroupId不連續 ({0})" },
+            { "AbnormalCheck_GroupIdSummary", "發現 {0} 個 S32 檔案的 Layer4 GroupId 編號不連續（共缺少 {1} 個編號）。\n這可能會導致客戶端閃退。建議重新編號使 GroupId 連續。" },
+            { "AbnormalCheck_GroupIdTooltip", "GroupId不連續: {0}" },
+            { "AbnormalCheck_FixSelected", "修正選取項目" },
+            { "AbnormalCheck_FixAll", "修正全部" },
+            { "AbnormalCheck_ConfirmFixSelected", "確定要修正選取的 {0} 個 S32 檔案嗎？\n\n此操作會：\n• 將 Layer4 的 GroupId 重新編號為連續數字（從 0 開始）\n• 同時更新 Layer5 的 ObjectIndex 對應" },
+            { "AbnormalCheck_ConfirmFix", "確認修正" },
+            { "AbnormalCheck_ConfirmFixAll", "確定要修正所有 {0} 個 S32 檔案嗎？\n\n此操作會：\n• 將 Layer4 的 GroupId 重新編號為連續數字（從 0 開始）\n• 同時更新 Layer5 的 ObjectIndex 對應" },
+            { "AbnormalCheck_ConfirmFixAll_Title", "確認修正全部" },
+            { "AbnormalCheck_FixComplete", "已修正 {0} 個 S32 檔案，共更新 {1} 個 L4 物件的 GroupId。" },
+            { "AbnormalCheck_FixDone", "修正完成" },
 
             // === Status Bar ===
             { "Status_Ready", "就緒" },
