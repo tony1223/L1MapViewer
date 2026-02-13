@@ -27913,6 +27913,31 @@ namespace L1FlyMapViewer
             resultForm.GetControls().Add(btnClose);
 
             resultForm.ShowDialog(this);
+
+            // 修復後立即重新檢查，如果還有問題就警告使用者
+            var recheckResult = RunAllValidationChecks();
+            if (recheckResult.HasIssues)
+            {
+                var remainParts = new List<string>();
+                if (recheckResult.InvalidL5Items.Count > 0)
+                    remainParts.Add($"Layer5異常: {recheckResult.InvalidL5Items.Count}");
+                if (recheckResult.InvalidTileItems.Count > 0)
+                    remainParts.Add($"無效TileId: {recheckResult.InvalidTileItems.Count}");
+                if (recheckResult.Layer8ExtendedS32.Count > 0)
+                    remainParts.Add($"L8擴展: {recheckResult.Layer8ExtendedS32.Count}");
+                if (recheckResult.OverLimitTileIds.Count > 0)
+                    remainParts.Add($"Tile超上限: {recheckResult.OverLimitTileIds.Count}");
+                if (recheckResult.InvalidL5TypeItems.Count > 0)
+                    remainParts.Add($"L5無效Type: {recheckResult.InvalidL5TypeItems.Count}");
+                if (recheckResult.CorruptedTiles.Count > 0)
+                    remainParts.Add($"損壞Tile: {recheckResult.CorruptedTiles.Count}");
+                if (recheckResult.DiscontinuousGroupIds.Count > 0)
+                    remainParts.Add($"GroupId不連續: {recheckResult.DiscontinuousGroupIds.Count}");
+
+                string remainMsg = $"仍有 {recheckResult.TotalIssueCount} 個問題尚未處理：\n\n• {string.Join("\n• ", remainParts)}\n\n未處理的異常可能導致進入遊戲時閃退，建議儘快修復。";
+                WinFormsMessageBox.Show(remainMsg, "尚有未處理的異常", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+            UpdateMapValidateButton();
         }
 
         // 清理未使用的 Tiles（危險操作）

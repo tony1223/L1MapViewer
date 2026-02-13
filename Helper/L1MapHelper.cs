@@ -406,28 +406,20 @@ namespace L1MapViewer.Helper {
             DebugLog.Log($"[LoadZoneXml] Got data: {data.Length} bytes");
 
 
-            // zone3.xml的內容
-            string xmllText = Encoding.GetEncoding("utf-8").GetString(data);
-
-            /*
-             * <zone>
-                    <name>말하는 섬-오크 망루지대</name>
-            <zone3desc>818</zone3desc>
-                    <level min="50" max="54"/>
-                    <map num="0" left="32364" top="32932" right="32378" bottom="32971"/>
-                </zone>
-             * 
-                <zone>
-                    <name>켄트 내성</name>
-            <zone3desc>14</zone3desc>
-                    <color id="11"/>
-                    <map num="15"/>
-                    <background id="119"/>
-                </zone>
-             */
-            //xml
+            // zone3.xml的內容 — 嘗試多種編碼載入
             XmlDocument doc = new XmlDocument();
-            doc.LoadXml(xmllText);
+            string[] encodings = { "utf-8", "euc-kr", "big5", "shift_jis" };
+            foreach (var enc in encodings) {
+                try {
+                    string xmlText = Encoding.GetEncoding(enc).GetString(data);
+                    doc.LoadXml(xmlText);
+                    DebugLog.Log($"[LoadZoneXml] Parsed with encoding: {enc}");
+                    break;
+                } catch (XmlException) {
+                    DebugLog.Log($"[LoadZoneXml] Failed with encoding: {enc}");
+                    if (enc == encodings[^1]) throw;
+                }
+            }
             //選擇節點
             XmlNode main = doc.SelectSingleNode("zoneinfo/zone");
             if (main == null) {
