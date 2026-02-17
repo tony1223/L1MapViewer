@@ -10028,6 +10028,10 @@ namespace L1FlyMapViewer
                 byte[] tilData = tilArray[indexId];
                 if (tilData == null) return;
 
+                // R tile (48x48) → downscale 為 24x24
+                if (TileProvider.Instance.IsRemaster(tileId))
+                    tilData = L1Til.DownscaleBlock(tilData);
+
                 // 使用 Lin.Helper.Core.L1Til 渲染 RGB565，支援 type 6/7 半透明效果
                 Lin.Helper.Core.Tile.L1Til.RenderBlockDirectRgb565(tilData, pixelX, pixelY, ptr, rowpix, maxWidth, maxHeight, applyTypeAlpha: true);
             }
